@@ -38,17 +38,17 @@ Pick the highest-priority open issue that is not blocked: its `openBlockers` is 
 3. **Execute** — use the tdd skill. RGR (Red → Green → Repeat → Refactor): write a failing test first, then write the implementation to pass it.
 4. **Verify** — run `npm run typecheck` and `npm run test` before committing. Fix any failures before proceeding.
 5. **Commit** — make a single git commit. The message MUST:
-   - Start with `RALPH:` prefix
-   - Include the task completed and any PRD reference
+   - Have a subject line of the form `RALPH: <task completed> (#<ID>)`, ending with the issue number in exactly that form
+   - Include any PRD reference
    - List key decisions made
    - List files changed
    - Note any blockers for the next iteration
-6. **Close** — close the issue with `gh issue close <ID> --comment "Completed by Sandcastle"` explaining what was done.
+6. **Comment** — comment on the issue with `gh issue comment <ID> --body "…"` explaining what was done and the key decisions. **Do not close the issue.** A reviewer checks your commit next, and the loop closes the issue only after that review passes.
 
 ## Rules
 
 - Work on **one issue per iteration**. Do not attempt multiple issues in a single iteration.
-- Do not close an issue until you have committed the fix and verified tests pass.
+- Never close an issue. The loop closes it after review.
 - Do not leave commented-out code or TODO comments in committed code.
 - If you are blocked (missing context, failing tests you cannot fix, external dependency), leave a comment on the issue and move on — do not close it.
 

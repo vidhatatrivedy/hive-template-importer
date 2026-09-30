@@ -4,8 +4,11 @@
 //   Phase 1 (Implement): an agent picks the highest-priority open GitHub issue
 //     labelled `ready-for-agent`, implements it on a fresh branch, commits.
 //   Phase 2 (Review): an agent reviews that branch's diff and fixes it in place.
+//   Then this script closes the issue. Agents never close issues, so a closed
+//   issue always means implemented and reviewed.
 // Both phases share one Docker sandbox. The loop stops early when an implement
-// phase produces no commits (backlog empty or everything blocked).
+// phase produces no commits (backlog empty or everything blocked), or when a
+// review fails; the issue then stays open with a comment saying why.
 // Iterations chain: each branch forks from the previous iteration's branch, so
 // a ticket sees the code of the tickets closed before it. The first forks from
 // the host's current HEAD. Nothing is merged to main; merge the last branch
@@ -24,6 +27,25 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import { USAGE, checkCredentials, describe, parseRunConfig, resolveAgent } from "./agents.mts";
 
 const GH_REPO = "vidhatatrivedy/hive-template-importer";
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The issue the implementer worked on, from its `RALPH: … (#N)` commit subject. */
+function issueFromCommits(commits: readonly { sha: string }[]): number | undefined {
+  for (const { sha } of commits) {
+    const subject = execFileSync("git", ["log", "-1", "--format=%s", sha], { encoding: "utf8" });
+    const match = /\(#(\d+)\)\s*$/.exec(subject.trim());
+    if (match) return Number(match[1]);
+  }
+  return undefined;
+}
+
+/** Runs gh on the host with the sandbox's GH_TOKEN (loaded by checkCredentials). */
+function gh(args: string[]): void {
+  execFileSync("gh", [...args, "--repo", GH_REPO], { stdio: "inherit" });
+}
 
 function fail(error: unknown): never {
   console.error(`\n${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
@@ -97,18 +119,37 @@ for (let iteration = 1; iteration <= config.iterations; iteration++) {
       break;
     }
     console.log(`\nImplementation complete on ${branch} (${implement.commits.length} commits)`);
-
-    await sandbox.run({
-      name: `reviewer:${config.reviewer.provider}`,
-      maxIterations: 1,
-      agent: reviewer,
-      promptFile: "./.sandcastle/review-prompt.md",
-      // Diff against the fork point, not the host branch: iterations chain, so
-      // the host branch would show every earlier iteration's changes too.
-      promptArgs: { BRANCH: branch, BASE: previousBranch ?? startCommit },
-    });
-    console.log("\nReview complete.");
+    const issue = issueFromCommits(implement.commits);
+    const base = previousBranch ?? startCommit;
+    // Later iterations fork from here whether or not the review succeeds.
     previousBranch = branch;
+
+    try {
+      await sandbox.run({
+        name: `reviewer:${config.reviewer.provider}`,
+        maxIterations: 1,
+        agent: reviewer,
+        promptFile: "./.sandcastle/review-prompt.md",
+        // Diff against the fork point, not the host branch: iterations chain, so
+        // the host branch would show every earlier iteration's changes too.
+        promptArgs: { BRANCH: branch, BASE: base },
+      });
+    } catch (error) {
+      console.error(`\nReview failed: ${errorMessage(error)}`);
+      if (issue !== undefined) {
+        gh(["issue", "comment", String(issue), "--body",
+          `Implemented on \`${branch}\`, but the review didn't finish (${errorMessage(error)}). Left open: review it before closing.`]);
+      }
+      console.log("Stopping: an open, implemented issue would be picked up again.");
+      break;
+    }
+    console.log("\nReview complete.");
+
+    if (issue === undefined) {
+      console.warn(`Warning: no "(#N)" in the commit subjects on ${branch}; close its issue by hand.`);
+    } else {
+      gh(["issue", "close", String(issue), "--comment", `Implemented and reviewed on \`${branch}\` by Sandcastle.`]);
+    }
   } finally {
     await sandbox.close();
   }
