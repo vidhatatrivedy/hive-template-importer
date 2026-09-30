@@ -15,6 +15,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.7",
+    "parse5": "^8.0.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "^4.6.5"
@@ -27,6 +28,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.7",
+    "read-excel-file": "9.3.10",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",

@@ -1,0 +1,46 @@
+/**
+ * What Comment HTML may contain (Rich content policy, issue #10). Plain data, so the
+ * render-time DOMPurify config can be derived from it and never drift.
+ */
+export const allowlist = {
+  tags: [
+    "p", "br", "strong", "b", "em", "i", "u", "s", "sub", "sup", "ul", "ol", "li",
+    "h1", "h2", "h3", "h4", "h5", "h6", "span", "div", "blockquote", "hr", "pre", "code",
+    "table", "thead", "tbody", "tr", "th", "td", "a", "img", "iframe",
+  ],
+  /** Attributes per tag; `*` applies to every allowed tag. */
+  attributes: {
+    "*": ["style"],
+    a: ["href", "target", "rel"],
+    ol: ["start"],
+    img: ["src", "alt", "width", "height"],
+    iframe: ["src", "width", "height", "allowfullscreen"],
+  } as Record<string, string[]>,
+  urlSchemes: ["http", "https", "mailto", "tel"],
+  /** An iframe is kept only when its `src` starts with one of these. */
+  iframeSrcPrefixes: [
+    "https://www.youtube.com/embed/",
+    "https://www.youtube-nocookie.com/embed/",
+  ],
+  styleProperties: [
+    "width", "max-width", "height", "float", "clear",
+    "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+    "display", "vertical-align", "text-align", "color", "background-color",
+    "font-size", "font-weight", "font-style",
+  ],
+};
+
+/** Attributes previous editors (Froala, pasted page builders) leave behind. */
+export function isEditorLeftover(attribute: string): boolean {
+  return (
+    attribute === "class" ||
+    attribute === "draggable" ||
+    attribute === "contenteditable" ||
+    attribute === "fr-original-style" ||
+    attribute.startsWith("data-")
+  );
+}
+
+export function isAllowedAttribute(tag: string, attribute: string): boolean {
+  return allowlist.attributes["*"].includes(attribute) || (allowlist.attributes[tag] ?? []).includes(attribute);
+}
