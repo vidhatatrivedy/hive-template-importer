@@ -7,11 +7,7 @@ beforeAll(async () => {
   cells = await allCommentTexts();
 });
 
-const count = (s: string, needle: string) => s.split(needle).length - 1;
-
-function cutsOf(html: string, kind?: Cut["kind"]) {
-  return sanitiseCommentHtml(html).cuts.filter((c) => !kind || c.kind === kind);
-}
+const count = (text: string, needle: string) => text.split(needle).length - 1;
 
 describe("fixture laws, on every non-empty Comment Text cell", () => {
   it("reads cells from all six HTML fixtures", () => {
@@ -57,7 +53,9 @@ describe("fixture laws, on every non-empty Comment Text cell", () => {
   });
 
   it("Ben row 12's data-testid and data-mesh-id are removed as editor-leftover", () => {
-    const row12 = cells.find((c) => c.fixture.startsWith("Ben") && c.row === 12)!;
+    const row12 = cells.find((cell) => cell.fixture.startsWith("Ben") && cell.row === 12);
+    expect(row12).toBeDefined();
+    if (!row12) return;
     const { html, cuts } = sanitiseCommentHtml(row12.text);
     const leftovers = cuts.filter((c) => c.kind === "editor-leftover").map((c) => c.context.attribute);
     expect(leftovers).toContain("data-testid");
@@ -155,8 +153,22 @@ describe("attributes", () => {
     expect(sanitiseCommentHtml('<a href="x"onclick="y()">l</a>').html).toBe('<a href="x">l</a>');
   });
 
+  it("keeps the separator when a removed attribute is jammed against a kept one", () => {
+    const inputs = [
+      '<p onclick="x"style="color: red">t</p>',
+      '<p class="x"style="color: red">t</p>',
+      '<p onclick="x"id="a b"style="color: red">t</p>',
+    ];
+    for (const input of inputs) {
+      const { html } = sanitiseCommentHtml(input);
+      expect(html).toBe('<p style="color: red">t</p>');
+      expect(sanitiseCommentHtml(html).cuts).toEqual([]);
+    }
+  });
+
   it("finds mixed-case attribute names", () => {
-    expect(cutsOf('<p OnClick="x" DATA-X="y">t</p>').map((c) => [c.kind, c.context.attribute])).toEqual([
+    const { cuts } = sanitiseCommentHtml('<p OnClick="x" DATA-X="y">t</p>');
+    expect(cuts.map((cut) => [cut.kind, cut.context.attribute])).toEqual([
       ["attribute-removed", "onclick"],
       ["editor-leftover", "data-x"],
     ]);

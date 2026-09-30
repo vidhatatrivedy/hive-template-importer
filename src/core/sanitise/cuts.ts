@@ -1,16 +1,4 @@
-export type CutKind =
-  | "editor-leftover"
-  | "attribute-removed"
-  | "css-property-removed"
-  | "style-unparseable"
-  | "tag-removed"
-  | "tag-unwrapped"
-  | "link-scheme-removed"
-  | "iframe-to-link"
-  | "youtube-wrapper-emptied"
-  | "markup-rebuilt";
-
-export const cutKinds: CutKind[] = [
+export const cutKinds = [
   "editor-leftover",
   "attribute-removed",
   "css-property-removed",
@@ -21,7 +9,9 @@ export const cutKinds: CutKind[] = [
   "iframe-to-link",
   "youtube-wrapper-emptied",
   "markup-rebuilt",
-];
+] as const;
+
+export type CutKind = (typeof cutKinds)[number];
 
 /** One change the sanitiser made: a span of the input string, end exclusive, in UTF-16 offsets. */
 export type Cut = {

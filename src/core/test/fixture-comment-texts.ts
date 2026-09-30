@@ -17,13 +17,16 @@ export function htmlFixtureFiles(): string[] {
 /** Every non-empty Comment Text cell of one fixture, exactly as stored (no trimming). */
 export async function commentTexts(fixture: string): Promise<FixtureCell[]> {
   const rows = await readSheet(fs.readFileSync(path.join(FIXTURE_DIR, fixture)), { trim: false });
-  const column = rows[0].findIndex((h) => String(h).trim().toLowerCase() === "comment text");
+  const header = rows[0];
+  if (!header) throw new Error(`${fixture}: empty sheet`);
+  const column = header.findIndex((cell) => String(cell).trim().toLowerCase() === "comment text");
   if (column < 0) throw new Error(`${fixture}: no Comment Text column`);
+
   const cells: FixtureCell[] = [];
-  rows.slice(1).forEach((cells_, i) => {
-    const value = cells_[column];
-    if (typeof value === "string" && value !== "") cells.push({ fixture, row: i + 2, text: value });
-  });
+  for (let index = 1; index < rows.length; index++) {
+    const value = rows[index][column];
+    if (typeof value === "string" && value !== "") cells.push({ fixture, row: index + 1, text: value });
+  }
   return cells;
 }
 

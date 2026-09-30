@@ -30,15 +30,11 @@ export const allowlist = {
   ],
 };
 
+const editorLeftovers = new Set(["class", "draggable", "contenteditable", "fr-original-style"]);
+
 /** Attributes previous editors (Froala, pasted page builders) leave behind. */
 export function isEditorLeftover(attribute: string): boolean {
-  return (
-    attribute === "class" ||
-    attribute === "draggable" ||
-    attribute === "contenteditable" ||
-    attribute === "fr-original-style" ||
-    attribute.startsWith("data-")
-  );
+  return editorLeftovers.has(attribute) || attribute.startsWith("data-");
 }
 
 export function isAllowedAttribute(tag: string, attribute: string): boolean {
