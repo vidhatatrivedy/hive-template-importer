@@ -3,6 +3,7 @@ import { allowlist, isAllowedAttribute, isEditorLeftover, tagsRemovedWithContent
 import { applyCuts, type Cut } from "./cuts";
 import { checkStyle, type StyleVerdict } from "./style-attribute";
 import { asciiLower, isWhitespace } from "./text";
+import { iframeReplacement, isAllowedUrl, isYoutubeEmbed } from "./url";
 
 type Node = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
@@ -18,7 +19,12 @@ type AttributeSpan = {
 
 type ClassifiedAttribute = AttributeSpan & {
   removed: boolean;
+  /** Why it's removed, when that isn't simply being off the allowlist. */
+  kind?: "link-scheme-removed" | "youtube-wrapper-emptied";
 };
+
+/** Attributes holding a URL a link or image points to, checked against the scheme allowlist. */
+const URL_ATTRIBUTES: Record<string, string> = { a: "href", img: "src" };
 
 /**
  * Sanitises one Comment's HTML by cutting spans out of the original string, never
@@ -48,6 +54,11 @@ function collectCuts(input: string, node: Node, cuts: Cut[]) {
   if ("tagName" in node) {
     if (isRemovedWithContent(node)) {
       const cut = removalCut(input, node);
+      if (cut) cuts.push(cut);
+      return;
+    }
+    if (isAllowedElement(node) && node.tagName === "iframe" && !isYoutubeEmbed(attributeValueOf(node, "src") ?? "")) {
+      const cut = iframeToLinkCut(input, node);
       if (cut) cuts.push(cut);
       return;
     }
@@ -91,6 +102,38 @@ function sourceEnd(node: Node): number {
     end = Math.max(end, sourceEnd(child));
   });
   return end;
+}
+
+/** The decoded value of an element's first attribute of that name, as the browser sees it. */
+function attributeValueOf(element: Element, name: string): string | undefined {
+  return element.attrs.find((attribute) => attribute.name === name)?.value;
+}
+
+/** An iframe that isn't a YouTube embed, replaced whole (its content is raw text) by a link to its `src`. */
+function iframeToLinkCut(input: string, element: Element): Cut | null {
+  const startTag = element.sourceCodeLocation?.startTag;
+  if (!startTag) return null;
+  const start = startTag.startOffset;
+  const end = Math.min(sourceEnd(element), input.length);
+  return {
+    start,
+    end,
+    kind: "iframe-to-link",
+    removedText: input.slice(start, end),
+    replacement: iframeReplacement(attributeValueOf(element, "src")),
+    context: { tag: "iframe", attribute: "src" },
+  };
+}
+
+/**
+ * A `div.youtube-embed-wrapper` holding only whitespace: Spectora exported the wrapper but not
+ * its video. Its `class` and `style` go, so the box it would have drawn collapses to nothing.
+ */
+function isEmptyYoutubeWrapper(element: Element): boolean {
+  if (element.tagName !== "div") return false;
+  const classes = (attributeValueOf(element, "class") ?? "").split(/[\t\n\f\r ]+/);
+  if (!classes.includes("youtube-embed-wrapper")) return false;
+  return element.childNodes.every((child) => "value" in child && /^[\s\u00a0]*$/.test(child.value));
 }
 
 /** Cuts the opening and closing tags, keeping the content. */
@@ -242,10 +285,7 @@ function attributeCuts(input: string, element: Element): Cut[] {
   const startTag = element.sourceCodeLocation?.startTag;
   if (!isAllowedElement(element) || !startTag) return [];
 
-  const attributes = classifyAttributes(
-    element.tagName,
-    startTagAttributes(input, startTag.startOffset, startTag.endOffset),
-  );
+  const attributes = classifyAttributes(element, startTagAttributes(input, startTag.startOffset, startTag.endOffset));
   const styles = new Map<number, StyleVerdict>();
   for (let index = 0; index < attributes.length; index++) {
     const attribute = attributes[index];
@@ -266,10 +306,16 @@ function attributeCuts(input: string, element: Element): Cut[] {
     }
     if (!attribute.removed) continue;
     const start = startOfAttributeCut(input, attributes, index);
+    const previous = cuts.at(-1);
+    if (attribute.kind === "youtube-wrapper-emptied" && previous?.kind === attribute.kind && previous.end === start) {
+      previous.end = attribute.end;
+      previous.removedText = input.slice(previous.start, previous.end);
+      continue;
+    }
     cuts.push({
       start,
       end: attribute.end,
-      kind: isEditorLeftover(attribute.name) ? "editor-leftover" : "attribute-removed",
+      kind: attribute.kind ?? (isEditorLeftover(attribute.name) ? "editor-leftover" : "attribute-removed"),
       removedText: input.slice(start, attribute.end),
       context: { tag: element.tagName, attribute: attribute.name },
     });
@@ -313,12 +359,26 @@ function styleCuts(input: string, tag: string, style: StyleVerdict, wholeStart: 
   });
 }
 
-function classifyAttributes(tag: string, attributes: readonly AttributeSpan[]): ClassifiedAttribute[] {
+/**
+ * Marks each attribute kept or removed. Only the first of a repeated name is read by the
+ * browser, so only that one is checked for its URL scheme or a YouTube wrapper.
+ */
+function classifyAttributes(element: Element, attributes: readonly AttributeSpan[]): ClassifiedAttribute[] {
+  const tag = element.tagName;
+  const emptyWrapper = isEmptyYoutubeWrapper(element);
   const seen = new Set<string>();
-  return attributes.map((attribute) => {
+  return attributes.map((attribute): ClassifiedAttribute => {
     const repeated = seen.has(attribute.name);
     seen.add(attribute.name);
-    return { ...attribute, removed: repeated || !isAllowedAttribute(tag, attribute.name) };
+    if (repeated || !isAllowedAttribute(tag, attribute.name)) {
+      if (!repeated && emptyWrapper && attribute.name === "class") return { ...attribute, removed: true, kind: "youtube-wrapper-emptied" };
+      return { ...attribute, removed: true };
+    }
+    if (emptyWrapper && attribute.name === "style") return { ...attribute, removed: true, kind: "youtube-wrapper-emptied" };
+    if (URL_ATTRIBUTES[tag] === attribute.name && !isAllowedUrl(attributeValueOf(element, attribute.name) ?? "")) {
+      return { ...attribute, removed: true, kind: "link-scheme-removed" };
+    }
+    return { ...attribute, removed: false };
   });
 }
 

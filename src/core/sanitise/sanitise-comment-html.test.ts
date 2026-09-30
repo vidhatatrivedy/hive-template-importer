@@ -329,6 +329,8 @@ describe("disallowed tags", () => {
       "<body onload=1>", "<xmp>", "</xmp>", "<template>", "</template>", "<li>", "<div class=c>", "</div>", "<br>",
       "</br>", "<i>", "</i>", "<font", '"', '="', "<textarea>", "<!--", "-->", "<select>", "<option>", "<caption>",
       "<col>", "<noscript>", "<style>", "<iframe>", "</iframe>", "<plaintext>", "<object>", "img src=x onerror=1>",
+      "<iframe src=https://x.example/>", "<iframe src=javascript:1>", "<a href=javascript:1>", "<img src=data:x>",
+      '<div class="youtube-embed-wrapper" style="height:0">',
     ];
     let seed = 1;
     const random = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
@@ -444,7 +446,7 @@ describe("inline styles", () => {
 
   it("removes the whole attribute when every declaration goes, one cut per declaration", () => {
     const { html, cuts } = expectStyleLaws(
-      '<div class="youtube-embed-wrapper" style="position: relative; padding-bottom: 56.25%; overflow: hidden"></div>',
+      '<div class="box" style="position: relative; padding-bottom: 56.25%; overflow: hidden"></div>',
     );
     expect(html).toBe("<div></div>");
     expect(cuts.map((c) => [c.kind, c.context.property])).toEqual([
@@ -504,6 +506,147 @@ describe("inline styles", () => {
   it("filters styles in single-quoted and unquoted values", () => {
     expect(expectStyleLaws("<p style='color: red; position: fixed'>t</p>").html).toBe("<p style='color: red'>t</p>");
     expect(expectStyleLaws("<p style=position:fixed;color:red>t</p>").html).toBe("<p style=color:red>t</p>");
+  });
+});
+
+describe("URLs, images and iframes", () => {
+  /** Honest log, replay, and a second pass that changes nothing. */
+  const expectUrlLaws = (input: string) => {
+    const { html, cuts } = sanitiseCommentHtml(input);
+    expectHonestLog(input, cuts);
+    expect(applyCuts(input, cuts)).toBe(html);
+    expect(sanitiseCommentHtml(html)).toEqual({ html, cuts: [] });
+    return { html, cuts };
+  };
+
+  it("removes only the href of a link with an unsafe scheme, keeping its text", () => {
+    const hrefs = [
+      "javascript:alert(1)",
+      "JaVaScRiPt:alert(1)",
+      "data:text/html;base64,PHNjcmlwdD4=",
+      "vbscript:msgbox(1)",
+      "&#106;avascript:alert(1)",
+      "&#x6A;&#x61;vascript:alert(1)",
+      "javascript&colon;alert(1)",
+      "java&Tab;script:alert(1)",
+      "java\nscript:alert(1)",
+      " \u0001javascript:alert(1)",
+      "file:///etc/passwd",
+    ];
+    for (const href of hrefs) {
+      const input = `<p>See <a href="${href}" target="_blank">this</a></p>`;
+      const { html, cuts } = expectUrlLaws(input);
+      expect(html, input).toBe('<p>See <a target="_blank">this</a></p>');
+      expect(cuts.map((c) => [c.kind, c.context.tag, c.context.attribute])).toEqual([["link-scheme-removed", "a", "href"]]);
+    }
+  });
+
+  it("keeps http, https, mailto and tel links exactly as written, with no upgrade", () => {
+    const input =
+      '<a href="http://example.org/a?b=1&amp;c=2">x</a><a href=\'HTTPS://example.org\'>y</a>' +
+      '<a href="mailto:me@example.org">m</a><a href="tel:+15555550100">t</a>';
+    expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+  });
+
+  it("keeps relative and fragment hrefs, which resolve to the page's own scheme", () => {
+    const input = '<a href="#top">a</a><a href="/path">b</a><a href="//example.org/x">c</a><a href="page?q=a:b">d</a><a href="">e</a>';
+    expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+  });
+
+  it("applies the same scheme rule to an image's src", () => {
+    const { html, cuts } = expectUrlLaws('<img src="javascript:alert(1)" alt="a"><img src="https://cdn.example.org/a.png">');
+    expect(html).toBe('<img alt="a"><img src="https://cdn.example.org/a.png">');
+    expect(cuts.map((c) => [c.kind, c.context.tag, c.context.attribute])).toEqual([["link-scheme-removed", "img", "src"]]);
+  });
+
+  it("keeps ol[start]", () => {
+    const input = '<ol start="3"><li>c</li></ol>';
+    expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+  });
+
+  it("keeps Ben's cdn.spectora.com images at their src", () => {
+    const withImages = cells.filter((c) => c.fixture.startsWith("Ben") && c.text.includes("cdn.spectora.com"));
+    expect(withImages.length).toBeGreaterThan(0);
+    for (const { text } of withImages) {
+      const sources = (html: string) => [...html.matchAll(/<img[^>]*?\ssrc="([^"]*)"/g)].map((m) => m[1]);
+      const { html, cuts } = sanitiseCommentHtml(text);
+      expect(sources(html)).toEqual(sources(text));
+      expect(cuts.filter((c) => c.context.attribute === "src")).toEqual([]);
+    }
+  });
+
+  it("keeps Ben row 10's two YouTube iframes, allowfullscreen=\"\" included", () => {
+    const row10 = cells.find((cell) => cell.fixture.startsWith("Ben") && cell.row === 10);
+    expect(row10).toBeDefined();
+    if (!row10) return;
+    const { html, cuts } = sanitiseCommentHtml(row10.text);
+    for (const id of ["_ErxoNiGyzI", "5pQpMt8_zx8"]) {
+      expect(html).toContain(`<iframe width="560" height="315" src="https://www.youtube.com/embed/${id}" allowfullscreen="">`);
+    }
+    expect(cuts.filter((c) => c.kind === "iframe-to-link")).toEqual([]);
+  });
+
+  it("keeps YouTube and youtube-nocookie embeds byte for byte", () => {
+    const input =
+      '<iframe src="https://www.youtube.com/embed/abc?rel=0&amp;t=1" width=560 height="315" allowfullscreen></iframe>' +
+      '<iframe src="https://www.youtube-nocookie.com/embed/abc"></iframe>';
+    expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+  });
+
+  it("turns any other iframe into a link to its src", () => {
+    const cases: [string, string][] = [
+      ['<iframe src="https://example.org/page?a=1&amp;b=2" width="5"></iframe>', '<a href="https://example.org/page?a=1&amp;b=2">https://example.org/page?a=1&amp;b=2</a>'],
+      ['<iframe src="https://www.youtube.com.evil.example/embed/x"></iframe>', '<a href="https://www.youtube.com.evil.example/embed/x">https://www.youtube.com.evil.example/embed/x</a>'],
+      ['<iframe src="https://evil.example/?https://www.youtube.com/embed/x"></iframe>', '<a href="https://evil.example/?https://www.youtube.com/embed/x">https://evil.example/?https://www.youtube.com/embed/x</a>'],
+      ['<iframe src="http://www.youtube.com/embed/x">fallback</iframe>', '<a href="http://www.youtube.com/embed/x">http://www.youtube.com/embed/x</a>'],
+      ['<iframe src="https://www.youtube.com/watch?v=x"></iframe>', '<a href="https://www.youtube.com/watch?v=x">https://www.youtube.com/watch?v=x</a>'],
+    ];
+    for (const [input, replacement] of cases) {
+      const { html, cuts } = expectUrlLaws(`<p>a</p>${input}<p>b</p>`);
+      expect(html, input).toBe(`<p>a</p>${replacement}<p>b</p>`);
+      expect(cuts.map((c) => [c.kind, c.context.tag, c.removedText, c.replacement])).toEqual([["iframe-to-link", "iframe", input, replacement]]);
+    }
+  });
+
+  it("never makes a link with an unsafe scheme or live markup from an iframe's src", () => {
+    const cases: [string, string][] = [
+      ['<iframe src="javascript:alert(1)"></iframe>', "javascript:alert(1)"],
+      ['<iframe src="https://x.example/&quot;&gt;&lt;script&gt;"></iframe>', '<a href="https://x.example/&quot;&gt;&lt;script&gt;">https://x.example/&quot;&gt;&lt;script&gt;</a>'],
+      ["<iframe></iframe>", ""],
+      ['<iframe src="https://x.example/a">', '<a href="https://x.example/a">https://x.example/a</a>'],
+    ];
+    for (const [input, output] of cases) {
+      const { html, cuts } = expectUrlLaws(input);
+      expect(html, input).toBe(output);
+      expect(cuts.map((c) => c.kind)).toEqual(["iframe-to-link"]);
+    }
+  });
+
+  it("collapses an empty YouTube wrapper, as youtube-wrapper-emptied rather than an editor leftover", () => {
+    const input = '<p>a</p><div class="youtube-embed-wrapper" style="position:relative;padding-bottom:56.25%;height:0;"> </div>\n';
+    const { html, cuts } = expectUrlLaws(input);
+    expect(html).toBe("<p>a</p><div>\u00a0</div>\n");
+    expect(cuts.map((c) => [c.kind, c.context.tag, c.removedText])).toEqual([
+      ["youtube-wrapper-emptied", "div", ' class="youtube-embed-wrapper" style="position:relative;padding-bottom:56.25%;height:0;"'],
+    ]);
+  });
+
+  it("filters a wrapper that still holds its video as any other div", () => {
+    const input = '<div class="youtube-embed-wrapper" style="position:relative;width:100%"><iframe src="https://www.youtube.com/embed/x"></iframe></div>';
+    const { html, cuts } = expectUrlLaws(input);
+    expect(html).toBe('<div style="width:100%"><iframe src="https://www.youtube.com/embed/x"></iframe></div>');
+    expect(cuts.map((c) => c.kind)).toEqual(["editor-leftover", "css-property-removed"]);
+  });
+
+  it("gives each of the 10 empty fixture wrappers one youtube-wrapper-emptied cut", () => {
+    const emptied = cells.flatMap((cell) =>
+      sanitiseCommentHtml(cell.text)
+        .cuts.filter((c) => c.kind === "youtube-wrapper-emptied")
+        .map(() => `${cell.fixture.split(" ")[0]} ${cell.fixture.includes("Room") ? "RbR" : ""}${cell.row}`),
+    );
+    expect(emptied).toHaveLength(10);
+    const rows = emptied.map((label) => Number(label.replace(/\D/g, ""))).sort((a, b) => a - b);
+    expect(rows).toEqual([209, 264, 311, 314, 318, 319, 374, 429, 484, 623]);
   });
 });
 
