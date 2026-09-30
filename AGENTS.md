@@ -55,8 +55,10 @@ This repo is worked on by Claude Code and Cursor, switching mid-task. Keep it pr
 `npm run sandcastle -- [options]` runs an implement → review loop in Docker over open issues labelled `ready-for-agent`.
 
 - `--provider claude` (default): `claude-opus-5-5`, effort `medium`
-- `--provider cursor`: `grok-4.7`, effort `high` (sent to Cursor as `grok-4.7[effort=high]`)
+- `--provider cursor`: `grok-4.7`, effort `high` (sent to Cursor as `grok-4.7-high`; `agent --list-models` lists valid ids)
 - `--model`, `--effort`, `--review-provider`, `--review-model`, `--review-effort`, `--iterations`, `--dry-run`, `--help`
+
+Iterations chain within one run, and nothing is merged to `main`. A new run forks from the host's `HEAD`, but tickets closed by the last run only have their code on its last branch. Before starting another run, fast-forward `main` to that branch (`git merge --ff-only <branch>`). Otherwise the next run builds tickets on top of missing prerequisites.
 
 Credentials live in `.sandcastle/.env` (template: `.sandcastle/.env.example`); every key there is injected into the sandbox, including the dev Supabase project's, so agents run `test:db` themselves. Needs Docker running and the image built once: `npx sandcastle docker build-image`.
 

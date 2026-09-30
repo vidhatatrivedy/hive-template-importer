@@ -6,15 +6,17 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 
 ## Branch diff
 
-!`git diff {{TARGET_BRANCH}}...{{BRANCH}}`
+!`git diff {{BASE}}...{{BRANCH}}`
 
 ## Commits on this branch
 
-!`git log {{TARGET_BRANCH}}..{{BRANCH}} --oneline`
+!`git log {{BASE}}..{{BRANCH}} --oneline`
 
 # REVIEW PROCESS
 
-Use the code-review skill to review the branch against `{{TARGET_BRANCH}}`: Standards (this repo's coding standards) and Spec (the issue the commits reference). Fix what it finds, then continue with the steps below.
+Review only this iteration's change: `{{BASE}}` is where this branch forked, so earlier iterations' code is out of scope.
+
+Use the code-review skill to review the branch against `{{BASE}}`: Standards (this repo's coding standards) and Spec (the issue the commits reference). Fix what it finds, then continue with the steps below.
 
 1. **Understand the change**: Read the diff and commits above to understand the intent.
 

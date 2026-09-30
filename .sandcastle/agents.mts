@@ -138,6 +138,9 @@ export function checkCredentials(choices: AgentChoice[]): void {
   if (missingDb.length) {
     console.warn(`Warning: ${missingDb.join(", ")} not set in .sandcastle/.env; database tickets can't run test:db.`);
   }
+  if (!process.env.SUPABASE_PUBLISHABLE_KEY) {
+    console.warn("Warning: SUPABASE_PUBLISHABLE_KEY not set in .sandcastle/.env; test:db will skip its grants check.");
+  }
 
   if (missing.length) {
     throw new Error(
@@ -155,11 +158,9 @@ export function resolveAgent(choice: AgentChoice): sandcastle.AgentProvider {
         effort: choice.effort as (typeof CLAUDE_EFFORTS)[number],
       });
     case "cursor":
-      // The Cursor CLI takes effort as a parameterized model id: model[effort=high].
-      // A model id that already has brackets is passed through untouched.
-      return sandcastle.cursor(
-        choice.model.includes("[") ? choice.model : `${choice.model}[effort=${choice.effort}]`,
-      );
+      // The Cursor CLI takes effort as a model-id suffix: grok-4.7-high
+      // (`agent --list-models` shows the valid ids).
+      return sandcastle.cursor(`${choice.model}-${choice.effort}`);
   }
 }
 

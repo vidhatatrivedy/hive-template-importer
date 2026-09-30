@@ -18,6 +18,7 @@
 //   npm run sandcastle -- --provider cursor --review-provider claude
 //   npm run sandcastle -- --dry-run --provider cursor    # print config, run nothing
 
+import { execFileSync } from "node:child_process";
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import { USAGE, checkCredentials, describe, parseRunConfig, resolveAgent } from "./agents.mts";
@@ -67,6 +68,8 @@ const hooks = {
 const copyToWorktree = ["node_modules"];
 
 let previousBranch: string | undefined;
+// The first iteration forks from this commit; the reviewer diffs against it.
+const startCommit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 
 for (let iteration = 1; iteration <= config.iterations; iteration++) {
   console.log(`\n=== Iteration ${iteration}/${config.iterations} ===\n`);
@@ -100,7 +103,9 @@ for (let iteration = 1; iteration <= config.iterations; iteration++) {
       maxIterations: 1,
       agent: reviewer,
       promptFile: "./.sandcastle/review-prompt.md",
-      promptArgs: { BRANCH: branch },
+      // Diff against the fork point, not the host branch: iterations chain, so
+      // the host branch would show every earlier iteration's changes too.
+      promptArgs: { BRANCH: branch, BASE: previousBranch ?? startCommit },
     });
     console.log("\nReview complete.");
     previousBranch = branch;

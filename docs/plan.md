@@ -63,7 +63,7 @@ All resolved by the wayfinder map; the answers are consolidated in [`docs/spec/`
 - [ ] Supabase dev project: fill `.env.local` (template `.env.example`), and the Supabase block of `.sandcastle/.env`.
 - [ ] Vercel project linked to the repo.
 - [ ] `.sandcastle/.env` (Claude token, Cursor key, GitHub token), then update Docker Desktop (installed version is 20.10 from 2022), start it, and run `npx sandcastle docker build-image`.
-- [ ] Verify the Cursor model id: `cursor-agent --list-models` (default assumed `grok-4.7[effort=high]`).
+- [x] Verify the Cursor model id: Cursor takes `grok-4.7-high`, not `grok-4.7[effort=high]` (checked in the sandbox, 2026-10-01).
 - [ ] Hive: open "We'll Buy Your Home Back" in `</>` code view to confirm whether the iframes are stored-but-hidden or dropped.
 - [ ] Hive: import, reload without saving, and check it persisted (the "unsaved changes" banner question).
 - [ ] Hive: finish a sample inspection and publish a report (required by the brief).
