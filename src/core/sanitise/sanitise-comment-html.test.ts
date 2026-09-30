@@ -1,11 +1,21 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { allCommentTexts, type FixtureCell } from "@/core/test/fixture-comment-texts";
-import { allowlist, applyCuts, sanitiseCommentHtml, type Cut } from "@/core/sanitise";
+import { allowlist, allowlistViolations, applyCuts, sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 
 let cells: FixtureCell[];
 beforeAll(async () => {
   cells = await allCommentTexts();
 });
+
+/** Measured when the self-check landed (#27); a change here means sanitising changed on real data. */
+const PINNED_IDENTICAL: Record<string, number> = {
+  "Ben Gromicko's Template for Home Inspections-2026-09-30.xls": 1188,
+  "InterNACHI Commercial Template-2026-09-30.xls": 319,
+  "InterNACHI Residential -2026-09-30.xls": 308,
+  "Radon Inspection-2026-09-30.xls": 1,
+  "Residential Template-2026-09-30.xls": 308,
+  "Room-by-Room Residential Template-2026-09-30.xls": 651,
+};
 
 const count = (text: string, needle: string) => text.split(needle).length - 1;
 
@@ -52,6 +62,26 @@ describe("fixture laws, on every non-empty Comment Text cell", () => {
         expect(count(html, needle)).toBe(count(text, needle) - removed);
       }
     }
+  });
+
+  it("allowlist: re-parsing the output finds only allowlisted content", () => {
+    for (const { fixture, row, text } of cells) {
+      expect(allowlistViolations(sanitiseCommentHtml(text).html), `${fixture} row ${row}`).toEqual([]);
+    }
+  });
+
+  it("no cell needs a tag removed, a link scheme removed or its markup rebuilt", () => {
+    const kinds = new Set(cells.flatMap(({ text }) => sanitiseCommentHtml(text).cuts.map((cut) => cut.kind)));
+    for (const kind of ["tag-removed", "link-scheme-removed", "markup-rebuilt"] as const) expect(kinds).not.toContain(kind);
+  });
+
+  it("pins the number of byte-identical cells per fixture", () => {
+    const identical: Record<string, number> = {};
+    for (const { fixture, text } of cells) {
+      identical[fixture] ??= 0;
+      if (sanitiseCommentHtml(text).html === text) identical[fixture]++;
+    }
+    expect(identical).toEqual(PINNED_IDENTICAL);
   });
 
   it("Ben row 12's data-testid and data-mesh-id are removed as editor-leftover", () => {
@@ -668,5 +698,174 @@ describe("allowlist", () => {
     expect(allowlist.urlSchemes).toEqual(["http", "https", "mailto", "tel"]);
     expect(allowlist.styleProperties).toContain("margin-left");
     expect(JSON.parse(JSON.stringify(allowlist))).toEqual(allowlist);
+  });
+});
+
+describe("self-check and rebuild", () => {
+  it("survives lone surrogates, which the parser can't read as they are", () => {
+    const input = "a\udc00\udc00<script>x</script>b\ud800";
+    const { html, cuts } = sanitiseCommentHtml(input);
+    expect(html).toBe("a\udc00\udc00b\ud800");
+    expect(cuts.map((c) => c.kind)).toEqual(["tag-removed"]);
+  });
+
+  /** Unclosed tags nested deeper than a browser nests them (Chromium stops at 512). */
+  const deep = (open: string, depth: number) => `${open.repeat(depth)}words<script>x</script>`;
+
+  it("rebuilds markup nested too deep to trust, as one markup-rebuilt cut over the whole input", () => {
+    for (const input of [deep("<font>", 600), deep("<div>", 600), deep("<b>", 20000)]) {
+      const { html, cuts } = sanitiseCommentHtml(input);
+      expect(cuts).toHaveLength(1);
+      expect(cuts[0]).toMatchObject({ start: 0, end: input.length, kind: "markup-rebuilt", removedText: input, replacement: html });
+      expect(allowlistViolations(html)).toEqual([]);
+      expect(html).toContain("words");
+      expect(html).not.toContain("script");
+    }
+  });
+
+  it("rebuilt output replays and is left alone when sanitised again", () => {
+    const input =
+      '<p class="c" style="color:red;position:fixed" onclick="x">a &amp; b<a href="javascript:1">l</a>' +
+      '<iframe src="https://x.example/?a&amp;b"></iframe><img src="https://cdn.spectora.com/i.png" alt="&quot;">\u00a0<pre>\n\nx</pre>' +
+      `</p>${"<div>".repeat(700)}`;
+    const { html, cuts } = sanitiseCommentHtml(input);
+    expect(cuts.map((cut) => cut.kind)).toEqual(["markup-rebuilt"]);
+    expect(applyCuts(input, cuts)).toBe(html);
+    expect(sanitiseCommentHtml(html)).toEqual({ html, cuts: [] });
+    expect(html).toContain('<p style="color:red">a &amp; b<a>l</a>');
+    expect(html).toContain('<a href="https://x.example/?a&amp;b">https://x.example/?a&amp;b</a>');
+    expect(html).toContain('<img src="https://cdn.spectora.com/i.png" alt="&quot;">\u00a0</p><pre>\n\nx</pre>');
+  });
+
+  it("keeps rebuilt markup within the depth a browser nests", () => {
+    const iframes = '<iframe src="https://www.youtube.com/embed/x"></iframe><iframe src="https://x.example/"></iframe>';
+    const { html } = sanitiseCommentHtml(deep("<div>", 5000) + iframes);
+    expect(allowlistViolations(html)).toEqual([]);
+    expect(html).toContain("https://x.example/");
+    expect(html.split("<div>").length - 1).toBeLessThanOrEqual(512);
+  });
+
+  it("keeps the rebuild sound on generated tag soup", () => {
+    const parts = [
+      "<p>", "</p>", "<b onclick=1>", "</b>", "<font>", "</font>", "<script>", "</script>", "<table>", "<tr>", "<td>",
+      "</table>", "x", " ", "&amp;", "&lt;", "<", "</", " ", "\n", "<pre>", "</pre>", "<svg>", "<math>", "<mi>",
+      "<a href=x>", "</a>", "<a href=javascript:1>", "<li>", "<ol start=2>", "<div class=c>", "</div>", "<br>", "<!--",
+      "-->", "<select>", "<style>", "<iframe src=https://www.youtube.com/embed/x>", "<iframe src=https://x.example/>",
+      "</iframe>", '<p style="color:red;position:fixed">', "<p style='a:b;c'>", '<img src="x" alt="&quot;">',
+      '<div class="youtube-embed-wrapper" style="height:0">',
+    ];
+    let seed = 7;
+    const random = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    let rebuilds = 0;
+    for (let n = 0; n < 300; n++) {
+      let input = "";
+      for (let k = 1 + Math.floor(random() * 12); k > 0; k--) input += parts[Math.floor(random() * parts.length)];
+      input += "<div>".repeat(520);
+      const { html, cuts } = sanitiseCommentHtml(input);
+      if (cuts.some((cut) => cut.kind === "markup-rebuilt")) rebuilds++;
+      expect(applyCuts(input, cuts)).toBe(html);
+      expect(allowlistViolations(html), JSON.stringify(input)).toEqual([]);
+      expect(sanitiseCommentHtml(html).cuts, JSON.stringify(input)).toEqual([]);
+    }
+    // The rest end inside a comment or an element whose content is text, so the nesting never happens.
+    expect(rebuilds).toBeGreaterThan(100);
+  });
+
+  it("reports what isn't allowlisted, as the browser would parse it", () => {
+    const cases: [string, number][] = [
+      ['<p onclick="x">a</p>', 1],
+      ["<font>a</font>", 1],
+      ['<a href="jav&#x09;ascript:alert(1)">x</a>', 1],
+      ['<p style="color:red;position:fixed">a</p>', 1],
+      ['<iframe src="https://x.example/"></iframe>', 1],
+      ['<p style="color:red" style="color:blue">a</p>', 1],
+      ["<p>a<body onload=alert(1)>b</p>", 1],
+      [deep("<div>", 600), 1],
+      ['<p style="color:red">a</p></b><a href="https://x">b</a>', 0],
+    ];
+    for (const [html, expected] of cases) expect(allowlistViolations(html), html).toHaveLength(expected);
+  });
+});
+
+describe("known attack strings", () => {
+  const attacks = [
+    // Mutation XSS and namespace confusion.
+    "<math><mtext><table><mglyph><style><img src=x onerror=alert(1)>",
+    "<math><mi><mglyph><svg><mtext><textarea><path id=\"</textarea><img onerror=alert(1) src=1>\">",
+    "<form><math><mtext></form><form><mglyph><style></math><img src onerror=alert(1)>",
+    "<svg><p><style><img src=x onerror=alert(1)>",
+    "<svg></p><style><a id=\"</style><img src=1 onerror=alert(1)>\">",
+    "<svg><foreignobject><img src=x onerror=alert(1)></foreignobject></svg>",
+    "<math><annotation-xml encoding=\"text/html\"><img src=x onerror=alert(1)></annotation-xml></math>",
+    "<svg><script>alert(1)</script></svg>",
+    "<svg><a xlink:href=\"javascript:alert(1)\"><text>x</text></a></svg>",
+    "<svg><animate onbegin=alert(1) attributeName=x dur=1s>",
+    // <noscript> and <template> tricks.
+    "<noscript><p title=\"</noscript><img src=x onerror=alert(1)>\">",
+    "<template><img src=x onerror=alert(1)></template>",
+    "<template><template><script>alert(1)</script></template></template>",
+    // Nested and unclosed tags.
+    "<scr<script>ipt>alert(1)</script>",
+    "<<script>script>alert(1)<</script>/script>",
+    "<img src=x onerror=alert(1)",
+    "<a href=\"javascript:alert(1)\"",
+    "<select><iframe></select><img src=x onerror=alert(1)>",
+    "<table><td><iframe src=javascript:alert(1)></iframe>",
+    "<b onclick=alert(1)><p>1</b>2",
+    "<!--<img src=x onerror=alert(1)>-->",
+    "<!-- --!><img src=x onerror=alert(1)> -->",
+    "<xmp><img src=x onerror=alert(1)></xmp>",
+    "<plaintext><img src=x onerror=alert(1)>",
+    // Attribute breakouts.
+    "<p title=\"a\"onclick=alert(1)>x</p>",
+    "<p title='a'onmouseover=alert(1)>x</p>",
+    "<img/src=\"x\"/onerror=alert(1)>",
+    "<a/href=\"javascript:alert(1)\">x</a>",
+    "<p =onclick=alert(1)>x</p>",
+    "<p \"onclick=alert(1)>x</p>",
+    "<img src=\"x\" alt=\"\"\" onerror=alert(1)>",
+    "<a href=\"&#106;avascript:alert(1)\">x</a>",
+    "<a href=\"java&Tab;script:alert(1)\">x</a>",
+    "<a href=\" &#14; javascript:alert(1)\">x</a>",
+    "<a href=\"JaVaScRiPt:alert(1)\">x</a>",
+    "<a href=\"data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\">x</a>",
+    "<p style=\"background:url(javascript:alert(1))\">x</p>",
+    "<p style=\"color:red;width:expression(alert(1))\">x</p>",
+    "<p style=\"color:red\\3b background:u\\72l(x)\">x</p>",
+    "<p style=\"@import 'x'\">x</p>",
+    "<iframe src=\"https://www.youtube.com.evil.example/embed/x\"></iframe>",
+    "<iframe srcdoc=\"<script>alert(1)</script>\" src=\"https://www.youtube.com/embed/x\"></iframe>",
+    "<iframe src=\"https://www.youtube.com/embed/x\" onload=alert(1)></iframe>",
+    "<body onload=alert(1)>",
+    "<meta http-equiv=\"refresh\" content=\"0;url=javascript:alert(1)\">",
+    "<base href=\"javascript:alert(1)//\">",
+    "<object data=\"javascript:alert(1)\"></object><embed src=\"javascript:alert(1)\">",
+    "<form action=\"javascript:alert(1)\"><button>x</button></form>",
+    "<isindex action=javascript:alert(1) type=image>",
+    "<image src=x onerror=alert(1)>",
+  ];
+
+  it("leaves nothing the allowlist doesn't permit, with an honest, replayable log", () => {
+    for (const input of attacks) {
+      const { html, cuts } = sanitiseCommentHtml(input);
+      expectHonestLog(input, cuts);
+      expect(applyCuts(input, cuts), input).toBe(html);
+      expect(allowlistViolations(html), input).toEqual([]);
+      expect(sanitiseCommentHtml(html), input).toEqual({ html, cuts: [] });
+    }
+  });
+
+  it("are handled by cutting, without rebuilding the markup", () => {
+    for (const input of attacks) {
+      expect(sanitiseCommentHtml(input).cuts.map((cut) => cut.kind), input).not.toContain("markup-rebuilt");
+    }
+  });
+
+  it("never leave an event handler, a script or a javascript: URL in a tag", () => {
+    for (const input of attacks) {
+      const withoutComments = sanitiseCommentHtml(input).html.replace(/<!--[\s\S]*?(?:--!?>|$)/g, "");
+      const tags = withoutComments.match(/<[a-z][^>]*>?/gi) ?? [];
+      for (const tag of tags) expect(tag, input).not.toMatch(/\son\w+=|javascript:|<script|srcdoc/i);
+    }
   });
 });

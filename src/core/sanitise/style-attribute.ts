@@ -59,6 +59,24 @@ export function checkStyle(input: string, valueStart: number, valueEnd: number):
 }
 
 /**
+ * A style value as parsed (character references already decoded), with every removed
+ * declaration cut, written back as source: `&` becomes `&amp;`, so decoding it again gives
+ * the kept value. Null when the value can't be parsed or no declaration is kept.
+ */
+export function keptStyleSource(value: string): string | null {
+  const source = value.replace(/&/g, "&amp;");
+  const verdict = checkStyle(source, 0, source.length);
+  if (!verdict.parseable || verdict.removesAll) return null;
+  let kept = "";
+  let position = 0;
+  for (const cut of verdict.cuts) {
+    kept += source.slice(position, cut.start);
+    position = cut.end;
+  }
+  return kept + source.slice(position);
+}
+
+/**
  * Where a removed declaration sits in the decoded value.
  * Before the last kept declaration, the cut runs up to the next one so that declaration
  * takes its place. After it, the cut takes the separator in front, so none is left dangling.

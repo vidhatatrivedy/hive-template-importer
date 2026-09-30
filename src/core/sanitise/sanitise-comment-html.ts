@@ -1,21 +1,26 @@
-import { defaultTreeAdapter, html as htmlSpec, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
-import { allowlist, isAllowedAttribute, isEditorLeftover, tagsRemovedWithContent } from "./allowlist";
+import { isAllowedAttribute, isEditorLeftover } from "./allowlist";
 import { applyCuts, type Cut } from "./cuts";
+import { rebuildFragment } from "./rebuild";
+import { allowlistViolations } from "./self-check";
+import { startTagAttributes, type AttributeSpan } from "./source-tags";
 import { checkStyle, type StyleVerdict } from "./style-attribute";
-import { asciiLower, isWhitespace } from "./text";
-import { iframeReplacement, isAllowedUrl, isYoutubeEmbed } from "./url";
-
-type Node = DefaultTreeAdapterTypes.Node;
-type Element = DefaultTreeAdapterTypes.Element;
-
-type AttributeSpan = {
-  name: string;
-  start: number;
-  end: number;
-  /** The value between its quotes; empty at `end` when there is no value. */
-  valueStart: number;
-  valueEnd: number;
-};
+import { isWhitespace } from "./text";
+import {
+  attributeValueOf,
+  eachChild,
+  isAllowedElement,
+  isEmptyYoutubeWrapper,
+  isHarmlessStrayTag,
+  isRemovedWithContent,
+  MAX_NESTING_DEPTH,
+  nestingDepth,
+  parseCommentFragment,
+  sourceEnd,
+  strayTagTokens,
+  type Element,
+  type Node,
+} from "./tree";
+import { iframeReplacement, isAllowedUrl, isUrlAttribute, isYoutubeEmbed } from "./url";
 
 type ClassifiedAttribute = AttributeSpan & {
   removed: boolean;
@@ -23,30 +28,45 @@ type ClassifiedAttribute = AttributeSpan & {
   kind?: "link-scheme-removed" | "youtube-wrapper-emptied";
 };
 
-/** Attributes holding a URL a link or image points to, checked against the scheme allowlist. */
-const URL_ATTRIBUTES: Record<string, string> = { a: "href", img: "src" };
-
 /**
  * Sanitises one Comment's HTML by cutting spans out of the original string, never
  * re-serialising (ADR 0001). The input is the raw Comment Text cell: no trimming, no
  * entity decoding. Everything outside the returned cuts is left byte for byte.
+ * The output is parsed again and checked against the allowlist before it's returned.
  */
 export function sanitiseCommentHtml(input: string): { html: string; cuts: Cut[] } {
   if (input === "") return { html: "", cuts: [] };
-  // Parse as the browser does when it sets a body's innerHTML, which is how it's shown.
-  const body = defaultTreeAdapter.createElement("body", htmlSpec.NS.HTML, []);
-  const fragment = parseFragment(body, input, { sourceCodeLocationInfo: true });
+  const fragment = parseCommentFragment(input);
+  if (nestingDepth(fragment) <= MAX_NESTING_DEPTH) {
+    const cuts = spanCuts(input, fragment);
+    const html = applyCuts(input, cuts);
+    if (allowlistViolations(html).length === 0) return { html, cuts };
+  }
+  return rebuilt(input, fragment);
+}
+
+function spanCuts(input: string, fragment: Node): Cut[] {
   const cuts: Cut[] = [];
   collectCuts(input, fragment, cuts);
   cuts.push(...ignoredTagCuts(input, fragment));
-  const log = withoutGluedTags(input, withoutOverlaps(input, cuts));
-  return { html: applyCuts(input, log), cuts: log };
+  return withoutGluedTags(input, withoutOverlaps(input, cuts));
 }
 
-/** Child nodes, and a `<template>` element's content fragment. */
-function eachChild(node: Node, visit: (child: Node) => void) {
-  if ("childNodes" in node) for (const child of node.childNodes) visit(child);
-  if ("content" in node) visit(node.content);
+/**
+ * The fallback when the cut output fails the allowlist check, or the markup is nested too deep
+ * for its positions to be trusted: the whole fragment rebuilt from the parse tree, logged as one cut.
+ */
+function rebuilt(input: string, fragment: Node): { html: string; cuts: Cut[] } {
+  const html = rebuildFragment(fragment);
+  const cut: Cut = {
+    start: 0,
+    end: input.length,
+    kind: "markup-rebuilt",
+    removedText: input,
+    replacement: html,
+    context: { tag: fragment.nodeName },
+  };
+  return { html, cuts: [cut] };
 }
 
 /** Walks the tree in document order. A removed element's subtree is covered by its own cut. */
@@ -68,13 +88,14 @@ function collectCuts(input: string, node: Node, cuts: Cut[]) {
   eachChild(node, (child) => collectCuts(input, child, cuts));
 }
 
-function isAllowedElement(element: Element): boolean {
-  return element.namespaceURI === htmlSpec.NS.HTML && allowlist.tags.includes(element.tagName);
-}
-
-/** Matched by name in any namespace: an SVG `<script>` or `<style>` is just as unwanted. */
-function isRemovedWithContent(element: Element): boolean {
-  return tagsRemovedWithContent.includes(element.tagName);
+/**
+ * Stray tag tokens (see `strayTagTokens`) are cut, except end tags of allowlisted elements,
+ * which unwrapping would keep anyway.
+ */
+function ignoredTagCuts(input: string, fragment: Node): Cut[] {
+  return strayTagTokens(input, fragment)
+    .filter((token) => !isHarmlessStrayTag(token))
+    .map(({ start, end, tag }) => ({ start, end, kind: "tag-unwrapped", removedText: input.slice(start, end), context: { tag } }));
 }
 
 /**
@@ -100,25 +121,6 @@ function isIframeReplacedByLink(element: Element): boolean {
   return !isYoutubeEmbed(attributeValueOf(element, "src") ?? "");
 }
 
-/**
- * Where an element's source ends. An element left open at the end of the input can report an
- * `endOffset` before its last descendant's start tag, so the descendants are consulted too.
- */
-function sourceEnd(node: Node): number {
-  const location = "sourceCodeLocation" in node ? node.sourceCodeLocation : undefined;
-  let end = location?.endOffset ?? 0;
-  if ("tagName" in node) end = Math.max(end, node.sourceCodeLocation?.startTag?.endOffset ?? 0);
-  eachChild(node, (child) => {
-    end = Math.max(end, sourceEnd(child));
-  });
-  return end;
-}
-
-/** The decoded value of an element's first attribute of that name, as the browser sees it. */
-function attributeValueOf(element: Element, name: string): string | undefined {
-  return element.attrs.find((attribute) => attribute.name === name)?.value;
-}
-
 /** Replaces that iframe with a link to its `src`, or with the `src` as plain text when the link would be unsafe. */
 function iframeToLinkCut(input: string, element: Element): Cut | null {
   const span = elementSourceSpan(input, element);
@@ -130,22 +132,6 @@ function iframeToLinkCut(input: string, element: Element): Cut | null {
     replacement: iframeReplacement(attributeValueOf(element, "src")),
     context: { tag: "iframe", attribute: "src" },
   };
-}
-
-/**
- * A `div.youtube-embed-wrapper` holding only whitespace: Spectora exported the wrapper but not
- * its video. Its `class` and `style` go, so the box it would have drawn collapses to nothing.
- */
-function isEmptyYoutubeWrapper(element: Element): boolean {
-  if (element.tagName !== "div") return false;
-  const classes = (attributeValueOf(element, "class") ?? "").split(/[\t\n\f\r ]+/);
-  if (!classes.includes("youtube-embed-wrapper")) return false;
-  return element.childNodes.every(isBlankText);
-}
-
-/** A text node of only whitespace. U+00A0 is included: Spectora leaves it inside empty wrappers. */
-function isBlankText(node: Node): boolean {
-  return "value" in node && /^[\s\u00a0]*$/.test(node.value);
 }
 
 /** Cuts the opening and closing tags, keeping the content. */
@@ -160,74 +146,6 @@ function unwrapCuts(input: string, element: Element): Cut[] {
       removedText: input.slice(startOffset, endOffset),
       context: { tag: element.tagName },
     }));
-}
-
-/**
- * Tag tokens the parser dropped without making an element: a stray `</font>`, `<body onload=…>`,
- * `<tr onclick=…>` outside a table, a tag cut short by the end of the input. They don't render
- * here, but they would come alive if the stored HTML were ever placed in another context.
- * Found as the tag-like tokens in the source that no node's location accounts for. Any such
- * start tag was ignored. Such an end tag may still have closed an element the parser rebuilt
- * (reconstructed formatting), or made one (`</p>`, `</br>`), so it's cut only when its name is
- * off the allowlist, which is what unwrapping would do anyway.
- */
-function ignoredTagCuts(input: string, fragment: Node): Cut[] {
-  const covered = new Uint8Array(input.length);
-  coverLocatedSource(fragment, covered);
-  const cuts: Cut[] = [];
-  let start = input.indexOf("<");
-  while (start >= 0) {
-    const isEndTag = input[start + 1] === "/";
-    const nameStart = start + (isEndTag ? 2 : 1);
-    if (covered[start] || !/[A-Za-z]/.test(input[nameStart] ?? "")) {
-      start = input.indexOf("<", start + 1);
-      continue;
-    }
-    const tag = asciiLower(input.slice(nameStart, endOfTagName(input, nameStart, input.length)));
-    const end = tagTokenEnd(input, start);
-    const keepsAllowedEndTag = isEndTag && allowlist.tags.includes(tag);
-    if (!keepsAllowedEndTag) {
-      cuts.push({ start, end, kind: "tag-unwrapped", removedText: input.slice(start, end), context: { tag } });
-    }
-    start = input.indexOf("<", end);
-  }
-  return cuts;
-}
-
-/**
- * Elements whose content the tokenizer reads as text, so a `<` inside isn't a tag.
- * `iframe` is allowlisted and kept. Every other name is also in `tagsRemovedWithContent`,
- * because unwrapping it would turn that text back into markup.
- */
-const RAW_TEXT_TAGS = ["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext"];
-
-/** Only in HTML: an `<iframe>` inside `<svg>` is an SVG element whose content is markup. */
-function isRawText(element: Element): boolean {
-  return element.namespaceURI === htmlSpec.NS.HTML && RAW_TEXT_TAGS.includes(element.tagName);
-}
-
-function coverLocatedSource(node: Node, covered: Uint8Array) {
-  const location = "sourceCodeLocation" in node ? node.sourceCodeLocation : undefined;
-  if ("tagName" in node) {
-    const { startTag, endTag } = node.sourceCodeLocation ?? {};
-    // The whole span, so a `<` inside raw text or a removed element is not cut again.
-    // `fill` clamps the end to the input length.
-    if (startTag && (isRemovedWithContent(node) || isRawText(node))) {
-      covered.fill(1, startTag.startOffset, sourceEnd(node));
-    }
-    if (startTag) covered.fill(1, startTag.startOffset, startTag.endOffset);
-    if (endTag) covered.fill(1, endTag.startOffset, endTag.endOffset);
-  } else if (node.nodeName === "#comment" && location) {
-    covered.fill(1, location.startOffset, location.endOffset);
-  }
-  eachChild(node, (child) => coverLocatedSource(child, covered));
-}
-
-/** Where a tag token starting at `start` ends: after its `>`, or at the end of the input. */
-function tagTokenEnd(input: string, start: number): number {
-  const close = startTagAttributes(input, start, input.length).at(-1)?.end ?? indexAfterTagName(input, start, input.length);
-  const index = input.indexOf(">", close);
-  return index < 0 ? input.length : index + 1;
 }
 
 /**
@@ -410,7 +328,7 @@ function classifyAttribute(element: Element, attribute: AttributeSpan, first: bo
 }
 
 function isDisallowedUrl(element: Element, name: string): boolean {
-  return URL_ATTRIBUTES[element.tagName] === name && !isAllowedUrl(attributeValueOf(element, name) ?? "");
+  return isUrlAttribute(element.tagName, name) && !isAllowedUrl(attributeValueOf(element, name) ?? "");
 }
 
 /**
@@ -439,64 +357,6 @@ function hasWhitespace(input: string, from: number, to: number): boolean {
     if (isWhitespace(input[index])) return true;
   }
   return false;
-}
-
-/**
- * Every attribute in a start tag, repeats included, with its span. Read from the source by the
- * HTML tokenizer's rules, because parse5 drops repeated attributes and, after a parse error such
- * as a missing space between attributes, records only the end of an attribute's name.
- */
-function startTagAttributes(input: string, tagStart: number, tagEnd: number): AttributeSpan[] {
-  const attributes: AttributeSpan[] = [];
-  let index = indexAfterTagName(input, tagStart, tagEnd);
-  while (index < tagEnd && input[index] !== ">") {
-    if (isWhitespace(input[index]) || input[index] === "/") {
-      index++;
-      continue;
-    }
-    const attribute = readAttribute(input, index, tagEnd);
-    attributes.push(attribute);
-    index = attribute.end;
-  }
-  return attributes;
-}
-
-function indexAfterTagName(input: string, tagStart: number, tagEnd: number): number {
-  return endOfTagName(input, tagStart + 1, tagEnd);
-}
-
-/** First index after the name that begins at `from`. Stops at whitespace, `/` or `>`. */
-function endOfTagName(input: string, from: number, limit: number): number {
-  let index = from;
-  while (index < limit && !isWhitespace(input[index]) && input[index] !== "/" && input[index] !== ">") index++;
-  return index;
-}
-
-function readAttribute(input: string, start: number, tagEnd: number): AttributeSpan {
-  let nameEnd = start + 1; // The first character belongs to the name even if it's `=`.
-  while (nameEnd < tagEnd && !isWhitespace(input[nameEnd]) && !"/>=".includes(input[nameEnd])) nameEnd++;
-  const value = attributeValue(input, nameEnd, tagEnd);
-  const end = Math.min(value.end, tagEnd);
-  const valueEnd = Math.min(value.valueEnd, end);
-  return { name: asciiLower(input.slice(start, nameEnd)), start, end, valueStart: Math.min(value.valueStart, valueEnd), valueEnd };
-}
-
-/** Where the attribute ends, and its value's span inside any quotes. */
-function attributeValue(input: string, nameEnd: number, tagEnd: number): { end: number; valueStart: number; valueEnd: number } {
-  let index = nameEnd;
-  while (isWhitespace(input[index])) index++;
-  if (input[index] !== "=") return { end: nameEnd, valueStart: nameEnd, valueEnd: nameEnd };
-
-  index++;
-  while (isWhitespace(input[index])) index++;
-  const quote = input[index];
-  if (quote === '"' || quote === "'") {
-    const close = input.indexOf(quote, index + 1);
-    return close < 0 ? { end: tagEnd, valueStart: index + 1, valueEnd: tagEnd } : { end: close + 1, valueStart: index + 1, valueEnd: close };
-  }
-  const valueStart = index;
-  while (index < tagEnd && !isWhitespace(input[index]) && input[index] !== ">") index++;
-  return { end: index, valueStart, valueEnd: index };
 }
 
 function startOfPrecedingWhitespace(input: string, offset: number): number {
