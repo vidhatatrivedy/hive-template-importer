@@ -348,6 +348,154 @@ describe("disallowed tags", () => {
   });
 });
 
+describe("inline styles", () => {
+  /** Honest log, replay, and a second pass that changes nothing. */
+  const expectStyleLaws = (input: string) => {
+    const { html, cuts } = sanitiseCommentHtml(input);
+    expectHonestLog(input, cuts);
+    expect(applyCuts(input, cuts)).toBe(html);
+    expect(sanitiseCommentHtml(html)).toEqual({ html, cuts: [] });
+    return { html, cuts };
+  };
+  const described = (cuts: readonly Cut[]) => cuts.map((c) => [c.kind, c.context.tag, c.context.property, c.removedText]);
+
+  it("keeps every allowlisted property exactly as written", () => {
+    const input =
+      '<img src="a.png" style="width: 200px;display:block; vertical-align: top;margin: 5px auto 5px 0px;max-width: calc(100% - 5px);' +
+      ' text-align: left; float: left; clear: both"><span style="COLOR: inherit; background-color: initial; font-size: 12px !important">t</span>';
+    expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+  });
+
+  it("cuts only a disallowed declaration, keeping the rest byte for byte", () => {
+    const { html, cuts } = expectStyleLaws('<p style="color: red; position: fixed; font-weight:bold">t</p>');
+    expect(html).toBe('<p style="color: red; font-weight:bold">t</p>');
+    expect(described(cuts)).toEqual([["css-property-removed", "p", "position", "position: fixed; "]]);
+    expect(cuts[0].context.attribute).toBe("style");
+  });
+
+  it("cuts a trailing disallowed declaration with the separator before it", () => {
+    const { html, cuts } = expectStyleLaws('<p style="color: red; position: fixed; z-index: 9;">t</p>');
+    expect(html).toBe('<p style="color: red">t</p>');
+    expect(described(cuts)).toEqual([
+      ["css-property-removed", "p", "position", "; position: fixed"],
+      ["css-property-removed", "p", "z-index", "; z-index: 9;"],
+    ]);
+  });
+
+  it("removes a declaration whose value loads remote content or runs code, marking it unsafe", () => {
+    const values = [
+      "url(https://x.org/a.png)",
+      "URL('x')",
+      "u\\72l(x)",
+      "\\75 rl(x)",
+      "expression(alert(1))",
+      "eXpReSsIoN (alert(1))",
+      "ex/**/pression(alert(1))",
+      "red @IMPORT 'x'",
+    ];
+    for (const value of values) {
+      const input = `<p style="color: blue; background-color: ${value}">t</p>`;
+      const { html, cuts } = expectStyleLaws(input);
+      expect(html, input).toBe('<p style="color: blue">t</p>');
+      const unsafe = cuts.filter((c) => c.context.unsafeValue);
+      expect(unsafe.length, input).toBeGreaterThan(0);
+      for (const cut of cuts) expect(cut.kind).toBe("css-property-removed");
+    }
+  });
+
+  it("marks only dangerous values as unsafe, so they can be told from routine removals", () => {
+    const { cuts } = expectStyleLaws('<p style="position: fixed; color: url(x)">t</p>');
+    expect(cuts.map((c) => [c.context.property, c.context.unsafeValue ?? false])).toEqual([
+      ["position", false],
+      ["color", true],
+    ]);
+  });
+
+  it("sees through character references in the attribute value", () => {
+    const cases: [string, string, string[]][] = [
+      ['<p style="color:red&semi;position:fixed">t</p>', '<p style="color:red">t</p>', ["position"]],
+      ['<p style="color:u&#114;l(x);font-weight:bold">t</p>', '<p style="font-weight:bold">t</p>', ["color"]],
+      ['<p style="color:url&lpar;x)">t</p>', "<p>t</p>", ["color"]],
+      ['<p style="font-size: 12px; font-family: &quot;Arial&quot;; color: red">t</p>', '<p style="font-size: 12px; color: red">t</p>', ["font-family"]],
+    ];
+    for (const [input, output, properties] of cases) {
+      const { html, cuts } = expectStyleLaws(input);
+      expect(html, input).toBe(output);
+      expect(cuts.map((c) => c.context.property)).toEqual(properties);
+    }
+  });
+
+  it("reads escaped and commented property names as the browser does", () => {
+    const { html, cuts } = expectStyleLaws('<p style="/* x */position: fixed; \\63olor: red">t</p>');
+    expect(html).toBe('<p style="\\63olor: red">t</p>');
+    expect(cuts.map((c) => c.context.property)).toEqual(["position"]);
+  });
+
+  it("removes the whole attribute when every declaration goes, one cut per declaration", () => {
+    const { html, cuts } = expectStyleLaws(
+      '<div class="youtube-embed-wrapper" style="position: relative; padding-bottom: 56.25%; overflow: hidden"></div>',
+    );
+    expect(html).toBe("<div></div>");
+    expect(cuts.map((c) => [c.kind, c.context.property])).toEqual([
+      ["editor-leftover", undefined],
+      ["css-property-removed", "position"],
+      ["css-property-removed", "padding-bottom"],
+      ["css-property-removed", "overflow"],
+    ]);
+  });
+
+  it("keeps the separator when a removed style is jammed against a kept attribute", () => {
+    expect(expectStyleLaws('<img style="position:fixed"src="a.png">').html).toBe('<img src="a.png">');
+    expect(expectStyleLaws("<img src=a.png style=position:fixed>").html).toBe("<img src=a.png>");
+  });
+
+  it("removes a style that can't be parsed whole, as style-unparseable", () => {
+    const inputs = [
+      '<p style="color: red; } body { color: blue">t</p>',
+      '<p style="color: red; font-weight">t</p>',
+      "<p style=\"color: red; content: 'unclosed\">t</p>",
+      '<p style="color: red /* unclosed">t</p>',
+      '<p style="color: rgb(1, 2, 3">t</p>',
+      '<p style="color: red)">t</p>',
+      "<p style=\"color: red; @import 'x'\">t</p>",
+    ];
+    for (const input of inputs) {
+      const { html, cuts } = expectStyleLaws(input);
+      expect(html, input).toBe("<p>t</p>");
+      expect(cuts.map((c) => [c.kind, c.context.tag, c.context.attribute])).toEqual([["style-unparseable", "p", "style"]]);
+    }
+  });
+
+  it("leaves empty styles and stray separators alone", () => {
+    for (const input of ['<p style="">t</p>', "<p style>t</p>", '<p style="color: red;;">t</p>', '<p style=" ; ">t</p>']) {
+      expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+    }
+  });
+
+  it("keeps the log sound on generated style values", () => {
+    const parts = [
+      "color", "position", ":", ";", " ", "red", "url(x)", "(", ")", "/*", "*/", "'", '"', "&quot;", "&semi;", "&amp;",
+      "&#59;", "&lpar;", "\\", "\\3b ", "{", "margin-left", "expression(", "@import", "\n", "&", "=", "&amp=",
+    ];
+    let seed = 7;
+    const random = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    for (let n = 0; n < 3000; n++) {
+      let value = "";
+      for (let k = 1 + Math.floor(random() * 10); k > 0; k--) value += parts[Math.floor(random() * parts.length)];
+      const input = `<p style="${value.replaceAll('"', "&quot;")}" title=x>t</p>`;
+      const { html, cuts } = sanitiseCommentHtml(input);
+      expectHonestLog(input, cuts);
+      expect(applyCuts(input, cuts)).toBe(html);
+      expect(sanitiseCommentHtml(html).cuts, JSON.stringify(input)).toEqual([]);
+    }
+  });
+
+  it("filters styles in single-quoted and unquoted values", () => {
+    expect(expectStyleLaws("<p style='color: red; position: fixed'>t</p>").html).toBe("<p style='color: red'>t</p>");
+    expect(expectStyleLaws("<p style=position:fixed;color:red>t</p>").html).toBe("<p style=color:red>t</p>");
+  });
+});
+
 describe("applyCuts", () => {
   it("applies replacements", () => {
     expect(applyCuts("abcdef", [{ start: 1, end: 3, kind: "tag-unwrapped", removedText: "bc", replacement: "X", context: { tag: "p" } }])).toBe("aXdef");

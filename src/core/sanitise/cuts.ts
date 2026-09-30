@@ -21,7 +21,11 @@ export type Cut = {
   /** Exactly `input.slice(start, end)`. */
   removedText: string;
   replacement?: string;
-  context: { tag: string; attribute?: string; property?: string };
+  /**
+   * `unsafeValue`: a `css-property-removed` cut whose value would load remote content or run
+   * code (`url(`, `expression(`, `@import`), as opposed to a routine disallowed property.
+   */
+  context: { tag: string; attribute?: string; property?: string; unsafeValue?: true };
 };
 
 /**

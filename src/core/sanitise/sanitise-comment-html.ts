@@ -1,6 +1,7 @@
 import { defaultTreeAdapter, html as htmlSpec, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 import { allowlist, isAllowedAttribute, isEditorLeftover, tagsRemovedWithContent } from "./allowlist";
 import { applyCuts, type Cut } from "./cuts";
+import { checkStyle, type StyleVerdict } from "./style-attribute";
 
 type Node = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
@@ -9,6 +10,9 @@ type AttributeSpan = {
   name: string;
   start: number;
   end: number;
+  /** The value between its quotes; empty at `end` when there is no value. */
+  valueStart: number;
+  valueEnd: number;
 };
 
 type ClassifiedAttribute = AttributeSpan & {
@@ -241,9 +245,23 @@ function attributeCuts(input: string, element: Element): Cut[] {
     element.tagName,
     startTagAttributes(input, startTag.startOffset, startTag.endOffset),
   );
+  const styles = new Map<number, StyleVerdict>();
+  attributes.forEach((attribute, index) => {
+    if (attribute.removed || attribute.name !== "style") return;
+    const verdict = checkStyle(input, attribute.valueStart, attribute.valueEnd);
+    styles.set(index, verdict);
+    if (!verdict.parseable || verdict.removesAll) attribute.removed = true;
+  });
+
   const cuts: Cut[] = [];
   for (let index = 0; index < attributes.length; index++) {
     const attribute = attributes[index];
+    const style = styles.get(index);
+    if (style) {
+      const wholeStart = attribute.removed ? startOfAttributeCut(input, attributes, index) : attribute.start;
+      cuts.push(...styleCuts(input, element.tagName, style, wholeStart, attribute.end));
+      continue;
+    }
     if (!attribute.removed) continue;
     const start = startOfAttributeCut(input, attributes, index);
     cuts.push({
@@ -255,6 +273,27 @@ function attributeCuts(input: string, element: Element): Cut[] {
     });
   }
   return cuts;
+}
+
+/**
+ * An unparseable style is cut whole. Otherwise one cut per removed declaration; when none is
+ * kept, those cuts are stretched to tile the attribute's whole cut, from `wholeStart` to `end`.
+ */
+function styleCuts(input: string, tag: string, style: StyleVerdict, wholeStart: number, end: number): Cut[] {
+  if (!style.parseable) {
+    return [{ start: wholeStart, end, kind: "style-unparseable", removedText: input.slice(wholeStart, end), context: { tag, attribute: "style" } }];
+  }
+  return style.cuts.map((declaration, index) => {
+    const start = style.removesAll ? (index === 0 ? wholeStart : style.cuts[index - 1].end) : declaration.start;
+    const cutEnd = style.removesAll && index === style.cuts.length - 1 ? end : declaration.end;
+    return {
+      start,
+      end: cutEnd,
+      kind: "css-property-removed" as const,
+      removedText: input.slice(start, cutEnd),
+      context: { tag, attribute: "style", property: declaration.property, ...(declaration.unsafeValue && { unsafeValue: true as const }) },
+    };
+  });
 }
 
 function classifyAttributes(tag: string, attributes: readonly AttributeSpan[]): ClassifiedAttribute[] {
@@ -331,24 +370,28 @@ function endOfTagName(input: string, from: number, limit: number): number {
 function readAttribute(input: string, start: number, tagEnd: number): AttributeSpan {
   let nameEnd = start + 1; // The first character belongs to the name even if it's `=`.
   while (nameEnd < tagEnd && !isWhitespace(input[nameEnd]) && !"/>=".includes(input[nameEnd])) nameEnd++;
-  const end = Math.min(attributeValueEnd(input, nameEnd, tagEnd), tagEnd);
-  return { name: asciiLower(input.slice(start, nameEnd)), start, end };
+  const value = attributeValue(input, nameEnd, tagEnd);
+  const end = Math.min(value.end, tagEnd);
+  const valueEnd = Math.min(value.valueEnd, end);
+  return { name: asciiLower(input.slice(start, nameEnd)), start, end, valueStart: Math.min(value.valueStart, valueEnd), valueEnd };
 }
 
-function attributeValueEnd(input: string, nameEnd: number, tagEnd: number): number {
+/** Where the attribute ends, and its value's span inside any quotes. */
+function attributeValue(input: string, nameEnd: number, tagEnd: number): { end: number; valueStart: number; valueEnd: number } {
   let index = nameEnd;
   while (isWhitespace(input[index])) index++;
-  if (input[index] !== "=") return nameEnd;
+  if (input[index] !== "=") return { end: nameEnd, valueStart: nameEnd, valueEnd: nameEnd };
 
   index++;
   while (isWhitespace(input[index])) index++;
   const quote = input[index];
   if (quote === '"' || quote === "'") {
     const close = input.indexOf(quote, index + 1);
-    return close < 0 ? tagEnd : close + 1;
+    return close < 0 ? { end: tagEnd, valueStart: index + 1, valueEnd: tagEnd } : { end: close + 1, valueStart: index + 1, valueEnd: close };
   }
+  const valueStart = index;
   while (index < tagEnd && !isWhitespace(input[index]) && input[index] !== ">") index++;
-  return index;
+  return { end: index, valueStart, valueEnd: index };
 }
 
 /** HTML compares attribute names case-insensitively for ASCII letters only. */
