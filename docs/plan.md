@@ -48,6 +48,8 @@ State of the plan as of 2026-09-30, end of the exploration session. **Decided** 
 
 ## Open questions
 
+All resolved by the wayfinder map; the answers are consolidated in [`docs/spec/`](spec/functional.md).
+
 - Is the Trust Report shown *before* the import is committed (review → confirm), or after?
 - How far does the editor go beyond names and text (options, defaults, reorder, add/delete)?
 - Are answer types editable, or read-only metadata?
