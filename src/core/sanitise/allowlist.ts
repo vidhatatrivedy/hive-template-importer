@@ -39,7 +39,8 @@ export const allowlist = {
  */
 export const tagsRemovedWithContent = [
   "script", "style", "object", "embed", "applet", "param", "template",
-  "form", "input", "button", "select", "option", "optgroup", "textarea", "datalist", "fieldset", "legend", "label", "output",
+  "form", "input", "button", "select", "option", "optgroup", "textarea",
+  "datalist", "fieldset", "legend", "label", "output",
   "xmp", "noscript", "noembed", "noframes", "plaintext", "title",
   "frame", "frameset", "link", "meta", "base",
 ];
