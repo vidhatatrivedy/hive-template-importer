@@ -24,7 +24,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
   - option chips
   - the HTML source and its preview side by side
   - a "Source row N" link to the Source row view
-- **Trust Report and Versions** are glass sheets that float over the editor on the right. They're hidden by default, toggled from the header, and both can be open at once.
+- **Trust Report and Versions** are glass sheets that float over the editor on the right. They're hidden by default, toggled from the header, and both can be open at once. The Source row view replaces the report inside its sheet, with a back link. The sheets sit in a pane host outside the editor, so toggling one never resets unsaved edits. [slice 4 spec][s4]
 - **Read-only Version view:** the same editor, with a banner ([Save][t8]).
 - **Unsaved changes:** shown in the header.
 - **Cut:** mobile and narrow layouts. The app is desktop-only, with a minimum width of about 1200px ([Screens][t5]).
@@ -60,3 +60,4 @@ These are for the implementer to decide, using the prototype as a guide:
 [t10]: https://github.com/vidhatatrivedy/hive-template-importer/issues/10
 [t11]: https://github.com/vidhatatrivedy/hive-template-importer/issues/11
 [t15]: https://github.com/vidhatatrivedy/hive-template-importer/issues/15
+[s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20

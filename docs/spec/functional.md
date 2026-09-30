@@ -72,8 +72,8 @@ Everything else imports, with row-level or file-level **Import issues**.
   6. **Missing from export**: always shown.
 - "Stored" is recomputed from Version 1 in the database each time the report is shown. Each row gets ✓ or ✗, and ✗ means a bug.
 - Once the Template is past Version 1, the report adds: "Describes Version 1, as imported. This Template is now at Version N."
-- **Source row view**: every imported Comment has a "Source row N" view. It shows raw → stored for the edited fields, the raw HTML with each logged cut highlighted inline, and the rendered stored HTML. A Comment added in the editor shows "Added in the editor, no Source row."
-- Blank Templates have no report. A Copy shows its source's report, read-only and labelled, and still shows it after the source is deleted, because the Import run survives while it's referenced. This supersedes the "report was deleted" message in [taxonomy][t11]; see [Schema][t12].
+- **Source row view**: every imported Comment has a "Source row N" view. It shows raw → stored for the edited fields, the raw HTML with each logged cut highlighted inline, the rendered stored HTML and every raw cell of the row. "Stored" is the report's Version 1, not the latest Version. It's reached at `?pane=trust&row=<n>`, and every row-level issue links to it. A Comment added in the editor shows "Added in the editor, no Source row." [slice 4 spec][s4]
+- Blank Templates have no report and no toggle. A Copy (including a Copy of a Copy) shows the import's report, read-only and labelled. It reconciles against the Version 1 of the Template that was imported, not against the Copy's source. Once that imported Template is deleted, the Copy still shows the report, labelled "Not re-verified", with no verdict and no ✓/✗. Locations then come from the Copy's own Version 1, because the evidence survives but no stored "as imported" tree does. This supersedes "a Copy shows its source's report" and the "report was deleted" message in [taxonomy][t11]. See [Schema][t12] and the [slice 4 spec][s4].
 
 ## Editor ([Editor][t7])
 
@@ -129,3 +129,4 @@ Everything else imports, with row-level or file-level **Import issues**.
 [t14]: https://github.com/vidhatatrivedy/hive-template-importer/issues/14
 [t15]: https://github.com/vidhatatrivedy/hive-template-importer/issues/15
 [s2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/18
+[s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20

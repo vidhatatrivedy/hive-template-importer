@@ -19,7 +19,7 @@ Dependencies point inward only.
 - **`src/core/`** is pure: no Next.js, Supabase or React. It holds:
   - `parseSpectoraExport(bytes, filename) → Rejected | ImportDraft`: run metadata, Source rows, tree, issues and cuts.
   - `sanitiseCommentHtml(html) → { html, cuts }`: a custom parse5 span-cutting pass, also used in the browser preview. See [ADR 0001](../adr/0001-sanitise-comment-html-by-cutting-source-spans.md) and [Rich content][t10] for the allowlist.
-  - The Import issue catalogue: kind → severity, class and message (29 kinds). See [taxonomy][t11] and the [slice 2 spec][s2].
+  - The Import issue catalogue: kind → severity, class and message (29 kinds). See [taxonomy][t11] and the [slice 2 spec][s2]. Beside it, the rejection messages plus two import error messages, `hash-mismatch` and `name-blank`, and the exported `MAX_UPLOAD_BYTES`. These are importable in the browser without pulling in the parser. [slice 4 spec][s4]
   - `buildTrustReport(evidence, version1)` and the shared **reconciliation** function. The evidence is the Import run with its Source rows and its issues (each carrying its cuts), the shape `get_import_evidence` returns. [slice 2 spec][s2]
   - `toExportRows(tree, evidence)`, with cells aligned to the run's headers.
   - The zod editable-tree schema. A tree Comment names its Source row by row number (`sourceRow`), not by `source_row_id`; `src/db` maps between the two.
@@ -110,16 +110,18 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 
 ## Next.js surface ([Architecture][t13])
 
-- **Mutations** are Server Actions only: preview import, commit import, Save, Duplicate, Restore, Rename and Delete. `serverActions.bodySizeLimit` is `'4.5mb'`, and the action enforces the 4 MB cap itself. **Reads** happen in Server Components. There are no route handlers.
-- **Import review → commit** is stateless. Preview returns only the summary. Commit re-sends the same file with the chosen name, the server re-parses it, checks the SHA-256 matches, and writes.
-- **Errors:** expected failures return `{ ok: false, error: { kind, … } }`. The kinds are the six file rejections, a hash mismatch, Save validation, and `src/db`'s refusals: `stale-base`, `template-not-found` and `foreign-source-row` (a foreign Source row can't come from the editor, so the Save action may treat it as unexpected). Messages come from core, never from Postgres. Unexpected errors throw to `error.tsx`.
+- **Mutations** are Server Actions only: preview import, commit import, Save, Duplicate, Restore, Rename and Delete. `bodySizeLimit` is `'4.5mb'` (under `experimental.serverActions` in Next.js 16.3), and the action enforces the 4 MB cap itself. The browser refuses a file over the cap before sending it. **Reads** happen in Server Components. There are no route handlers.
+- **Import review → commit** is stateless. Preview returns only the summary. Commit re-sends the same file with the chosen name and the preview's SHA-256. The server re-parses it, refuses `hash-mismatch` if the hash differs, trims the name (refusing `name-blank`), calls `importTemplate`, and `redirect`s to `/t/<id>?pane=trust` outside any `try`. [slice 4 spec][s4]
+- **Errors:** expected failures return `{ ok: false, error: { kind, … } }`. The kinds are the six file rejections, `hash-mismatch`, `name-blank`, Save validation, and `src/db`'s refusals: `stale-base`, `template-not-found` and `foreign-source-row` (a foreign Source row can't come from the editor, so the Save action may treat it as unexpected). Messages come from core, never from Postgres. Unexpected errors throw to `error.tsx`.
 - **Editor state:** one Client Component using `useReducer`, with temporary `tmp-…` ids, a dirty flag and a `beforeunload` guard. There's no client cache library and no optimistic updates. After a write, `refresh()` or `redirect()` reloads the page, and the reducer resets from it.
 - **URLs:**
   - `/`: redirects to the last-saved Template, or shows the empty state
   - `/t/[templateId]`: the editor on the latest Version
   - `/t/[templateId]/v/[number]`: a read-only Version
   - `/import`: upload and Import review
-  - `?pane=trust|versions` opens a pane, and `?pane=trust&row=<n>` opens a Source row view. These survive Saves.
+  - `?pane=` is a comma-separated set (`trust`, `versions` or `trust,versions`), because both panes can be open at once. Unknown values are ignored.
+  - `?row=<n>` names a Source row by row number. With `trust` open it shows that row's Source row view, and the editor selects the Comment carrying that row. It's the Trust Report → Comment link, because ids change on every Save. These survive Saves.
+  - Only `parseTemplateView` and `templateHref` parse and build these params. [slice 4 spec][s4]
 
 ## Migrations, environments, Seed ([Architecture][t13])
 
@@ -160,7 +162,7 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 
   A grants check runs only if `SUPABASE_ANON_KEY` is set in `.env.local`: the anon key must read nothing and call nothing. The app never reads that variable.
 - **Synthetic workbooks** are built with `write-excel-file`, and one Excel-resaved fixture is added. Existing fixtures are never edited.
-- There's no Playwright; UI flows are checked by hand against a checklist.
+- There's no Playwright; UI flows are checked by hand against a checklist. UI slices put their testable decisions in pure view helpers with Vitest tests (slice 4: `toImportReview`, `resolveReportBase`, `cutSegments`, the URL helpers and the import-flow reducer). `npm run samples` writes the rejection and edge-case workbooks the checklist uses to a gitignored folder. [slice 4 spec][s4]
 - **CI** (GitHub Actions) runs `typecheck`, `lint`, `npm test` and `npm run verify`.
 - **Agent process:**
   - AFK agents get no database credentials. Tickets that touch `supabase/migrations` or `src/db` are `ready-for-human`, or the human runs `test:db` at review.
@@ -178,3 +180,4 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 [r4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/4
 [s2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/18
 [s3]: https://github.com/vidhatatrivedy/hive-template-importer/issues/19
+[s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20
