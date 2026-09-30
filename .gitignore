@@ -43,3 +43,6 @@ next-env.d.ts
 # allow committed env templates
 !.env.example
 !.sandcastle/.env.example
+
+# agent worktrees (checked-out branches, not content)
+/.claude/worktrees/
