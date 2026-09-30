@@ -175,6 +175,181 @@ describe("attributes", () => {
   });
 });
 
+describe("disallowed tags", () => {
+  const disallowedTag = /<\/?(?!(?:p|br|strong|b|em|i|u|s|sub|sup|ul|ol|li|h[1-6]|span|div|blockquote|hr|pre|code|table|thead|tbody|tr|th|td|a|img|iframe)[\s/>])[a-z]/i;
+
+  const expectSoundLog = (input: string) => {
+    const { html, cuts } = sanitiseCommentHtml(input);
+    let previousEnd = 0;
+    for (const cut of cuts) {
+      expect(cut.removedText).toBe(input.slice(cut.start, cut.end));
+      expect(cut.start).toBeGreaterThanOrEqual(previousEnd);
+      previousEnd = cut.end;
+    }
+    expect(applyCuts(input, cuts)).toBe(html);
+    expect(html).not.toMatch(disallowedTag);
+    expect(sanitiseCommentHtml(html)).toEqual({ html, cuts: [] });
+    return { html, cuts };
+  };
+
+  it("removes <script> and <style> with their content, one tag-removed cut each", () => {
+    const input = "<p>a</p><script>alert(1)</script><p>b<style>p { color: red }</style></p>";
+    const { html, cuts } = expectSoundLog(input);
+    expect(html).toBe("<p>a</p><p>b</p>");
+    expect(cuts.map((c) => [c.kind, c.context.tag, c.removedText])).toEqual([
+      ["tag-removed", "script", "<script>alert(1)</script>"],
+      ["tag-removed", "style", "<style>p { color: red }</style>"],
+    ]);
+  });
+
+  it("removes form elements, objects and embeds with their content", () => {
+    const { html, cuts } = expectSoundLog(
+      '<p>a</p><form action="x"><input name="n"><button>Go</button><select><option>o</option></select><textarea>t</textarea></form>' +
+        '<object data="x.swf"><param name="p" value="v">fallback</object><embed src="x.swf"><p>b</p>',
+    );
+    expect(html).toBe("<p>a</p><p>b</p>");
+    expect(cuts.map((c) => [c.kind, c.context.tag])).toEqual([
+      ["tag-removed", "form"],
+      ["tag-removed", "object"],
+      ["tag-removed", "embed"],
+    ]);
+  });
+
+  it("removes a lone form control outside a form", () => {
+    const { html, cuts } = expectSoundLog('<p>a<input type="text" value="v">b<button onclick="x()">c</button></p>');
+    expect(html).toBe("<p>ab</p>");
+    expect(cuts.map((c) => [c.kind, c.context.tag])).toEqual([
+      ["tag-removed", "input"],
+      ["tag-removed", "button"],
+    ]);
+  });
+
+  it("removes raw-text elements whole, so their text never comes alive as markup", () => {
+    for (const tag of ["xmp", "noscript", "noembed", "noframes", "textarea", "title"]) {
+      const { html, cuts } = expectSoundLog(`<p>a</p><${tag}><img src=x onerror=alert(1)></${tag}><p>b</p>`);
+      expect(html).toBe("<p>a</p><p>b</p>");
+      expect(cuts.map((c) => [c.kind, c.context.tag])).toEqual([["tag-removed", tag]]);
+    }
+  });
+
+  it("unwraps <font>, cutting its opening and closing tags and keeping its text", () => {
+    const input = '<p>Keep <font color="red" face="Arial">these words</font> here</p>';
+    const { html, cuts } = expectSoundLog(input);
+    expect(html).toBe("<p>Keep these words here</p>");
+    expect(cuts.map((c) => [c.kind, c.context.tag, c.removedText])).toEqual([
+      ["tag-unwrapped", "font", '<font color="red" face="Arial">'],
+      ["tag-unwrapped", "font", "</font>"],
+    ]);
+  });
+
+  it("unwraps other unknown tags, void ones included", () => {
+    const { html } = expectSoundLog("<center>a<section>b<o:p>c</o:p></section><wbr>d<custom-tag>e</custom-tag></center>");
+    expect(html).toBe("abcde");
+  });
+
+  it("still cuts attributes on allowed elements inside an unwrapped one", () => {
+    const { html, cuts } = expectSoundLog('<font><p onclick="x()">a</p></font>');
+    expect(html).toBe("<p>a</p>");
+    expect(cuts.map((c) => c.kind)).toEqual(["tag-unwrapped", "attribute-removed", "tag-unwrapped"]);
+  });
+
+  it("removes a template with its content, which is never displayed", () => {
+    const { html, cuts } = expectSoundLog('<p>a</p><template><tr onclick="x()"><td>b</td></tr></template>');
+    expect(html).toBe("<p>a</p>");
+    expect(cuts.map((c) => [c.kind, c.context.tag])).toEqual([["tag-removed", "template"]]);
+  });
+
+  it("unwraps SVG and MathML, and unwraps their look-alikes of allowed tags", () => {
+    const { html } = expectSoundLog('<svg><a href="x"><text>t</text></a></svg><math><mi>m</mi></math>');
+    expect(html).toBe("tm");
+  });
+
+  it("gives a replayable, non-overlapping log for unclosed and implicitly closed tags", () => {
+    const inputs = [
+      "<p><font>a</p>b</font>c",
+      "<font>a<p>b</font>c</p>",
+      "<p>a<font>b",
+      "<form><p>x",
+      "<p>a<script>b",
+      "<b>1<font>2<p>3</b>4</font>5</p>",
+      "<table><font>x</font><tr><td>y</td></tr></table>",
+      "<table><form><tr><td>y</td></tr></form></table>",
+      "<font><script>x</script></font><font>",
+      "<br><form><font>",
+    ];
+    for (const input of inputs) expectSoundLog(input);
+  });
+
+  it("cuts tags the parser ignored, so they can't come alive somewhere else", () => {
+    const cases: [string, string, string[]][] = [
+      ["<p>a</font>b</p>", "<p>ab</p>", ["font"]],
+      ["<p>a<body onload=alert(1)>b</p>", "<p>ab</p>", ["body"]],
+      ["<html><head>a", "a", ["html", "head"]],
+      ["<tr onclick=alert(1)><td>a</td></tr>", "a</td></tr>", ["tr", "td"]],
+      ["<p>a<font", "<p>a", ["font"]],
+    ];
+    for (const [input, output, tags] of cases) {
+      const { html, cuts } = expectSoundLog(input);
+      expect(html).toBe(output);
+      expect(cuts.map((c) => [c.kind, c.context.tag])).toEqual(tags.map((tag) => ["tag-unwrapped", tag]));
+    }
+  });
+
+  it("keeps stray end tags of allowed elements, which the parser can still act on", () => {
+    for (const input of ["a</p>b</br>c", "<p><b>1</p>2</b>3"]) {
+      expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+    }
+  });
+
+  it("leaves an iframe's raw text alone", () => {
+    const input = '<iframe src="https://www.youtube.com/embed/x"><font>x</font></iframe>';
+    expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
+  });
+
+  it("never glues a literal < onto the text after a cut to make a new tag", () => {
+    const cases: [string, string][] = [
+      ["<<script>x</script>img src=x onerror=alert(1)>", "img src=x onerror=alert(1)>"],
+      ["a <<<font>b", "a b"],
+      ["<<caption>/p>", "/p>"],
+      ["a < <font>b", "a < b"],
+    ];
+    for (const [input, output] of cases) expect(expectSoundLog(input).html).toBe(output);
+  });
+
+  it("stays within the input when a comment runs to its end", () => {
+    expectSoundLog("<mi><template></font><!--");
+  });
+
+  it("treats an iframe inside SVG as markup, not raw text", () => {
+    expect(expectSoundLog("<svg><iframe></script>a</iframe></svg>").html).toBe("a");
+  });
+
+  it("keeps the log sound on generated tag soup", () => {
+    const parts = [
+      "<p>", "</p>", "<b>", "</b>", "<font>", "</font>", "<script>", "</script>", "<table>", "<tr>", "<td>", "</td>",
+      "</table>", "<form>", "</form>", "x", " ", "<", "</", "<svg>", "</svg>", "<math>", "<mi>", "<a href=x>", "</a>",
+      "<body onload=1>", "<xmp>", "</xmp>", "<template>", "</template>", "<li>", "<div class=c>", "</div>", "<br>",
+      "</br>", "<i>", "</i>", "<font", '"', '="', "<textarea>", "<!--", "-->", "<select>", "<option>", "<caption>",
+      "<col>", "<noscript>", "<style>", "<iframe>", "</iframe>", "<plaintext>", "<object>", "img src=x onerror=1>",
+    ];
+    let seed = 1;
+    const random = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    for (let n = 0; n < 3000; n++) {
+      let input = "";
+      for (let k = 1 + Math.floor(random() * 12); k > 0; k--) input += parts[Math.floor(random() * parts.length)];
+      const { html, cuts } = sanitiseCommentHtml(input);
+      expect(applyCuts(input, cuts)).toBe(html);
+      expect(sanitiseCommentHtml(html).cuts, JSON.stringify(input)).toEqual([]);
+    }
+  });
+
+  it("never turns a disallowed tag into visible text", () => {
+    const { html } = expectSoundLog("<p>a<font>b</font><script>c</script></p>");
+    expect(html).not.toContain("&lt;");
+    expect(html).toBe("<p>ab</p>");
+  });
+});
+
 describe("applyCuts", () => {
   it("applies replacements", () => {
     expect(applyCuts("abcdef", [{ start: 1, end: 3, kind: "tag-unwrapped", removedText: "bc", replacement: "X", context: { tag: "p" } }])).toBe("aXdef");

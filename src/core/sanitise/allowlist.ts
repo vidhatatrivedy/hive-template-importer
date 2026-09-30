@@ -30,6 +30,20 @@ export const allowlist = {
   ],
 };
 
+/**
+ * Disallowed tags removed together with their content. Everything else off the allowlist is
+ * unwrapped so its words stay. Raw-text elements are here because their content is text only
+ * while it sits inside them: unwrapped, `<xmp><img onerror=…></xmp>` would become a live `<img>`.
+ * `template` is here because its content is never displayed, and is parsed by rules (table rows
+ * anywhere, for one) that no longer apply once it's unwrapped.
+ */
+export const tagsRemovedWithContent = [
+  "script", "style", "object", "embed", "applet", "param", "template",
+  "form", "input", "button", "select", "option", "optgroup", "textarea", "datalist", "fieldset", "legend", "label", "output",
+  "xmp", "noscript", "noembed", "noframes", "plaintext", "title",
+  "frame", "frameset", "link", "meta", "base",
+];
+
 const editorLeftovers = new Set(["class", "draggable", "contenteditable", "fr-original-style"]);
 
 /** Attributes previous editors (Froala, pasted page builders) leave behind. */

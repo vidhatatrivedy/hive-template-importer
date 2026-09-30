@@ -1,5 +1,5 @@
 import { defaultTreeAdapter, html as htmlSpec, parseFragment, type DefaultTreeAdapterTypes } from "parse5";
-import { allowlist, isAllowedAttribute, isEditorLeftover } from "./allowlist";
+import { allowlist, isAllowedAttribute, isEditorLeftover, tagsRemovedWithContent } from "./allowlist";
 import { applyCuts, type Cut } from "./cuts";
 
 type Node = DefaultTreeAdapterTypes.Node;
@@ -26,19 +26,181 @@ export function sanitiseCommentHtml(input: string): { html: string; cuts: Cut[] 
   const body = defaultTreeAdapter.createElement("body", htmlSpec.NS.HTML, []);
   const fragment = parseFragment(body, input, { sourceCodeLocationInfo: true });
   const cuts: Cut[] = [];
-  walk(fragment, (element) => cuts.push(...attributeCuts(input, element)));
-  cuts.sort((a, b) => a.start - b.start);
-  return { html: applyCuts(input, cuts), cuts };
+  collectCuts(input, fragment, cuts);
+  cuts.push(...ignoredTagCuts(input, fragment));
+  const log = withoutGluedTags(input, withoutOverlaps(input, cuts));
+  return { html: applyCuts(input, log), cuts: log };
 }
 
-function walk(node: Node, visit: (element: Element) => void) {
-  if ("tagName" in node) visit(node);
-  if ("childNodes" in node) for (const child of node.childNodes) walk(child, visit);
-  if ("content" in node) walk(node.content, visit);
+/** Walks the tree in document order. A removed element's subtree is covered by its own cut. */
+function collectCuts(input: string, node: Node, cuts: Cut[]) {
+  if ("tagName" in node) {
+    if (isRemovedWithContent(node)) {
+      const cut = removalCut(input, node);
+      if (cut) cuts.push(cut);
+      return;
+    }
+    if (isAllowedElement(node)) cuts.push(...attributeCuts(input, node));
+    else cuts.push(...unwrapCuts(input, node));
+  }
+  if ("childNodes" in node) for (const child of node.childNodes) collectCuts(input, child, cuts);
+  if ("content" in node) collectCuts(input, node.content, cuts);
 }
 
 function isAllowedElement(element: Element): boolean {
   return element.namespaceURI === htmlSpec.NS.HTML && allowlist.tags.includes(element.tagName);
+}
+
+/** Matched by name in any namespace: an SVG `<script>` or `<style>` is just as unwanted. */
+function isRemovedWithContent(element: Element): boolean {
+  return tagsRemovedWithContent.includes(element.tagName);
+}
+
+/**
+ * The element from its start tag to its end, content included. The parser may have placed its
+ * content elsewhere in the tree (foster parenting, implied closes); the source span is what's cut.
+ * Elements the parser made up (reconstructed formatting, implied tbody) have no start tag to cut.
+ */
+function removalCut(input: string, element: Element): Cut | null {
+  const location = element.sourceCodeLocation;
+  if (!location?.startTag) return null;
+  const start = location.startTag.startOffset;
+  const end = Math.min(sourceEnd(element), input.length);
+  return { start, end, kind: "tag-removed", removedText: input.slice(start, end), context: { tag: element.tagName } };
+}
+
+/**
+ * Where an element's source ends. An element left open at the end of the input can report an
+ * `endOffset` before its last descendant's start tag, so the descendants are consulted too.
+ */
+function sourceEnd(node: Node): number {
+  const location = "sourceCodeLocation" in node ? node.sourceCodeLocation : undefined;
+  let end = location?.endOffset ?? 0;
+  if ("tagName" in node) end = Math.max(end, node.sourceCodeLocation?.startTag?.endOffset ?? 0);
+  if ("childNodes" in node) for (const child of node.childNodes) end = Math.max(end, sourceEnd(child));
+  if ("content" in node) end = Math.max(end, sourceEnd(node.content));
+  return end;
+}
+
+/** Cuts the opening and closing tags, keeping the content. */
+function unwrapCuts(input: string, element: Element): Cut[] {
+  const location = element.sourceCodeLocation;
+  return [location?.startTag, location?.endTag]
+    .filter((tag) => tag !== undefined)
+    .map(({ startOffset, endOffset }) => ({
+      start: startOffset,
+      end: endOffset,
+      kind: "tag-unwrapped" as const,
+      removedText: input.slice(startOffset, endOffset),
+      context: { tag: element.tagName },
+    }));
+}
+
+/** Elements whose content the tokenizer reads as text, so a `<` inside isn't a tag. */
+const RAW_TEXT_TAGS = ["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext"];
+
+/** Only in HTML: an `<iframe>` inside `<svg>` is an SVG element whose content is markup. */
+function isRawText(element: Element): boolean {
+  return element.namespaceURI === htmlSpec.NS.HTML && RAW_TEXT_TAGS.includes(element.tagName);
+}
+
+/**
+ * Tag tokens the parser dropped without making an element: a stray `</font>`, `<body onload=…>`,
+ * `<tr onclick=…>` outside a table, a tag cut short by the end of the input. They don't render
+ * here, but they would come alive if the stored HTML were ever placed in another context.
+ * Found as the tag-like tokens in the source that no node's location accounts for. Any such
+ * start tag was ignored. Such an end tag may still have closed an element the parser rebuilt
+ * (reconstructed formatting), or made one (`</p>`, `</br>`), so it's cut only when its name is
+ * off the allowlist, which is what unwrapping would do anyway.
+ */
+function ignoredTagCuts(input: string, fragment: Node): Cut[] {
+  const covered = new Uint8Array(input.length);
+  coverLocatedSource(fragment, covered);
+  const cuts: Cut[] = [];
+  for (let start = input.indexOf("<"); start >= 0; start = input.indexOf("<", start + 1)) {
+    if (covered[start]) continue;
+    const isEndTag = input[start + 1] === "/";
+    const nameStart = start + (isEndTag ? 2 : 1);
+    if (!/[A-Za-z]/.test(input[nameStart] ?? "")) continue;
+    const tag = asciiLower(input.slice(nameStart, indexAfterTagName(input, nameStart - 1, input.length)));
+    const end = tagTokenEnd(input, start);
+    if (!isEndTag || !allowlist.tags.includes(tag)) {
+      cuts.push({ start, end, kind: "tag-unwrapped", removedText: input.slice(start, end), context: { tag } });
+    }
+    start = end - 1;
+  }
+  return cuts;
+}
+
+function coverLocatedSource(node: Node, covered: Uint8Array) {
+  const location = "sourceCodeLocation" in node ? node.sourceCodeLocation : undefined;
+  if ("tagName" in node) {
+    const { startTag, endTag } = node.sourceCodeLocation ?? {};
+    if (startTag && (isRemovedWithContent(node) || isRawText(node))) {
+      covered.fill(1, startTag.startOffset, sourceEnd(node)); // Clamped to the input by `fill`.
+    }
+    if (startTag) covered.fill(1, startTag.startOffset, startTag.endOffset);
+    if (endTag) covered.fill(1, endTag.startOffset, endTag.endOffset);
+  } else if (node.nodeName === "#comment" && location) {
+    covered.fill(1, location.startOffset, location.endOffset);
+  }
+  if ("childNodes" in node) for (const child of node.childNodes) coverLocatedSource(child, covered);
+  if ("content" in node) coverLocatedSource(node.content, covered);
+}
+
+/** Where a tag token starting at `start` ends: after its `>`, or at the end of the input. */
+function tagTokenEnd(input: string, start: number): number {
+  const close = startTagAttributes(input, start, input.length).at(-1)?.end ?? indexAfterTagName(input, start, input.length);
+  const index = input.indexOf(">", close);
+  return index < 0 ? input.length : index + 1;
+}
+
+/**
+ * Sorts the cuts and makes them disjoint. A reconstructed formatting element repeats its
+ * original's start tag, and a removed element's source span can contain elements the parser
+ * moved out of it; either way a cut inside another is dropped. Partial overlaps only arise from
+ * misnested markup; the earlier cut is widened to cover both, and a removal outranks the rest.
+ */
+/**
+ * Widens a run of touching cuts to take the literal `<` before it when the text after it would
+ * otherwise start a new tag: cutting `<script>` out of `<<script>x</script>img onerror=…>` must
+ * not leave a live `<img>`. Repeats until no run is left with a `<` glued to a tag start.
+ */
+function withoutGluedTags(input: string, cuts: readonly Cut[]): Cut[] {
+  const log = [...cuts];
+  for (let first = 0; first < log.length; ) {
+    let last = first;
+    while (last + 1 < log.length && log[last + 1].start === log[last].end) last++;
+    const run = log.slice(first, last + 1);
+    const after = run.map((cut) => cut.replacement ?? "").join("") + input.slice(log[last].end, log[last].end + 1);
+    const start = log[first].start;
+    const gluesTag = start > 0 && input[start - 1] === "<" && /^[A-Za-z/!?]/.test(after);
+    if (!gluesTag) {
+      first = last + 1;
+      continue;
+    }
+    log[first] = { ...log[first], start: start - 1, removedText: input.slice(start - 1, log[first].end) };
+    // The widened cut may now touch the run before it, so look at that run again.
+    while (first > 0 && log[first - 1].end === log[first].start) first--;
+  }
+  return log;
+}
+
+function withoutOverlaps(input: string, cuts: readonly Cut[]): Cut[] {
+  const sorted = [...cuts].sort((a, b) => a.start - b.start || b.end - a.end);
+  const log: Cut[] = [];
+  for (const cut of sorted) {
+    const previous = log.at(-1);
+    if (!previous || cut.start >= previous.end) {
+      log.push(cut);
+    } else if (cut.end > previous.end) {
+      const merged = cut.kind === "tag-removed" && previous.kind !== "tag-removed" ? { ...cut, start: previous.start } : { ...previous };
+      merged.end = cut.end;
+      merged.removedText = input.slice(merged.start, merged.end);
+      log[log.length - 1] = merged;
+    }
+  }
+  return log;
 }
 
 /**
