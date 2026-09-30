@@ -22,6 +22,7 @@ Domain vocabulary for this repo. Use these terms in code, issues, tests and UI. 
 - **Import run**: one committed import of one Spectora export, producing one Template plus its **Import issues**. Rejected files and cancelled Import reviews leave no Import run.
 - **Import review**: the step between parsing an upload and committing it, showing the Template name, counts and Import issue counts. Nothing is stored yet. _Avoid_: preview, dry run.
 - **Rejected file**: an upload that fails a file-level check. Nothing is stored and no Import run exists.
+- **Split run**: a Section or Item name that reappears in an export after rows of a different Section or Item. Each run is imported as its own Section or Item, in file order, and flagged. _Avoid_: merged item.
 - **Import issue**: something the importer skipped, changed or wants the user to check, with a severity and the Source row it came from.
 - **Missing from export**: information Spectora does not put in the file (empty sections, section settings, attachments). Contrast with **Unsupported**: information in the file that our importer does not handle.
 - **Import Trust Report**: the post-import view that reconciles Source rows with stored Comments and lists every Import issue.
