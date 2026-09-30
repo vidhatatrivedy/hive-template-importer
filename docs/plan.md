@@ -43,7 +43,7 @@ State of the plan as of 2026-09-30, end of the exploration session. **Decided** 
 - **Architecture:** decided in [Architecture](https://github.com/vidhatatrivedy/hive-template-importer/issues/13): pure `src/core`, one `src/db` adapter, Server Actions in `src/app`; Import re-parses on commit.
 - **HTML handling:** decided in [Rich content policy for comment HTML](https://github.com/vidhatatrivedy/hive-template-importer/issues/10) and [ADR 0001](adr/0001-sanitise-comment-html-by-cutting-source-spans.md): store sanitised HTML beside the unchanged source cell; a custom parse5 pass cuts only disallowed spans and logs every cut. Name decoding and trimming: *Import normalisation policy*.
 - **Atomic writes:** decided in [ADR 0003](adr/0003-all-database-access-through-postgres-functions.md): every write and read is one Postgres function called by the server with the service-role key.
-- **Preservation proof:** a round-trip test that exports stored data back to the 42 columns and diffs against the source for all six fixtures, plus an edit-persistence test and a copy-independence test.
+- **Preservation proof:** decided in [Verification strategy](https://github.com/vidhatatrivedy/hive-template-importer/issues/14): a round-trip over all six fixtures that fails on any Unexplained difference, in pure Vitest and again through the database; edit persistence, Copy independence and Version restore against the hosted dev project (`npm run test:db`); `npm run verify` prints the per-fixture table.
 - **Assets:** keep external URLs, listed in the Trust Report. Copying into Supabase Storage is out of scope.
 
 ## Open questions
