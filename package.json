@@ -6,14 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sandcastle": "tsx .sandcastle/main.mts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "next": "16.3.7",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@ai-hero/sandcastle": "^0.12.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -21,6 +28,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.7",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }
