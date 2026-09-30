@@ -27,14 +27,7 @@ State of the plan as of 2026-09-30, end of the exploration session. **Decided** 
 - Template list; template view in Spectora-like order, comments **grouped by type** for display.
 - Edit: section, item and comment names, and comment text (the baseline). Stretch: reorder, add/delete, edit options and defaults.
 - Duplicate a template, with deep-copy independence.
-- Trust Report:
-  - per-section reconciliation (source rows vs stored comments)
-  - Import issues list with severity and source row
-  - an empty-sections notice (missing from the export)
-  - externally hosted assets
-  - duplicates
-  - default-looking estimate ranges (10/1000)
-  - per-comment view of sanitiser changes (source vs stored)
+- Trust Report: decided in [Import issue taxonomy and Trust Report contents](https://github.com/vidhatatrivedy/hive-template-importer/issues/11): severity `warning`/`notice` × class Changed/Unsupported/Missing from export/Check; Summary, per-Section reconciliation recomputed from stored Version 1, issues grouped by kind, External assets, Kept but not used, Missing from export; a per-Comment Source row view; imported Templates only.
 - Failure cases with specific messages:
   - plain-text export or random file
   - missing or renamed columns
