@@ -352,8 +352,8 @@ function VariantA() {
 function Rail({ title, value, onClick }: { title: string; value: string; onClick: () => void }) {
   return (
     <div onClick={onClick} className="w-9 shrink-0 border-r border-black/[0.05] dark:border-white/[0.06] flex flex-col items-center py-3 gap-3 cursor-pointer hover:bg-black/[0.03]">
-      <span className={label}>{title[0]}</span>
       <span className="[writing-mode:vertical-rl] rotate-180 text-[11px] text-neutral-600 dark:text-neutral-300 truncate max-h-[70%]">{value}</span>
+      <span className="mt-auto [writing-mode:vertical-rl] rotate-180 text-[10px] font-light tracking-[0.08em] text-neutral-400">{title}</span>
     </div>
   );
 }
