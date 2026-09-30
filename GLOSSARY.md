@@ -24,6 +24,8 @@ Domain vocabulary for this repo. Use these terms in code, issues, tests and UI. 
 - **Rejected file**: an upload that fails a file-level check. Nothing is stored and no Import run exists.
 - **Split run**: a Section or Item name that reappears in an export after rows of a different Section or Item. Each run is imported as its own Section or Item, in file order, and flagged. _Avoid_: merged item.
 - **Import issue**: something the importer skipped, changed or wants the user to check, with a severity and the Source row it came from.
+- **Editor leftovers**: attributes a previous editor left in Comment text that do not change how it looks (Froala's `fr-original-style`, `draggable`, `contenteditable`, classes, pasted `data-*`). Removed on import and reported as one Import issue per Comment. _Avoid_: noise, junk.
+- **External asset**: an image or embedded video a Comment shows from another host (e.g. `cdn.spectora.com`, YouTube). Kept as a link to that host, not copied, and listed in the Import Trust Report.
 - **Missing from export**: information Spectora does not put in the file (empty sections, section settings, attachments). Contrast with **Unsupported**: information in the file that our importer does not handle.
 - **Import Trust Report**: the post-import view that reconciles Source rows with stored Comments and lists every Import issue.
 - **Seed**: returning the app to its demo state: every Template and its history is cleared, then InterNACHI Residential is imported as the only Template. _Avoid_: reset demo, fixture load.

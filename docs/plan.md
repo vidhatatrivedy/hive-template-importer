@@ -55,10 +55,10 @@ State of the plan as of 2026-09-30, end of the exploration session. **Decided** 
   - `import_issues(id, import_run_id, source_row, severity, kind, message, detail jsonb)`
 - **Parsing library:** choose an xlsx reader that runs in a Next.js route or server action, reads from bytes, and handles the `.xls` naming (e.g. SheetJS from its CDN tarball, `exceljs`, or `read-excel-file`). Decide by spike.
 - **Pure core module:** `parseSpectoraExport(bytes) → { template tree, issues }`, with no framework imports (see `.sandcastle/CODING_STANDARDS.md`).
-- **HTML handling:** allowlist sanitiser that keeps `p, br, strong/b, em/i, u, ul/ol/li, a[href], img[src,width,height,alt], h1-h6, span, div, table` and YouTube iframes (or converts them to links). It strips Froala noise attributes and records every change as an Import issue. Entity-decode names; trim whitespace, but record the trim.
+- **HTML handling:** decided in [Rich content policy for comment HTML](https://github.com/vidhatatrivedy/hive-template-importer/issues/10) and [ADR 0001](adr/0001-sanitise-comment-html-by-cutting-source-spans.md): store sanitised HTML beside the unchanged source cell; a custom parse5 pass cuts only disallowed spans and logs every cut. Name decoding and trimming: *Import normalisation policy*.
 - **Atomic writes:** one import = one transaction (Postgres function / RPC). Duplicate = one transaction.
 - **Preservation proof:** a round-trip test that exports stored data back to the 42 columns and diffs against the source for all six fixtures, plus an edit-persistence test and a copy-independence test.
-- **Assets:** keep external URLs (listed in the report). Optional stretch: copy `cdn.spectora.com` images into Supabase Storage.
+- **Assets:** keep external URLs, listed in the Trust Report. Copying into Supabase Storage is out of scope.
 
 ## Open questions
 
