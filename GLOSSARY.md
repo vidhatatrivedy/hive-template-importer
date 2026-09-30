@@ -17,7 +17,7 @@ Domain vocabulary for this repo. Use these terms in code, issues, tests and UI. 
 - **Recommendation**: the contractor type a defect is referred to, as a Spectora slug (`pro`, `electrician`, `roof`, ...).
 - **Spectora export**: the spreadsheet from *Export to spreadsheet → Export HTML Text*. 42 fixed columns, one row per Comment, no IDs. Named `.xls` but actually `.xlsx`.
 - **Plain-text export**: Spectora's other spreadsheet export, with the same columns as the Spectora export but HTML stripped (link URLs lost) and entities decoded. The importer rejects it. _Avoid_: text export.
-- **Source row**: one data row of a Spectora export, identified by its 1-based sheet row number. Every stored Comment keeps its source row.
+- **Source row**: one data row of a Spectora export, identified by its 1-based sheet row number. Every imported Comment keeps its Source row, through edits and copies. A Comment added in the editor has none.
 - **Import run**: one committed import of one Spectora export, producing one Template plus its **Import issues**. Rejected files and cancelled Import reviews leave no Import run.
 - **Import review**: the step between parsing an upload and committing it, showing the Template name, counts and Import issue counts. Nothing is stored yet. _Avoid_: preview, dry run.
 - **Rejected file**: an upload that fails a file-level check. Nothing is stored and no Import run exists.
