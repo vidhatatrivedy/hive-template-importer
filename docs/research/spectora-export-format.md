@@ -97,3 +97,13 @@ Confirmed by building a template in Spectora's UI and exporting it (Radon fixtur
 | `info two text` | info | checkbox | 1 | options `concrete, wood, metal`, location `defloc` |
 
 Useful for demoing order preservation. The new item sits *before* the stock "General" item.
+
+## HTML vs plain-text export
+
+Spectora's *Export Plain Text* (fixture `InterNACHI Residential -2026-09-30 (plain text).xls`), compared cell by cell with the HTML export of the same template:
+
+- **Same container and shape:** xlsx named `.xls`, identical 42-column header, same 392 rows in the same order, same filename pattern. Every column except three is identical.
+- **`Comment Text`:** all HTML tags stripped (213 rows differ). **Link URLs are lost**; only the anchor text remains. Paragraphs become `\n`; `\xa0` and `\r\n` are unchanged.
+- **`Section Name` / `Item Name`:** entities decoded (`Doors, Windows &amp; Interior` → `Doors, Windows & Interior`).
+- **Detection signal:** a bare `&` (not starting an entity) in columns A-D. It appears in 0 cells across all six HTML fixtures and in 282 cells of the plain-text export. "No tags in any `Comment Text`" also holds but isn't enough alone: Radon's HTML export has only one tagged row.
+- **Indistinguishable case:** no tags and no `&` anywhere. Then both exports carry the same information, so nothing is lost by importing it.
