@@ -50,7 +50,7 @@ Everything else imports, with row-level or file-level **Import issues**.
 - Headers are matched by trimmed name, ignoring case and column order. A missing non-core column, an unknown extra column and an extra sheet each become a warning or notice ([taxonomy][t11]).
 - Rows are grouped by contiguous runs of the normalised Section and Item names. A name that reappears later is a **Split run**: it's imported as a separate Section or Item with the same name, flagged, and never merged.
 - Duplicates are kept and flagged as a notice.
-- Values go through decode entities → trim → interpret. Only the fields the editor shows are normalised; everything else stays raw in the Source row. [Normalisation][t9] lists the fallbacks:
+- Values go through decode entities → trim → interpret. Only the fields the editor shows are normalised, and only those are entity-decoded and counted as "values decoded"; everything else stays raw in the Source row ([slice 2 spec][s2]). [Normalisation][t9] lists the fallbacks:
   - an unknown Comment type → `info`
   - an unknown Answer type → `boolean`
   - a defect without a valid Category → no Category
@@ -62,7 +62,7 @@ Everything else imports, with row-level or file-level **Import issues**.
 
 ## Import issues and the Trust Report ([taxonomy][t11])
 
-- Every **Import issue** has a severity (`warning` or `notice`) and a class (Changed, **Unsupported**, **Missing from export** or Check). The 28 kinds and their severities are in the [catalogue][t11].
+- Every **Import issue** has a severity (`warning` or `notice`) and a class (Changed, **Unsupported**, **Missing from export** or Check). The 29 kinds and their severities are in the [catalogue][t11]: #11's 28 plus `unsafe-style-removed` (a warning, one per removed `url(`, `expression(` or `@import` style value), added by the [slice 2 spec][s2].
 - The **Import Trust Report** belongs to an Import run and covers Version 1. From top to bottom it shows:
   1. **Summary**: file, date, short SHA-256, rows read → blank rows → Comments stored, counts, issue counts, values decoded, and the verdict ("392 / 392 rows verified").
   2. **Reconciliation by Section**, expandable to Items, with split runs marked.
@@ -128,3 +128,4 @@ Everything else imports, with row-level or file-level **Import issues**.
 [t12]: https://github.com/vidhatatrivedy/hive-template-importer/issues/12
 [t14]: https://github.com/vidhatatrivedy/hive-template-importer/issues/14
 [t15]: https://github.com/vidhatatrivedy/hive-template-importer/issues/15
+[s2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/18

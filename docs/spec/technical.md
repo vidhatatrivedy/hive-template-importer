@@ -19,10 +19,10 @@ Dependencies point inward only.
 - **`src/core/`** is pure: no Next.js, Supabase or React. It holds:
   - `parseSpectoraExport(bytes, filename) → Rejected | ImportDraft`: run metadata, Source rows, tree, issues and cuts.
   - `sanitiseCommentHtml(html) → { html, cuts }`: a custom parse5 span-cutting pass, also used in the browser preview. See [ADR 0001](../adr/0001-sanitise-comment-html-by-cutting-source-spans.md) and [Rich content][t10] for the allowlist.
-  - The Import issue catalogue: kind → severity, class and message. See [taxonomy][t11].
-  - `buildTrustReport(run, version1, issues, cuts)` and the shared **reconciliation** function.
-  - `toExportRows(tree, sourceRows)`.
-  - The zod editable-tree schema.
+  - The Import issue catalogue: kind → severity, class and message (29 kinds). See [taxonomy][t11] and the [slice 2 spec][s2].
+  - `buildTrustReport(evidence, version1)` and the shared **reconciliation** function. The evidence is the Import run with its Source rows and its issues (each carrying its cuts), the shape `get_import_evidence` returns. [slice 2 spec][s2]
+  - `toExportRows(tree, evidence)`, with cells aligned to the run's headers.
+  - The zod editable-tree schema. A tree Comment names its Source row by row number (`sourceRow`), not by `source_row_id`; `src/db` maps between the two.
 - **`src/db/`** is the one Supabase adapter: typed RPC wrappers that validate every result against core's zod types. It has no repository interface and no fake.
 - **`src/app/`** holds routes, Server Components, Server Actions and the client editor state.
 - xlsx reading uses **read-excel-file 9.3.10** with `{trim:false}`. Empty and absent cells are both `null`.
@@ -135,3 +135,4 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 [r2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/2
 [r3]: https://github.com/vidhatatrivedy/hive-template-importer/issues/3
 [r4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/4
+[s2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/18
