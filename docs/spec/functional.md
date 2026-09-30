@@ -79,29 +79,31 @@ Everything else imports, with row-level or file-level **Import issues**.
 
 - The columns are Sections │ Items │ Comments │ Comment detail.
 - Comments in an Item are shown grouped Informational / Limitations / Deficiencies, each group in file order, each with its own "+ New". The stored order is always file order.
-- Sections, Items and Comments can be added, deleted, and moved with ↑/↓ within their parent. Comments move within their type group.
+- Sections, Items and Comments can be added, deleted, and moved with ↑/↓ within their parent. Comments move within their type group: a move swaps the Comment with the nearest Comment of the same type in stored order, and every other Comment keeps its position. Changing a Comment's type moves it to the end of its Item's stored list, so it shows last in its new group. [slice 5 spec][s5]
   - Deletes cascade with no confirm, because Discard is the undo. The exception is a non-empty Section, which asks first and names what's inside ("Delete *Roof* and its 4 Items, 37 Comments?").
   - New nodes go at the end of their column or group, with the name field focused. A new Comment is `boolean` with every other field blank. A new defect has no Category.
 - Comment fields:
   - **Editable:** Name, Text, Comment type, Category (defects only), Recommendation (a dropdown of slugs used in this Template, plus free text), Answer type, Multiple-choice options (checkbox only, edited as a list), Default value (depends on the Answer type).
-  - **Read-only:** Unit options, Default location, Estimate min/max, Default photos, Last modified.
+  - **Read-only:** Unit options, Default location, Estimate min/max, Default photos, Last modified. Apart from Unit options these aren't in the tree, so the editor reads them from the Source row. [slice 5 spec][s5]
   - **Hidden:** everything else, visible only in the Source row view.
 - A value made irrelevant by another change (a Category after defect → info, options after checkbox → text) is kept and hidden, never cleared.
 - Comment text is shown rendered. **Edit** opens the HTML source with a live preview; there's no WYSIWYG editor. The preview runs the import sanitiser, and before Save a notice lists what will be removed. Comments nobody edited stay byte-identical.
-- Validation: only an empty name blocks Save. Duplicate sibling names and empty Sections or Items are allowed. A checkbox with no options gets a soft warning. Names are trimmed on Save.
+- Validation: only an empty name blocks Save; each blank name is marked and the editor jumps to the first. Duplicate sibling names and empty Sections or Items are allowed. A checkbox with no options gets a soft warning. On Save, names, Recommendation, option entries and free-text defaults are trimmed, a blank Recommendation or default becomes empty, and empty option entries are dropped. On imported data this changes nothing. [slice 5 spec][s5]
+- `?row=<n>` selects the Comment carrying that Source row and scrolls to it. If none does (for example, it was deleted), the detail says so. [slice 5 spec][s5]
 - An edited imported Comment keeps its **Source row**.
 
 ## Save and Versions ([Save][t8])
 
 - One **Save** commits every pending change in one transaction and makes exactly one **Version**. Save is disabled when nothing has changed.
-- Unsaved edits live only in client memory. The header shows "Unsaved changes" with Save and Discard. Switching Template, New, opening an old Version and Restore all confirm first, and closing the tab triggers `beforeunload`.
+- Unsaved edits live only in client memory. The header shows "Unsaved changes" with Save and Discard. Switching Template, New, opening an old Version and Discard all ask "Discard unsaved changes?" first, and closing the tab triggers `beforeunload`. Restore is only reachable from the read-only view, which has no edits. Toggling a pane or following a Source row link never loses edits. The browser's back and forward buttons aren't guarded (NOTES.md). [slice 5 spec][s5]
+- Before Save, a notice lists what the sanitiser will remove from each edited Comment, with Save anyway / Keep editing. A Save that fails for any reason keeps the edits on screen. A newer Version that arrives while there are unsaved edits never replaces them. [slice 5 spec][s5]
 - Every Template has a Version 1:
   - Import: as imported.
   - Blank: empty.
   - Duplicate: the source's latest *saved* Version.
 - Each Version records its number, time, counts and origin label: "Imported from *file*", "Created blank", "Copied from *Name* v3", "Saved" or "Restored from v2".
 - Rename saves immediately and makes no Version. It doesn't change the last-saved sort.
-- An old Version opens read-only in the same editor, with the banner "Viewing Version 3 · … · Restore this version · Back to current". Restore creates Version N+1 with the old Version's full content, Source row links included.
+- An old Version opens read-only in the same editor at `/t/[id]/v/[n]`, with the banner "Viewing Version 3 · <origin label> · <date> · Restore this version · Back to current". It keeps the Trust Report toggle and `?row=`. The latest Version's number redirects to the editor. Restore is on the banner only, not in the Versions sheet, and creates Version N+1 with the old Version's full content, Source row links included. [slice 5 spec][s5]
 - Concurrent Saves: Save carries its base Version number. If that's stale, the Save is refused with **Load latest**. Nothing is ever silently overwritten.
 
 ## Duplicate and Delete ([Screens][t5], [Save][t8], [Schema][t12])
@@ -130,3 +132,4 @@ Everything else imports, with row-level or file-level **Import issues**.
 [t15]: https://github.com/vidhatatrivedy/hive-template-importer/issues/15
 [s2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/18
 [s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20
+[s5]: https://github.com/vidhatatrivedy/hive-template-importer/issues/21

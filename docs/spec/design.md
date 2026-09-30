@@ -23,9 +23,13 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
   - a Type / Answer / Category / Recommendation row
   - option chips
   - the HTML source and its preview side by side
-  - a "Source row N" link to the Source row view
+  - a "Source row N" link to the Source row view, or "Added in the editor, no Source row"
+  - the text rendered by default; **Edit** shows the HTML source and the live preview side by side, with a "When saved, this will be removed" notice under the preview
+  - read-only fields in a quiet block (unit option chips, default location, estimates, default photo thumbnails with captions, last modified) [slice 5 spec][s5]
 - **Trust Report and Versions** are glass sheets that float over the editor on the right. They're hidden by default, toggled from the header, and both can be open at once. The Source row view replaces the report inside its sheet, with a back link. The sheets sit in a pane host outside the editor, so toggling one never resets unsaved edits. [slice 4 spec][s4]
-- **Read-only Version view:** the same editor, with a banner ([Save][t8]).
+- **Read-only Version view:** the same editor with no editing controls and values shown as plain text, under a banner "Viewing Version 3 · <origin label> · <date> · Restore this version · Back to current" ([Save][t8], [slice 5 spec][s5]).
+- **Versions sheet:** one row per Version, newest first, with its number, date, origin label and counts; the current one marked. With both sheets open, Versions sits left of the Trust Report.
+- **Confirm dialogs** (discard unsaved changes, delete a non-empty Section, Restore, the pre-Save notice) are one in-app glass dialog, not the browser's.
 - **Unsaved changes:** shown in the header.
 - **Cut:** mobile and narrow layouts. The app is desktop-only, with a minimum width of about 1200px ([Screens][t5]).
 
@@ -61,3 +65,4 @@ These are for the implementer to decide, using the prototype as a guide:
 [t11]: https://github.com/vidhatatrivedy/hive-template-importer/issues/11
 [t15]: https://github.com/vidhatatrivedy/hive-template-importer/issues/15
 [s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20
+[s5]: https://github.com/vidhatatrivedy/hive-template-importer/issues/21

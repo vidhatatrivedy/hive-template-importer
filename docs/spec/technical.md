@@ -23,6 +23,7 @@ Dependencies point inward only.
   - `buildTrustReport(evidence, version1)` and the shared **reconciliation** function. The evidence is the Import run with its Source rows and its issues (each carrying its cuts), the shape `get_import_evidence` returns. [slice 2 spec][s2]
   - `toExportRows(tree, evidence)`, with cells aligned to the run's headers.
   - The zod editable-tree schema. A tree Comment names its Source row by row number (`sourceRow`), not by `source_row_id`; `src/db` maps between the two.
+  - `prepareSave(tree)`: strips ids, trims names, Recommendation, option entries and free-text defaults, reports blank names, and re-sanitises every Comment, returning the text changes. The editor reducer uses it for the pre-Save notice and the Save action for what's stored. `summariseCuts(cuts)` words a cut list. The Save and Restore error messages sit beside the import error messages. [slice 5 spec][s5]
 - **`src/db/`** is the one Supabase adapter: `createDb({ url, serviceRoleKey })` returns one typed wrapper per database function. Every result is validated against core's zod types (`EditableTree`, `ImportEvidence`) or `src/db`'s own (`TemplateSummary`, `TemplateDetail`). Expected refusals come back as `{ ok: false, error: { kind, … } }` with no message text; anything else throws. The wrappers hold no business logic: they don't trim, sanitise or validate the tree they're given, and only fill in each issue's severity and class from core's catalogue. There's no repository interface and no fake. [slice 3 spec][s3]
 - **`src/app/`** holds routes, Server Components, Server Actions and the client editor state.
 - xlsx reading uses **read-excel-file 9.3.10** with `{trim:false}`. Empty and absent cells are both `null`.
@@ -99,7 +100,7 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
   - RLS is on for every table, with no policies, and every table privilege is revoked from `anon` and `authenticated`.
   - `execute` is revoked from `public`, `anon` and `authenticated` on every function, and granted to `service_role`. The migrations also alter the default privileges, because Supabase grants `execute` on new functions to `anon` and `authenticated` by default.
   - App code never calls `.from()`. The browser never holds a Supabase client. The app's env vars are `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only.
-- **Save:** the action validates the tree with zod, trims names and re-sanitises every Comment; the server's result is what's stored. Edit-time cuts are never stored. `save_version`:
+- **Save:** the action runs `prepareSave` (trim, blank-name check, re-sanitise every Comment), then validates the result with zod; the server's result is what's stored. Edit-time cuts are never stored. `save_version`:
   1. Locks the Template row, or refuses `template-not-found`.
   2. Refuses `stale-base` (with `latestNumber`) if `base_number` isn't the latest.
   3. Resolves every non-null `sourceRow` within the Template's `import_run_id`, and refuses `foreign-source-row` with any that don't resolve. On a Blank Template, every non-null `sourceRow` is refused.
@@ -112,16 +113,21 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 
 - **Mutations** are Server Actions only: preview import, commit import, Save, Duplicate, Restore, Rename and Delete. `bodySizeLimit` is `'4.5mb'` (under `experimental.serverActions` in Next.js 16.3), and the action enforces the 4 MB cap itself. The browser refuses a file over the cap before sending it. **Reads** happen in Server Components. There are no route handlers.
 - **Import review → commit** is stateless. Preview returns only the summary. Commit re-sends the same file with the chosen name and the preview's SHA-256. The server re-parses it, refuses `hash-mismatch` if the hash differs, trims the name (refusing `name-blank`), calls `importTemplate`, and `redirect`s to `/t/<id>?pane=trust` outside any `try`. [slice 4 spec][s4]
-- **Errors:** expected failures return `{ ok: false, error: { kind, … } }`. The kinds are the six file rejections, `hash-mismatch`, `name-blank`, Save validation, and `src/db`'s refusals: `stale-base`, `template-not-found` and `foreign-source-row` (a foreign Source row can't come from the editor, so the Save action may treat it as unexpected). Messages come from core, never from Postgres. Unexpected errors throw to `error.tsx`.
-- **Editor state:** one Client Component using `useReducer`, with temporary `tmp-…` ids, a dirty flag and a `beforeunload` guard. There's no client cache library and no optimistic updates. After a write, `refresh()` or `redirect()` reloads the page, and the reducer resets from it.
+- **Errors:** expected failures return `{ ok: false, error: { kind, … } }`. The kinds are the six file rejections, `hash-mismatch`, `name-blank`, Save validation, and `src/db`'s refusals: `stale-base`, `template-not-found` and `foreign-source-row` (a foreign Source row can only come from a bug, but the Save action still returns it rather than throwing). Messages come from core, never from Postgres. Unexpected errors throw to `error.tsx`, except a thrown Save or Restore: the client catches it as `save-failed` / `restore-failed`, so no failure unmounts the editor and loses edits. [slice 5 spec][s5]
+- **Editor state:** one Client Component using `useReducer` over a pure editor reducer (the slice 5 test seam), with temporary `tmp-…` ids. There's no client cache library and no optimistic updates. After a write, `refresh()` (from `next/cache`, Server Actions only) or `redirect()` reloads the page. [slice 5 spec][s5]
+  - Dirty is computed by value against the base Version's tree, with structural sharing so Ben stays fast. Undoing an edit by hand makes it clean.
+  - The reducer adopts a new Version from the page only when clean, or when it's awaiting that Version after its own Save or Load latest. A newer Version that arrives while dirty is held, never adopted. On adopting, the selection carries over by index path.
+  - The editor isn't keyed on search params, so pane toggles and `?row=` changes keep its state.
+- **Unsaved guard:** a provider in the root layout that the editor reports its dirty state to. It adds `beforeunload` while dirty, and gives a `GuardedLink` (cancels a navigation to another pathname via `onNavigate` and asks first), a `confirmDiscard()` for buttons, and one in-app confirm dialog. Back and forward aren't guarded. [slice 5 spec][s5]
+- **Editor page reads:** `getTemplate`, `getVersionTree`, and, for an imported Template or Copy, `getImportEvidence` (wrapped in React `cache()` and shared with the Trust Report) for the read-only fields that aren't in `EditableTree`. [slice 5 spec][s5]
 - **URLs:**
   - `/`: redirects to the last-saved Template, or shows the empty state
   - `/t/[templateId]`: the editor on the latest Version
-  - `/t/[templateId]/v/[number]`: a read-only Version
+  - `/t/[templateId]/v/[number]`: a read-only Version. An unknown number is not-found, and the latest number redirects to `/t/[templateId]`.
   - `/import`: upload and Import review
   - `?pane=` is a comma-separated set (`trust`, `versions` or `trust,versions`), because both panes can be open at once. Unknown values are ignored.
   - `?row=<n>` names a Source row by row number. With `trust` open it shows that row's Source row view, and the editor selects the Comment carrying that row. It's the Trust Report → Comment link, because ids change on every Save. These survive Saves.
-  - Only `parseTemplateView` and `templateHref` parse and build these params. [slice 4 spec][s4]
+  - Only `parseTemplateView` and `templateHref` parse and build these params. [slice 4 spec][s4] `templateHref` takes an optional Version number for `/v/[number]` URLs. [slice 5 spec][s5]
 
 ## Migrations, environments, Seed ([Architecture][t13])
 
@@ -147,7 +153,7 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
   6. Catalogue completeness.
   7. The zod schema.
 
-  Editor-reducer tests and the offline vocabulary test (database `check` arrays vs core's) are here too.
+  Editor-reducer tests, the `prepareSave` fixture law (no change on any fixture tree), a check that Ben's tree serialises to under 4 MB, and the offline vocabulary test (database `check` arrays vs core's) are here too. [slice 5 spec][s5]
 - **`npm run test:db`** runs against the hosted dev project through the `src/db` wrappers, with a separate Vitest config that `npm test`, CI and sandcastle never pick up. [slice 3 spec][s3]
   - It loads `.env.local` only, prints the host, and takes no env-file flag, so it can't reach prod.
   - Its Templates are named `test:…`. It deletes its own afterwards, and any stale `test:` leftovers at start, through `deleteTemplate`. It never calls `wipe_all`.
@@ -162,7 +168,7 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 
   A grants check runs only if `SUPABASE_ANON_KEY` is set in `.env.local`: the anon key must read nothing and call nothing. The app never reads that variable.
 - **Synthetic workbooks** are built with `write-excel-file`, and one Excel-resaved fixture is added. Existing fixtures are never edited.
-- There's no Playwright; UI flows are checked by hand against a checklist. UI slices put their testable decisions in pure view helpers with Vitest tests (slice 4: `toImportReview`, `resolveReportBase`, `cutSegments`, the URL helpers and the import-flow reducer). `npm run samples` writes the rejection and edge-case workbooks the checklist uses to a gitignored folder. [slice 4 spec][s4]
+- There's no Playwright; UI flows are checked by hand against a checklist. UI slices put their testable decisions in pure view helpers with Vitest tests (slice 4: `toImportReview`, `resolveReportBase`, `cutSegments`, the URL helpers and the import-flow reducer; slice 5: the editor reducer, `versionLabel` and `readOnlyFields`). `npm run samples` writes the rejection and edge-case workbooks the checklist uses to a gitignored folder. [slice 4 spec][s4]
 - **CI** (GitHub Actions) runs `typecheck`, `lint`, `npm test` and `npm run verify`.
 - **Agent process:**
   - AFK agents get no database credentials. Tickets that touch `supabase/migrations` or `src/db` are `ready-for-human`, or the human runs `test:db` at review.
@@ -181,3 +187,4 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 [s2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/18
 [s3]: https://github.com/vidhatatrivedy/hive-template-importer/issues/19
 [s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20
+[s5]: https://github.com/vidhatatrivedy/hive-template-importer/issues/21
