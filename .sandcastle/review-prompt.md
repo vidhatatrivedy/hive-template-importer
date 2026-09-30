@@ -14,6 +14,8 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 
 # REVIEW PROCESS
 
+Use the code-review skill to review the branch against `{{TARGET_BRANCH}}`: Standards (this repo's coding standards) and Spec (the issue the commits reference). Fix what it finds, then continue with the steps below.
+
 1. **Understand the change**: Read the diff and commits above to understand the intent.
 
 2. **Analyze for improvements**: Look for opportunities to:

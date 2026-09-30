@@ -6,6 +6,10 @@
 //   Phase 2 (Review): an agent reviews that branch's diff and fixes it in place.
 // Both phases share one Docker sandbox. The loop stops early when an implement
 // phase produces no commits (backlog empty or everything blocked).
+// Iterations chain: each branch forks from the previous iteration's branch, so
+// a ticket sees the code of the tickets closed before it. The first forks from
+// the host's current HEAD. Nothing is merged to main; merge the last branch
+// (it contains every earlier one) after reviewing it.
 //
 // Examples:
 //   npm run sandcastle                                   # claude / opus-5-5 / medium
@@ -62,12 +66,16 @@ const hooks = {
 };
 const copyToWorktree = ["node_modules"];
 
+let previousBranch: string | undefined;
+
 for (let iteration = 1; iteration <= config.iterations; iteration++) {
   console.log(`\n=== Iteration ${iteration}/${config.iterations} ===\n`);
 
   const branch = `sandcastle/${config.implementer.provider}/${Date.now()}`;
+  console.log(`Branch: ${branch} (from ${previousBranch ?? "HEAD"})`);
   const sandbox = await sandcastle.createSandbox({
     branch,
+    baseBranch: previousBranch,
     sandbox: sandboxProvider,
     hooks,
     copyToWorktree,
@@ -95,9 +103,10 @@ for (let iteration = 1; iteration <= config.iterations; iteration++) {
       promptArgs: { BRANCH: branch },
     });
     console.log("\nReview complete.");
+    previousBranch = branch;
   } finally {
     await sandbox.close();
   }
 }
 
-console.log("\nAll done.");
+console.log(previousBranch ? `\nAll done. Latest branch: ${previousBranch}` : "\nAll done.");
