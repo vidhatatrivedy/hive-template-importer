@@ -38,3 +38,21 @@ Two panes: a tree on the left (**Overview → Sections → Subsections**, drag h
 | Answer type boolean + Default `true` | Checkbox Item + Auto-select | Answer type + default |
 | Standards of Practice | Section Description (probably) | missing from export |
 | Reminders | Private Notes (probably) | missing from export |
+
+## Screenshots
+
+Hive, subsection detail editor (tree left, detail right, explicit Save bar):
+
+![Hive subsection details](screenshots/hive-subsection-details.webp)
+
+Hive, comment groups (Information / Limitations / Defects) inside a subsection:
+
+![Hive comment groups](screenshots/hive-comment-groups.webp)
+
+Spectora, three-column editor (Sections | Items | Comments grouped by type), the layout we adopt:
+
+![Spectora editor columns](screenshots/spectora-editor-columns.webp)
+
+Spectora, "My Templates" switcher:
+
+![Spectora My Templates menu](screenshots/spectora-editor-my-templates.webp)

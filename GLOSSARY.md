@@ -2,7 +2,12 @@
 
 Domain vocabulary for this repo. Use these terms in code, issues, tests and UI. Refined by `/domain-modeling`.
 
-- **Template**: an inspector's reusable report structure and comment library. Ordered list of Sections. Can be duplicated into an independent **Copy**.
+- **Template**: an inspector's reusable report structure and comment library. Ordered list of Sections. Created by **Import**, **Duplicate** or **Blank** creation.
+- **Import**: creating a Template from a Spectora export.
+- **Duplicate**: creating an independent **Copy** of an existing Template. The Copy starts its own Version history at Version 1 and records the Template and Version it came from. _Avoid_: clone.
+- **Copy**: a Template made by Duplicate. Editing it never changes the original.
+- **Blank**: creating an empty, named Template to build by hand in the editor. _Avoid_: custom template, wizard.
+- **Version**: a numbered, read-only snapshot of a Template, taken on each explicit Save. For an imported Template, Version 1 is the Template exactly as imported. Restoring an old Version creates a new Version. _Avoid_: revision, draft.
 - **Section**: top-level grouping in a Template (e.g. *Roof*). Hive calls this a Section too.
 - **Item**: a grouping inside a Section (e.g. *Roof › Coverings*). Spectora's term; Hive calls it a **Subsection**. We use *Item*.
 - **Comment**: one row of a Spectora export; a reusable entry inside an Item. Has a **Comment type** and an **Answer type**. Hive calls these **Fields**.
