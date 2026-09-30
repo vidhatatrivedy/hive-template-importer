@@ -391,6 +391,12 @@ describe("inline styles", () => {
       "expression(alert(1))",
       "eXpReSsIoN (alert(1))",
       "ex/**/pression(alert(1))",
+      "url\\28x)",
+      "url\\28 x)",
+      "url\\000028x)",
+      "expression\\28 alert(1))",
+      "expression\\000028alert(1))",
+      "eXpReSsIoN\\28\\61lert(1))",
       "red @IMPORT 'x'",
     ];
     for (const value of values) {
@@ -423,6 +429,11 @@ describe("inline styles", () => {
       expect(html, input).toBe(output);
       expect(cuts.map((c) => c.context.property)).toEqual(properties);
     }
+  });
+
+  it("keeps an escaped semicolon inside the declaration it belongs to", () => {
+    const input = '<p style="color: red\\3b position: fixed">t</p>';
+    expect(sanitiseCommentHtml(input)).toEqual({ html: input, cuts: [] });
   });
 
   it("reads escaped and commented property names as the browser does", () => {

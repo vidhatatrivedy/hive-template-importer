@@ -2,6 +2,7 @@ import { defaultTreeAdapter, html as htmlSpec, parseFragment, type DefaultTreeAd
 import { allowlist, isAllowedAttribute, isEditorLeftover, tagsRemovedWithContent } from "./allowlist";
 import { applyCuts, type Cut } from "./cuts";
 import { checkStyle, type StyleVerdict } from "./style-attribute";
+import { asciiLower, isWhitespace } from "./text";
 
 type Node = DefaultTreeAdapterTypes.Node;
 type Element = DefaultTreeAdapterTypes.Element;
@@ -246,12 +247,13 @@ function attributeCuts(input: string, element: Element): Cut[] {
     startTagAttributes(input, startTag.startOffset, startTag.endOffset),
   );
   const styles = new Map<number, StyleVerdict>();
-  attributes.forEach((attribute, index) => {
-    if (attribute.removed || attribute.name !== "style") return;
+  for (let index = 0; index < attributes.length; index++) {
+    const attribute = attributes[index];
+    if (attribute.removed || attribute.name !== "style") continue;
     const verdict = checkStyle(input, attribute.valueStart, attribute.valueEnd);
     styles.set(index, verdict);
     if (!verdict.parseable || verdict.removesAll) attribute.removed = true;
-  });
+  }
 
   const cuts: Cut[] = [];
   for (let index = 0; index < attributes.length; index++) {
@@ -277,21 +279,36 @@ function attributeCuts(input: string, element: Element): Cut[] {
 
 /**
  * An unparseable style is cut whole. Otherwise one cut per removed declaration; when none is
- * kept, those cuts are stretched to tile the attribute's whole cut, from `wholeStart` to `end`.
+ * kept, those cuts are stretched to tile the attribute's whole cut, from `wholeStart` to `attributeEnd`.
  */
-function styleCuts(input: string, tag: string, style: StyleVerdict, wholeStart: number, end: number): Cut[] {
+function styleCuts(input: string, tag: string, style: StyleVerdict, wholeStart: number, attributeEnd: number): Cut[] {
   if (!style.parseable) {
-    return [{ start: wholeStart, end, kind: "style-unparseable", removedText: input.slice(wholeStart, end), context: { tag, attribute: "style" } }];
+    return [
+      {
+        start: wholeStart,
+        end: attributeEnd,
+        kind: "style-unparseable",
+        removedText: input.slice(wholeStart, attributeEnd),
+        context: { tag, attribute: "style" },
+      },
+    ];
   }
-  return style.cuts.map((declaration, index) => {
-    const start = style.removesAll ? (index === 0 ? wholeStart : style.cuts[index - 1].end) : declaration.start;
-    const cutEnd = style.removesAll && index === style.cuts.length - 1 ? end : declaration.end;
+
+  return style.cuts.map((declaration, index, cuts) => {
+    let start = declaration.start;
+    let end = declaration.end;
+    if (style.removesAll) {
+      start = index === 0 ? wholeStart : cuts[index - 1].end;
+      if (index === cuts.length - 1) end = attributeEnd;
+    }
+    const context: Cut["context"] = { tag, attribute: "style", property: declaration.property };
+    if (declaration.unsafeValue) context.unsafeValue = true;
     return {
       start,
-      end: cutEnd,
-      kind: "css-property-removed" as const,
-      removedText: input.slice(start, cutEnd),
-      context: { tag, attribute: "style", property: declaration.property, ...(declaration.unsafeValue && { unsafeValue: true as const }) },
+      end,
+      kind: "css-property-removed",
+      removedText: input.slice(start, end),
+      context,
     };
   });
 }
@@ -332,9 +349,6 @@ function hasWhitespace(input: string, from: number, to: number): boolean {
   }
   return false;
 }
-
-const HTML_WHITESPACE = new Set(["\t", "\n", "\f", "\r", " "]);
-const isWhitespace = (character: string | undefined) => character !== undefined && HTML_WHITESPACE.has(character);
 
 /**
  * Every attribute in a start tag, repeats included, with its span. Read from the source by the
@@ -392,11 +406,6 @@ function attributeValue(input: string, nameEnd: number, tagEnd: number): { end: 
   const valueStart = index;
   while (index < tagEnd && !isWhitespace(input[index]) && input[index] !== ">") index++;
   return { end: index, valueStart, valueEnd: index };
-}
-
-/** HTML compares attribute names case-insensitively for ASCII letters only. */
-function asciiLower(value: string): string {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 function startOfPrecedingWhitespace(input: string, offset: number): number {

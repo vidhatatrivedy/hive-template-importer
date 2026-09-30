@@ -1,5 +1,6 @@
 import { parseFragment } from "parse5";
 import { allowlist } from "./allowlist";
+import { asciiLower, isWhitespace } from "./text";
 
 /** A declaration to cut, as a span of the input. */
 export type DeclarationCut = { start: number; end: number; property: string; unsafeValue: boolean };
@@ -25,6 +26,8 @@ type Declaration = {
   unsafeValue: boolean;
 };
 
+type Opener = { closer: ")" | "]"; escaped: boolean };
+
 /**
  * Checks a `style` value (the source span between its quotes) against the style-property
  * allowlist. A declaration is removed if its property isn't allowed or its value contains
@@ -37,66 +40,80 @@ export function checkStyle(input: string, valueStart: number, valueEnd: number):
   const declarations = splitDeclarations(decoded.text);
   if (!declarations) return { parseable: false };
 
-  const at = (index: number) => (index < decoded.from.length ? decoded.from[index] : valueEnd);
-  const cut = (declaration: Declaration, start: number, end: number): DeclarationCut => ({
-    start: at(start),
-    end: at(end),
-    property: declaration.property,
-    unsafeValue: declaration.unsafeValue,
-  });
-
+  const sourceOffset = (index: number) =>
+    index < decoded.sourceOffsets.length ? decoded.sourceOffsets[index] : valueEnd;
   const lastKept = declarations.findLastIndex((declaration) => declaration.kept);
   const cuts: DeclarationCut[] = [];
-  declarations.forEach((declaration, index) => {
-    if (declaration.kept) return;
-    if (lastKept < 0) {
-      cuts.push(cut(declaration, declaration.start, declaration.after));
-    } else if (index < lastKept) {
-      // Up to the next declaration, so the one after it takes its place.
-      cuts.push(cut(declaration, declaration.start, declarations[index + 1].start));
-    } else {
-      // After the last kept one: take the separator before it instead, so none is left dangling.
-      cuts.push(cut(declaration, declarations[index - 1].end, index === declarations.length - 1 ? declaration.after : declaration.end));
-    }
-  });
+  for (let index = 0; index < declarations.length; index++) {
+    const declaration = declarations[index];
+    if (declaration.kept) continue;
+    const span = removedSpan(declarations, index, lastKept);
+    cuts.push({
+      start: sourceOffset(span.start),
+      end: sourceOffset(span.end),
+      property: declaration.property,
+      unsafeValue: declaration.unsafeValue,
+    });
+  }
   return { parseable: true, cuts, removesAll: declarations.length > 0 && lastKept < 0 };
+}
+
+/**
+ * Where a removed declaration sits in the decoded value.
+ * Before the last kept declaration, the cut runs up to the next one so that declaration
+ * takes its place. After it, the cut takes the separator in front, so none is left dangling.
+ * When nothing is kept, each cut runs through its own terminator and the caller tiles them.
+ */
+function removedSpan(declarations: readonly Declaration[], index: number, lastKept: number): { start: number; end: number } {
+  const declaration = declarations[index];
+  if (lastKept < 0) return { start: declaration.start, end: declaration.after };
+  if (index < lastKept) return { start: declaration.start, end: declarations[index + 1].start };
+  const end = index === declarations.length - 1 ? declaration.after : declaration.end;
+  return { start: declarations[index - 1].end, end };
 }
 
 /**
  * The value with character references decoded, and for each decoded UTF-16 unit the source
  * offset it came from. The decoding is parse5's own, one reference at a time.
  */
-function decodeWithOffsets(input: string, start: number, end: number): { text: string; from: number[] } {
+function decodeWithOffsets(input: string, start: number, end: number): { text: string; sourceOffsets: number[] } {
   let text = "";
-  const from: number[] = [];
+  const sourceOffsets: number[] = [];
   let index = start;
   while (index < end) {
     if (input[index] !== "&") {
       text += input[index];
-      from.push(index);
+      sourceOffsets.push(index);
       index++;
       continue;
     }
-    const run = /^&[A-Za-z0-9#;]*/.exec(input.slice(index, end))![0];
-    const { value, consumed } = decodeReference(run, input[index + run.length] === "=" && index + run.length < end);
+    const run = referenceRun(input, index, end);
+    const nextIsEquals = input[index + run.length] === "=" && index + run.length < end;
+    const { value, consumed } = decodeReference(run, nextIsEquals);
     text += value;
-    for (let unit = 0; unit < value.length; unit++) from.push(index);
+    for (let unit = 0; unit < value.length; unit++) sourceOffsets.push(index);
     index += consumed;
   }
-  return { text, from };
+  return { text, sourceOffsets };
+}
+
+/** The `&` and the characters a character reference can use, starting at `index`. */
+function referenceRun(input: string, index: number, end: number): string {
+  const match = /^&[A-Za-z0-9#;]*/.exec(input.slice(index, end));
+  return match?.[0] ?? "&";
 }
 
 /**
  * Decodes the reference at the start of `run` (an `&` and the characters a reference can use)
  * as an attribute value would, returning its value and how many source characters it used.
- * `beforeEquals`: the character after the run is `=`, which stops a legacy reference decoding.
+ * `nextIsEquals`: the character after the run is `=`, which stops a legacy reference decoding.
  */
-function decodeReference(run: string, beforeEquals: boolean): { value: string; consumed: number } {
-  const probe = run + (beforeEquals ? "=" : "");
+function decodeReference(run: string, nextIsEquals: boolean): { value: string; consumed: number } {
+  const probe = run + (nextIsEquals ? "=" : "");
   const fragment = parseFragment(`<p title="${probe}">`);
   const element = fragment.childNodes[0];
   let decoded = "attrs" in element ? element.attrs[0].value : run;
-  if (beforeEquals) decoded = decoded.slice(0, -1);
+  if (nextIsEquals) decoded = decoded.slice(0, -1);
   // Whatever follows the reference is copied through, so it's the longest source tail that
   // the decoded value ends with, leaving at least one decoded unit for the reference.
   for (let consumed = 1; consumed <= run.length; consumed++) {
@@ -112,61 +129,135 @@ function decodeReference(run: string, beforeEquals: boolean): { value: string; c
  * Splits a decoded style value into its non-empty declarations, or returns null when it can't
  * be read with certainty: an unclosed string, comment or bracket, a stray closing bracket, a
  * brace, a newline in a string, or a declaration without a `:`.
+ * A hex escape is the bracket it encodes, so `url\28x)` is a `url(` value and not a stray `)`.
  */
 function splitDeclarations(text: string): Declaration[] | null {
   const declarations: Declaration[] = [];
-  const closers: string[] = [];
+  const openers: Opener[] = [];
   let segmentStart = 0;
   let colon = -1;
 
-  const endSegment = (end: number, after: number): boolean => {
-    let start = segmentStart;
-    let last = end;
-    while (start < last && isCssWhitespace(text[start])) start++;
-    while (last > start && isCssWhitespace(text[last - 1])) last--;
+  const finishSegment = (end: number, after: number): boolean => {
+    const classified = classifySegment(text, segmentStart, end, after, colon);
     segmentStart = after;
-    const found = colon;
     colon = -1;
-    if (withoutComments(text.slice(start, last)).trim() === "") return true;
-    if (found < 0) return false;
-    const property = asciiLower(unescapeCss(withoutComments(text.slice(start, found))).trim());
-    const value = asciiLower(unescapeCss(withoutComments(text.slice(found + 1, last)))).replace(/\s/g, "");
-    const unsafeValue = UNSAFE_VALUES.some((marker) => value.includes(marker));
-    const kept = allowlist.styleProperties.includes(property) && !unsafeValue;
-    declarations.push({ start, end: last, after, property, kept, unsafeValue });
+    if (classified === "empty") return true;
+    if (classified === "invalid") return false;
+    declarations.push(classified);
     return true;
   };
 
   for (let index = 0; index < text.length; index++) {
     const character = text[index];
     if (character === "\\") {
-      index++;
-    } else if (character === "/" && text[index + 1] === "*") {
+      const escape = readCssEscape(text, index);
+      if (!escape) continue;
+      index = escape.next - 1;
+      if (escape.hex) noteHexBracket(openers, escape.character);
+      continue;
+    }
+    if (character === "/" && text[index + 1] === "*") {
       const close = text.indexOf("*/", index + 2);
       if (close < 0) return null;
       index = close + 1;
-    } else if (character === '"' || character === "'") {
+      continue;
+    }
+    if (character === '"' || character === "'") {
       const close = endOfString(text, index);
       if (close < 0) return null;
       index = close;
-    } else if (character === "(" || character === "[") {
-      closers.push(character === "(" ? ")" : "]");
-    } else if (character === ")" || character === "]") {
-      if (closers.pop() !== character) return null;
-    } else if (character === "{" || character === "}") {
-      return null;
-    } else if (closers.length === 0 && character === ":" && colon < 0) {
+      continue;
+    }
+    if (character === "(" || character === "[") {
+      openers.push({ closer: character === "(" ? ")" : "]", escaped: false });
+      continue;
+    }
+    if (character === ")" || character === "]") {
+      if (!closeLiteral(openers, character)) return null;
+      continue;
+    }
+    if (character === "{" || character === "}") return null;
+    if (!insideLiteralBrackets(openers) && character === ":" && colon < 0) {
       colon = index;
-    } else if (closers.length === 0 && character === ";") {
-      if (!endSegment(index, index + 1)) return null;
+      continue;
+    }
+    if (!insideLiteralBrackets(openers) && character === ";") {
+      if (!finishSegment(index, index + 1)) return null;
     }
   }
-  if (closers.length > 0) return null;
-  if (!endSegment(text.length, text.length)) return null;
+  if (insideLiteralBrackets(openers)) return null;
+  if (!finishSegment(text.length, text.length)) return null;
   return declarations;
 }
 
+function classifySegment(
+  text: string,
+  segmentStart: number,
+  end: number,
+  after: number,
+  colon: number,
+): Declaration | "empty" | "invalid" {
+  let start = segmentStart;
+  let last = end;
+  while (start < last && isWhitespace(text[start])) start++;
+  while (last > start && isWhitespace(text[last - 1])) last--;
+  if (withoutComments(text.slice(start, last)).trim() === "") return "empty";
+  if (colon < 0) return "invalid";
+
+  const property = asciiLower(unescapeCss(withoutComments(text.slice(start, colon))).trim());
+  const value = asciiLower(unescapeCss(withoutComments(text.slice(colon + 1, last)))).replace(/\s/g, "");
+  const unsafeValue = UNSAFE_VALUES.some((marker) => value.includes(marker));
+  return {
+    start,
+    end: last,
+    after,
+    property,
+    kept: allowlist.styleProperties.includes(property) && !unsafeValue,
+    unsafeValue,
+  };
+}
+
 const UNSAFE_VALUES = ["url(", "expression(", "@import"];
+
+/** A hex escape of a bracket counts toward matching; any other decoded character does not. */
+function noteHexBracket(openers: Opener[], character: string) {
+  if (character === "(" || character === "[") {
+    openers.push({ closer: character === "(" ? ")" : "]", escaped: true });
+    return;
+  }
+  if (character !== ")" && character !== "]") return;
+  const top = openers.at(-1);
+  if (top?.escaped && top.closer === character) openers.pop();
+}
+
+/**
+ * A literal closer matches a literal opener first, so an escaped opener can't steal it.
+ * Failing that, a hex-escaped opener accounts for it (`url\28x)`). Otherwise it is stray.
+ */
+function closeLiteral(openers: Opener[], closer: ")" | "]"): boolean {
+  const literal = lastOpener(openers, closer, false);
+  if (literal >= 0) {
+    openers.splice(literal, 1);
+    return true;
+  }
+  const escaped = lastOpener(openers, closer, true);
+  if (escaped >= 0) {
+    openers.splice(escaped, 1);
+    return true;
+  }
+  return false;
+}
+
+function lastOpener(openers: readonly Opener[], closer: ")" | "]", escaped: boolean): number {
+  for (let index = openers.length - 1; index >= 0; index--) {
+    if (openers[index].closer === closer && openers[index].escaped === escaped) return index;
+  }
+  return -1;
+}
+
+function insideLiteralBrackets(openers: readonly Opener[]): boolean {
+  return openers.some((opener) => !opener.escaped);
+}
 
 /** Index of the quote closing the string opened at `open`, or -1. */
 function endOfString(text: string, open: number): number {
@@ -182,18 +273,36 @@ function withoutComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
-/** CSS escapes: `\` and 1–6 hex digits with one optional whitespace, or `\` and any character. */
-function unescapeCss(text: string): string {
-  return text.replace(/\\(?:([0-9A-Fa-f]{1,6})(?:\r\n|[ \t\r\n\f])?|([\s\S]))/g, (_, hex: string | undefined, character: string | undefined) => {
-    if (hex === undefined) return character === "\n" ? "" : character!;
-    const codePoint = parseInt(hex, 16);
-    const valid = codePoint > 0 && codePoint <= 0x10ffff && (codePoint < 0xd800 || codePoint > 0xdfff);
-    return String.fromCodePoint(valid ? codePoint : 0xfffd);
-  });
+const HEX_ESCAPE = /^([0-9A-Fa-f]{1,6})(\r\n|[ \t\r\n\f])?/;
+
+/** The CSS escape at `backslash`, or null when `\` is the last character. */
+function readCssEscape(text: string, backslash: number): { character: string; next: number; hex: boolean } | null {
+  const nextIndex = backslash + 1;
+  if (nextIndex >= text.length) return null;
+  const hex = HEX_ESCAPE.exec(text.slice(nextIndex));
+  if (hex) return { character: characterFromHex(hex[1]), next: nextIndex + hex[0].length, hex: true };
+  const character = text[nextIndex];
+  return { character: character === "\n" ? "" : character, next: nextIndex + 1, hex: false };
 }
 
-const isCssWhitespace = (character: string | undefined) => character !== undefined && " \t\n\r\f".includes(character);
+function characterFromHex(hex: string): string {
+  const codePoint = parseInt(hex, 16);
+  const valid = codePoint > 0 && codePoint <= 0x10ffff && (codePoint < 0xd800 || codePoint > 0xdfff);
+  return String.fromCodePoint(valid ? codePoint : 0xfffd);
+}
 
-function asciiLower(value: string): string {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+/** CSS escapes: `\` and 1–6 hex digits with one optional whitespace, or `\` and any character. */
+function unescapeCss(text: string): string {
+  let decoded = "";
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] !== "\\") {
+      decoded += text[index];
+      continue;
+    }
+    const escape = readCssEscape(text, index);
+    if (!escape) return decoded + "\\";
+    decoded += escape.character;
+    index = escape.next - 1;
+  }
+  return decoded;
 }
