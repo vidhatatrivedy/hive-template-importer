@@ -6,7 +6,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
 
 ## Layout: variant B, "Collapsing columns"
 
-- **Template sidebar:** a slim icon strip that expands on hover to show the Template list and **New ▸ Import / Blank**.
+- **Template sidebar:** a slim glass icon strip on every page that expands on hover or keyboard focus to show **New ▸ Import / Blank** at the top and the Template list below. It overlays the page when expanded, so the editor's columns never reflow. Each row has a "⋯" menu (Rename, Duplicate, Delete); the header has the same menu beside the Template name. [slice 6 spec][s6]
 - **Editor window:** a single frosted-glass window. Its header is a breadcrumb (Template / Section / Item / Comment) plus:
   - Save
   - Discard, shown only when there are unsaved changes
@@ -29,7 +29,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
 - **Trust Report and Versions** are glass sheets that float over the editor on the right. They're hidden by default, toggled from the header, and both can be open at once. The Source row view replaces the report inside its sheet, with a back link. The sheets sit in a pane host outside the editor, so toggling one never resets unsaved edits. [slice 4 spec][s4]
 - **Read-only Version view:** the same editor with no editing controls and values shown as plain text, under a banner "Viewing Version 3 · <origin label> · <date> · Restore this version · Back to current" ([Save][t8], [slice 5 spec][s5]).
 - **Versions sheet:** one row per Version, newest first, with its number, date, origin label and counts; the current one marked. With both sheets open, Versions sits left of the Trust Report.
-- **Confirm dialogs** (discard unsaved changes, delete a non-empty Section, Restore, the pre-Save notice) are one in-app glass dialog, not the browser's.
+- **Confirm dialogs** (discard unsaved changes, delete a non-empty Section, Restore, the pre-Save notice, and slice 6's Blank name, Rename, Duplicate and Delete dialogs) are one in-app glass dialog, not the browser's.
 - **Unsaved changes:** shown in the header.
 - **Cut:** mobile and narrow layouts. The app is desktop-only, with a minimum width of about 1200px ([Screens][t5]).
 
@@ -66,3 +66,4 @@ These are for the implementer to decide, using the prototype as a guide:
 [t15]: https://github.com/vidhatatrivedy/hive-template-importer/issues/15
 [s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20
 [s5]: https://github.com/vidhatatrivedy/hive-template-importer/issues/21
+[s6]: https://github.com/vidhatatrivedy/hive-template-importer/issues/22

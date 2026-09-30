@@ -14,12 +14,14 @@ Companion specs: [technical](technical.md) (schema, architecture, verification) 
 
 ## Shell and navigation ([Screens][t5], [Layout][t15])
 
-- `/` opens the most recently saved Template. With no Templates, it shows an empty state that points to **New ▸ Import / Blank**.
-- The Template sidebar lists Templates newest-saved first. Each row shows the name and a line saying how it was created and when it was last saved, e.g. "Imported · 2h ago", "Copy of X · just now" or "Blank · yesterday". **New ▸ Import / Blank** sits at the top.
-- Template actions appear on the sidebar row and in the Template header:
-  - **Rename**
-  - **Duplicate**
-  - **Delete**: a hard delete behind a confirm dialog that names the Template. Any Template can be deleted, including the seeded one.
+- `/` opens the most recently saved Template. With no Templates, it shows an empty state with **Import** and **Blank**. [slice 6 spec][s6]
+- The Template sidebar is on every page, `/import` and not-found included. It lists Templates newest-saved first; Rename doesn't move a Template. Each row shows the name and a line saying how it was created and when it was last saved, e.g. "Imported · 2h ago", "Copy of X · just now" or "Blank · yesterday" (bands: just now, Nm ago, Nh ago, yesterday, N days ago, then the date). **New ▸ Import / Blank** sits at the top. The open Template's row is marked, also on its read-only Version view. [slice 6 spec][s6]
+- Template actions appear in a "⋯" menu on the sidebar row and beside the name in the Template header: [slice 6 spec][s6]
+  - **Rename**: a dialog. It saves straight away and never touches unsaved edits.
+  - **Duplicate**: opens the Copy. With unsaved edits on the open Template, it warns first that they won't be in the Copy; from a read-only Version view, it says the Copy is made from the latest Version.
+  - **Delete**: a hard delete behind a confirm dialog that names the Template and its Version count, plus a line when unsaved edits would be lost. Any Template can be deleted, including the seeded one. Deleting the open Template goes to `/`; deleting another leaves you where you are. A Template already deleted elsewhere counts as done.
+- **Blank** asks for a name (trimmed, can't be blank; duplicates allowed), then opens the empty Template in the editor. With unsaved edits it asks to discard only after Create. [slice 6 spec][s6]
+- A Template link that no longer exists shows not-found with a link to `/`. [slice 6 spec][s6]
 - The Template header shows counts, the source filename and, for a Copy, the copied-from line.
 - The Trust Report and Versions panes are hidden by default, and header toggles open them. Both can be open at once (this supersedes the "one at a time" rule in [Screens][t5]; see [Layout][t15]).
 - **Seed** (`npm run seed`, run by the developer) wipes the database and imports InterNACHI Residential as the only Template. There's no in-app reset.
@@ -95,7 +97,7 @@ Everything else imports, with row-level or file-level **Import issues**.
 ## Save and Versions ([Save][t8])
 
 - One **Save** commits every pending change in one transaction and makes exactly one **Version**. Save is disabled when nothing has changed.
-- Unsaved edits live only in client memory. The header shows "Unsaved changes" with Save and Discard. Switching Template, New, opening an old Version and Discard all ask "Discard unsaved changes?" first, and closing the tab triggers `beforeunload`. Restore is only reachable from the read-only view, which has no edits. Toggling a pane or following a Source row link never loses edits. The browser's back and forward buttons aren't guarded (NOTES.md). [slice 5 spec][s5]
+- Unsaved edits live only in client memory. The header shows "Unsaved changes" with Save and Discard. Switching Template, New, Duplicate, opening an old Version and Discard all ask "Discard unsaved changes?" first ([slice 6 spec][s6] words the Duplicate and Delete prompts), and closing the tab triggers `beforeunload`. Restore is only reachable from the read-only view, which has no edits. Toggling a pane or following a Source row link never loses edits. The browser's back and forward buttons aren't guarded (NOTES.md). [slice 5 spec][s5]
 - Before Save, a notice lists what the sanitiser will remove from each edited Comment, with Save anyway / Keep editing. A Save that fails for any reason keeps the edits on screen. A newer Version that arrives while there are unsaved edits never replaces them. [slice 5 spec][s5]
 - Every Template has a Version 1:
   - Import: as imported.
@@ -133,3 +135,4 @@ Everything else imports, with row-level or file-level **Import issues**.
 [s2]: https://github.com/vidhatatrivedy/hive-template-importer/issues/18
 [s4]: https://github.com/vidhatatrivedy/hive-template-importer/issues/20
 [s5]: https://github.com/vidhatatrivedy/hive-template-importer/issues/21
+[s6]: https://github.com/vidhatatrivedy/hive-template-importer/issues/22
