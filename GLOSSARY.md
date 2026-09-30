@@ -21,3 +21,4 @@ Domain vocabulary for this repo. Use these terms in code, issues, tests and UI. 
 - **Import issue**: something the importer skipped, changed or wants the user to check, with a severity and the Source row it came from.
 - **Missing from export**: information Spectora does not put in the file (empty sections, section settings, attachments). Contrast with **Unsupported**: information in the file that our importer does not handle.
 - **Import Trust Report**: the post-import view that reconciles Source rows with stored Comments and lists every Import issue.
+- **Seed**: returning the app to its demo state: every Template and its history is cleared, then InterNACHI Residential is imported as the only Template. _Avoid_: reset demo, fixture load.
