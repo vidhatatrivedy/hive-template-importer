@@ -38,14 +38,7 @@ State of the plan as of 2026-09-30, end of the exploration session. **Decided** 
 
 ### Technical
 
-- **Schema (draft):**
-  - `templates(id, name, source_filename, created_at, copied_from_template_id)`
-  - `sections(id, template_id, position, name)`
-  - `items(id, section_id, position, name)`
-  - `comments(id, item_id, position, source_row, name, text_html, comment_type, answer_type, category, recommendation, options text[], unit_options text[], default_value, default_value_2, default_unit, default_location, estimate_min, estimate_max, locked, simple_format, disable_photos, raw_row jsonb)`
-  - `comment_photos(comment_id, position, url, caption)`
-  - `import_runs(id, template_id, filename, sha256, rows_read, rows_imported, created_at)`
-  - `import_issues(id, import_run_id, source_row, severity, kind, message, detail jsonb)`
+- **Schema:** decided in [Schema](https://github.com/vidhatatrivedy/hive-template-importer/issues/12) and [ADR 0002](adr/0002-each-version-owns-a-normalised-row-tree.md): fully normalised, Template → Version → Section → Item → Comment, each Version owns its rows; raw rows, issues and cuts belong to the Import run. The table list is in the ticket's resolution.
 - **Parsing library:** choose an xlsx reader that runs in a Next.js route or server action, reads from bytes, and handles the `.xls` naming (e.g. SheetJS from its CDN tarball, `exceljs`, or `read-excel-file`). Decide by spike.
 - **Pure core module:** `parseSpectoraExport(bytes) → { template tree, issues }`, with no framework imports (see `.sandcastle/CODING_STANDARDS.md`).
 - **HTML handling:** decided in [Rich content policy for comment HTML](https://github.com/vidhatatrivedy/hive-template-importer/issues/10) and [ADR 0001](adr/0001-sanitise-comment-html-by-cutting-source-spans.md): store sanitised HTML beside the unchanged source cell; a custom parse5 pass cuts only disallowed spans and logs every cut. Name decoding and trimming: *Import normalisation policy*.
