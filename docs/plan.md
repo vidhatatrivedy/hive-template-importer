@@ -60,7 +60,7 @@ All resolved by the wayfinder map; the answers are consolidated in [`docs/spec/`
 
 ## To do outside the code
 
-- [ ] Supabase project; fill `.env.local` (template `.env.example`).
+- [ ] Supabase dev project: fill `.env.local` (template `.env.example`), and the Supabase block of `.sandcastle/.env`.
 - [ ] Vercel project linked to the repo.
 - [ ] `.sandcastle/.env` (Claude token, Cursor key, GitHub token), then update Docker Desktop (installed version is 20.10 from 2022), start it, and run `npx sandcastle docker build-image`.
 - [ ] Verify the Cursor model id: `cursor-agent --list-models` (default assumed `grok-4.7[effort=high]`).

@@ -28,6 +28,9 @@ const REQUIRED_ENV: Record<ProviderName, string[][]> = {
   cursor: [["CURSOR_API_KEY"]],
 };
 
+/** Dev-project credentials for db:push, db:reset and test:db (see .sandcastle/.env.example). */
+const DB_ENV = ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_DB_URL"];
+
 const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export interface RunConfig {
@@ -129,6 +132,12 @@ export function checkCredentials(choices: AgentChoice[]): void {
     }
   }
   if (!process.env.GH_TOKEN) missing.push("github issues: GH_TOKEN");
+
+  // Not fatal: tickets that don't touch the database still run without these.
+  const missingDb = DB_ENV.filter((key) => !process.env[key]);
+  if (missingDb.length) {
+    console.warn(`Warning: ${missingDb.join(", ")} not set in .sandcastle/.env; database tickets can't run test:db.`);
+  }
 
   if (missing.length) {
     throw new Error(

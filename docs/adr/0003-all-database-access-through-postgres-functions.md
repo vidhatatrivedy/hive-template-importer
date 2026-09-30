@@ -12,4 +12,4 @@ Every read and write goes through a plpgsql function, called with one `supabase.
 
 - The jsonb shapes the functions take and return are a second contract beside core's zod tree schema. `src/db` validates every result against it, and a fixture test round-trips Import → read.
 - Logic in plpgsql can't be tested by Vitest without a database. How those tests run is decided in Verification strategy (issue #14).
-- The service-role key is the only credential, and it's server-only. A leaked anon key reads nothing.
+- The secret key (`sb_secret_…`, acting as `service_role`) is the only credential the app holds, and it's server-only. A leaked publishable (anon) key reads nothing.

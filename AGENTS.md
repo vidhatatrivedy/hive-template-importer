@@ -58,7 +58,7 @@ This repo is worked on by Claude Code and Cursor, switching mid-task. Keep it pr
 - `--provider cursor`: `grok-4.7`, effort `high` (sent to Cursor as `grok-4.7[effort=high]`)
 - `--model`, `--effort`, `--review-provider`, `--review-model`, `--review-effort`, `--iterations`, `--dry-run`, `--help`
 
-Credentials live in `.sandcastle/.env` (template: `.sandcastle/.env.example`). Needs Docker running and the image built once: `npx sandcastle docker build-image`.
+Credentials live in `.sandcastle/.env` (template: `.sandcastle/.env.example`); every key there is injected into the sandbox, including the dev Supabase project's, so agents run `test:db` themselves. Needs Docker running and the image built once: `npx sandcastle docker build-image`.
 
 ## Agent skills
 

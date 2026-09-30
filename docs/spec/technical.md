@@ -99,7 +99,7 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 - **Grants:**
   - RLS is on for every table, with no policies, and every table privilege is revoked from `anon` and `authenticated`.
   - `execute` is revoked from `public`, `anon` and `authenticated` on every function, and granted to `service_role`. The migrations also alter the default privileges, because Supabase grants `execute` on new functions to `anon` and `authenticated` by default.
-  - App code never calls `.from()`. The browser never holds a Supabase client. The app's env vars are `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only.
+  - App code never calls `.from()`. The browser never holds a Supabase client. The app's env vars are `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (the `sb_secret_…` key, which acts as `service_role`) only.
 - **Save:** the action runs `prepareSave` (trim, blank-name check, re-sanitise every Comment), then validates the result with zod; the server's result is what's stored. Edit-time cuts are never stored. `save_version`:
   1. Locks the Template row, or refuses `template-not-found`.
   2. Refuses `stale-base` (with `latestNumber`) if `base_number` isn't the latest.
@@ -132,8 +132,9 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 
 ## Migrations, environments, Seed ([Architecture][t13])
 
-- `supabase/migrations/*.sql` holds the tables, trigger, functions and grants, with no seed data. The Supabase CLI is a pinned dev dependency: `npm run db:push` applies the migrations to the linked project, and `npm run db:types` writes `src/db/database.types.ts`, which is committed. There's no local stack.
-- Two hosted projects: `.env.local` points at **dev** and `.env.prod` at **prod**. Prod is pushed the same way, linked to prod, before the first deploy.
+- `supabase/migrations/*.sql` holds the tables, trigger, functions and grants, with no seed data. The Supabase CLI is a pinned dev dependency, driven by a Postgres connection string rather than `supabase login`/`link`: `npm run db:push` applies pending migrations to `SUPABASE_DB_URL`, and `npm run db:reset` drops everything there and re-applies every migration. There's no local stack.
+- There are no generated database types. Results are typed by zod; the few RPC argument types are written by hand in `src/db`. `supabase gen types` needs either Docker (unavailable inside the sandcastle container) or an account-wide access token. (Reverses the slice 3 spec.)
+- Two hosted projects: `.env.local` points at **dev** and `.env.prod` at **prod**. Dev is disposable: agents and `test:db` reset it freely, and Seed restores the demo Template. `SUPABASE_DB_URL` and `SUPABASE_PUBLISHABLE_KEY` exist for dev only. Prod is pushed by the human before the first deploy, with its own connection string passed on the command line.
 - `npm run seed` runs `scripts/seed.ts` (tsx), with `--env-file .env.prod` for production. It:
   1. prints the host, and asks you to type it unless `--yes` is passed
   2. runs `wipe_all()`
@@ -155,9 +156,10 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
   7. The zod schema.
 
   Editor-reducer tests, the `prepareSave` fixture law (no change on any fixture tree), a check that Ben's tree serialises to under 4 MB, and the offline vocabulary test (database `check` arrays vs core's) are here too. [slice 5 spec][s5]
-- **`npm run test:db`** runs against the hosted dev project through the `src/db` wrappers, with a separate Vitest config that `npm test`, CI and sandcastle never pick up. [slice 3 spec][s3]
-  - It loads `.env.local` only, prints the host, and takes no env-file flag, so it can't reach prod.
-  - Its Templates are named `test:…`. It deletes its own afterwards, and any stale `test:` leftovers at start, through `deleteTemplate`. It never calls `wipe_all`.
+- **`npm run test:db`** runs against the hosted dev project through the `src/db` wrappers, with a separate Vitest config that `npm test` and CI never pick up. Sandcastle agents run it on every database ticket. [slice 3 spec][s3]
+  - It loads `.env.local` if present, otherwise the process environment (sandcastle injects `.sandcastle/.env`). It prints the host and takes no env-file flag, so it can't reach prod.
+  - It runs `npm run db:reset` first, so every run starts from an empty database built from the current branch's migrations. That makes stale leftovers and migrations from abandoned branches impossible. It wipes dev's demo Template; run `npm run seed` to restore it.
+  - Only one run at a time: sandcastle runs one wave, and nobody runs `test:db` by hand during it.
 
   Checks 8-13:
   8. DB round-trip on all six fixtures: the evidence and the tree (ids removed) read back deep-equal to the draft's, and `reconcile` reports 0 unexplained. This is also the zod ↔ jsonb contract test and the live payload-size test on Ben.
@@ -167,12 +169,13 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
   12. Refusals: a stale base (Save and Restore), a foreign Source row (including any on a Blank Template), unknown ids, and an UPDATE caught by the trigger. A Rename and deleting a source with a Copy still work.
   13. Orphan-run cleanup (cut first if short on time).
 
-  A grants check runs only if `SUPABASE_ANON_KEY` is set in `.env.local`: the anon key must read nothing and call nothing. The app never reads that variable.
+  A grants check runs only if `SUPABASE_PUBLISHABLE_KEY` is set (it's the anon role): it must read nothing and call nothing. Otherwise it's skipped with a message. The app never reads that variable.
 - **Synthetic workbooks** are built with `write-excel-file`, and one Excel-resaved fixture is added. Existing fixtures are never edited.
 - There's no Playwright; UI flows are checked by hand against a checklist. UI slices put their testable decisions in pure view helpers with Vitest tests (slice 4: `toImportReview`, `resolveReportBase`, `cutSegments`, the URL helpers and the import-flow reducer; slice 5: the editor reducer, `versionLabel` and `readOnlyFields`; slice 6: `relativeTime`, `sidebarLine`, `parseOpenTemplate`, `lifecyclePrompt` and `landingTarget`). `npm run samples` writes the rejection and edge-case workbooks the checklist uses to a gitignored folder. [slice 4 spec][s4]
 - **CI** (GitHub Actions) runs `typecheck`, `lint`, `npm test` and `npm run verify`.
 - **Agent process:**
-  - AFK agents get no database credentials. Tickets that touch `supabase/migrations` or `src/db` are `ready-for-human`, or the human runs `test:db` at review.
+  - Every implementation ticket, database ones included, is `ready-for-agent`. Agents get the dev project's credentials through `.sandcastle/.env` and run `db:push`, `db:reset` and `test:db` themselves; never prod's. (Reverses #14 and the slice 3 spec.)
+  - Tickets that add a migration form one blocking chain, so migrations land in a single order.
   - Core and database tickets are written test-first and name the checks above that they must make pass.
 
 [t6]: https://github.com/vidhatatrivedy/hive-template-importer/issues/6
