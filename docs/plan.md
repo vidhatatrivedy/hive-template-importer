@@ -39,10 +39,10 @@ State of the plan as of 2026-09-30, end of the exploration session. **Decided** 
 ### Technical
 
 - **Schema:** decided in [Schema](https://github.com/vidhatatrivedy/hive-template-importer/issues/12) and [ADR 0002](adr/0002-each-version-owns-a-normalised-row-tree.md): fully normalised, Template → Version → Section → Item → Comment, each Version owns its rows; raw rows, issues and cuts belong to the Import run. The table list is in the ticket's resolution.
-- **Parsing library:** choose an xlsx reader that runs in a Next.js route or server action, reads from bytes, and handles the `.xls` naming (e.g. SheetJS from its CDN tarball, `exceljs`, or `read-excel-file`). Decide by spike.
-- **Pure core module:** `parseSpectoraExport(bytes) → { template tree, issues }`, with no framework imports (see `.sandcastle/CODING_STANDARDS.md`).
+- **Parsing library:** decided in [Architecture](https://github.com/vidhatatrivedy/hive-template-importer/issues/13): read-excel-file with `{trim:false}`; empty and absent cells are both `null`.
+- **Architecture:** decided in [Architecture](https://github.com/vidhatatrivedy/hive-template-importer/issues/13): pure `src/core`, one `src/db` adapter, Server Actions in `src/app`; Import re-parses on commit.
 - **HTML handling:** decided in [Rich content policy for comment HTML](https://github.com/vidhatatrivedy/hive-template-importer/issues/10) and [ADR 0001](adr/0001-sanitise-comment-html-by-cutting-source-spans.md): store sanitised HTML beside the unchanged source cell; a custom parse5 pass cuts only disallowed spans and logs every cut. Name decoding and trimming: *Import normalisation policy*.
-- **Atomic writes:** one import = one transaction (Postgres function / RPC). Duplicate = one transaction.
+- **Atomic writes:** decided in [ADR 0003](adr/0003-all-database-access-through-postgres-functions.md): every write and read is one Postgres function called by the server with the service-role key.
 - **Preservation proof:** a round-trip test that exports stored data back to the 42 columns and diffs against the source for all six fixtures, plus an edit-persistence test and a copy-independence test.
 - **Assets:** keep external URLs, listed in the Trust Report. Copying into Supabase Storage is out of scope.
 
