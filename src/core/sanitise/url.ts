@@ -2,14 +2,18 @@ import { allowlist } from "./allowlist";
 import { asciiLower } from "./text";
 
 /**
- * The scheme of a decoded URL attribute value as the browser's URL parser reads it: leading
- * and trailing C0 controls and spaces stripped, tabs and newlines removed anywhere.
+ * The scheme of a decoded URL attribute value as the browser's URL parser reads it.
  * `null` for a relative or fragment URL, which resolves against the page's own scheme.
  */
 function urlScheme(value: string): string | null {
-  const cleaned = value.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "").replace(/[\t\n\r]/g, "");
-  const match = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(cleaned);
+  const match = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(stripUrlParserWhitespace(value));
   return match ? asciiLower(match[1]) : null;
+}
+
+/** Leading and trailing C0 controls and spaces, plus tabs and newlines anywhere. */
+function stripUrlParserWhitespace(value: string): string {
+  const trimmed = value.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "");
+  return trimmed.replace(/[\t\n\r]/g, "");
 }
 
 /** Whether a link or image may point here: an allowlisted scheme, or a relative URL. */
@@ -18,6 +22,7 @@ export function isAllowedUrl(value: string): boolean {
   return scheme === null || allowlist.urlSchemes.includes(scheme);
 }
 
+/** True when `src` starts with an allowlisted YouTube embed prefix, exactly as written. */
 export function isYoutubeEmbed(src: string): boolean {
   return allowlist.iframeSrcPrefixes.some((prefix) => src.startsWith(prefix));
 }
@@ -29,7 +34,8 @@ export function isYoutubeEmbed(src: string): boolean {
 export function iframeReplacement(src: string | undefined): string {
   if (!src) return "";
   const escaped = escapeHtml(src);
-  return isAllowedUrl(src) ? `<a href="${escaped}">${escaped}</a>` : escaped;
+  if (!isAllowedUrl(src)) return escaped;
+  return `<a href="${escaped}">${escaped}</a>`;
 }
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };

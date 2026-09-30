@@ -57,7 +57,7 @@ function collectCuts(input: string, node: Node, cuts: Cut[]) {
       if (cut) cuts.push(cut);
       return;
     }
-    if (isAllowedElement(node) && node.tagName === "iframe" && !isYoutubeEmbed(attributeValueOf(node, "src") ?? "")) {
+    if (isIframeReplacedByLink(node)) {
       const cut = iframeToLinkCut(input, node);
       if (cut) cuts.push(cut);
       return;
@@ -82,12 +82,22 @@ function isRemovedWithContent(element: Element): boolean {
  * content elsewhere in the tree (foster parenting, implied closes); the source span is what's cut.
  * Elements the parser made up (reconstructed formatting, implied tbody) have no start tag to cut.
  */
+function elementSourceSpan(input: string, element: Element): { start: number; end: number } | null {
+  const startTag = element.sourceCodeLocation?.startTag;
+  if (!startTag) return null;
+  return { start: startTag.startOffset, end: Math.min(sourceEnd(element), input.length) };
+}
+
 function removalCut(input: string, element: Element): Cut | null {
-  const location = element.sourceCodeLocation;
-  if (!location?.startTag) return null;
-  const start = location.startTag.startOffset;
-  const end = Math.min(sourceEnd(element), input.length);
-  return { start, end, kind: "tag-removed", removedText: input.slice(start, end), context: { tag: element.tagName } };
+  const span = elementSourceSpan(input, element);
+  if (!span) return null;
+  return { ...span, kind: "tag-removed", removedText: input.slice(span.start, span.end), context: { tag: element.tagName } };
+}
+
+/** A kept iframe whose `src` is not a YouTube embed. Its content is raw text, so the whole element goes. */
+function isIframeReplacedByLink(element: Element): boolean {
+  if (!isAllowedElement(element) || element.tagName !== "iframe") return false;
+  return !isYoutubeEmbed(attributeValueOf(element, "src") ?? "");
 }
 
 /**
@@ -109,17 +119,14 @@ function attributeValueOf(element: Element, name: string): string | undefined {
   return element.attrs.find((attribute) => attribute.name === name)?.value;
 }
 
-/** An iframe that isn't a YouTube embed, replaced whole (its content is raw text) by a link to its `src`. */
+/** Replaces that iframe with a link to its `src`, or with the `src` as plain text when the link would be unsafe. */
 function iframeToLinkCut(input: string, element: Element): Cut | null {
-  const startTag = element.sourceCodeLocation?.startTag;
-  if (!startTag) return null;
-  const start = startTag.startOffset;
-  const end = Math.min(sourceEnd(element), input.length);
+  const span = elementSourceSpan(input, element);
+  if (!span) return null;
   return {
-    start,
-    end,
+    ...span,
     kind: "iframe-to-link",
-    removedText: input.slice(start, end),
+    removedText: input.slice(span.start, span.end),
     replacement: iframeReplacement(attributeValueOf(element, "src")),
     context: { tag: "iframe", attribute: "src" },
   };
@@ -133,7 +140,12 @@ function isEmptyYoutubeWrapper(element: Element): boolean {
   if (element.tagName !== "div") return false;
   const classes = (attributeValueOf(element, "class") ?? "").split(/[\t\n\f\r ]+/);
   if (!classes.includes("youtube-embed-wrapper")) return false;
-  return element.childNodes.every((child) => "value" in child && /^[\s\u00a0]*$/.test(child.value));
+  return element.childNodes.every(isBlankText);
+}
+
+/** A text node of only whitespace. U+00A0 is included: Spectora leaves it inside empty wrappers. */
+function isBlankText(node: Node): boolean {
+  return "value" in node && /^[\s\u00a0]*$/.test(node.value);
 }
 
 /** Cuts the opening and closing tags, keeping the content. */
@@ -285,7 +297,8 @@ function attributeCuts(input: string, element: Element): Cut[] {
   const startTag = element.sourceCodeLocation?.startTag;
   if (!isAllowedElement(element) || !startTag) return [];
 
-  const attributes = classifyAttributes(element, startTagAttributes(input, startTag.startOffset, startTag.endOffset));
+  const spans = startTagAttributes(input, startTag.startOffset, startTag.endOffset);
+  const attributes = classifyAttributes(element, spans);
   const styles = new Map<number, StyleVerdict>();
   for (let index = 0; index < attributes.length; index++) {
     const attribute = attributes[index];
@@ -315,7 +328,7 @@ function attributeCuts(input: string, element: Element): Cut[] {
     cuts.push({
       start,
       end: attribute.end,
-      kind: attribute.kind ?? (isEditorLeftover(attribute.name) ? "editor-leftover" : "attribute-removed"),
+      kind: attributeCutKind(attribute),
       removedText: input.slice(start, attribute.end),
       context: { tag: element.tagName, attribute: attribute.name },
     });
@@ -359,27 +372,45 @@ function styleCuts(input: string, tag: string, style: StyleVerdict, wholeStart: 
   });
 }
 
+function attributeCutKind(attribute: ClassifiedAttribute): Cut["kind"] {
+  if (attribute.kind) return attribute.kind;
+  if (isEditorLeftover(attribute.name)) return "editor-leftover";
+  return "attribute-removed";
+}
+
 /**
  * Marks each attribute kept or removed. Only the first of a repeated name is read by the
  * browser, so only that one is checked for its URL scheme or a YouTube wrapper.
  */
 function classifyAttributes(element: Element, attributes: readonly AttributeSpan[]): ClassifiedAttribute[] {
-  const tag = element.tagName;
   const emptyWrapper = isEmptyYoutubeWrapper(element);
   const seen = new Set<string>();
-  return attributes.map((attribute): ClassifiedAttribute => {
-    const repeated = seen.has(attribute.name);
+  return attributes.map((attribute) => {
+    const first = !seen.has(attribute.name);
     seen.add(attribute.name);
-    if (repeated || !isAllowedAttribute(tag, attribute.name)) {
-      if (!repeated && emptyWrapper && attribute.name === "class") return { ...attribute, removed: true, kind: "youtube-wrapper-emptied" };
-      return { ...attribute, removed: true };
-    }
-    if (emptyWrapper && attribute.name === "style") return { ...attribute, removed: true, kind: "youtube-wrapper-emptied" };
-    if (URL_ATTRIBUTES[tag] === attribute.name && !isAllowedUrl(attributeValueOf(element, attribute.name) ?? "")) {
-      return { ...attribute, removed: true, kind: "link-scheme-removed" };
-    }
-    return { ...attribute, removed: false };
+    return classifyAttribute(element, attribute, first, emptyWrapper);
   });
+}
+
+function classifyAttribute(element: Element, attribute: AttributeSpan, first: boolean, emptyWrapper: boolean): ClassifiedAttribute {
+  const offAllowlist = !isAllowedAttribute(element.tagName, attribute.name);
+  if (!first || offAllowlist) {
+    if (first && emptyWrapper && attribute.name === "class") {
+      return { ...attribute, removed: true, kind: "youtube-wrapper-emptied" };
+    }
+    return { ...attribute, removed: true };
+  }
+  if (emptyWrapper && attribute.name === "style") {
+    return { ...attribute, removed: true, kind: "youtube-wrapper-emptied" };
+  }
+  if (isDisallowedUrl(element, attribute.name)) {
+    return { ...attribute, removed: true, kind: "link-scheme-removed" };
+  }
+  return { ...attribute, removed: false };
+}
+
+function isDisallowedUrl(element: Element, name: string): boolean {
+  return URL_ATTRIBUTES[element.tagName] === name && !isAllowedUrl(attributeValueOf(element, name) ?? "");
 }
 
 /**

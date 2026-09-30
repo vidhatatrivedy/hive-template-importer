@@ -565,13 +565,13 @@ describe("URLs, images and iframes", () => {
   });
 
   it("keeps Ben's cdn.spectora.com images at their src", () => {
-    const withImages = cells.filter((c) => c.fixture.startsWith("Ben") && c.text.includes("cdn.spectora.com"));
+    const imageSources = (html: string) => [...html.matchAll(/<img[^>]*?\ssrc="([^"]*)"/g)].map((match) => match[1]);
+    const withImages = cells.filter((cell) => cell.fixture.startsWith("Ben") && cell.text.includes("cdn.spectora.com"));
     expect(withImages.length).toBeGreaterThan(0);
     for (const { text } of withImages) {
-      const sources = (html: string) => [...html.matchAll(/<img[^>]*?\ssrc="([^"]*)"/g)].map((m) => m[1]);
       const { html, cuts } = sanitiseCommentHtml(text);
-      expect(sources(html)).toEqual(sources(text));
-      expect(cuts.filter((c) => c.context.attribute === "src")).toEqual([]);
+      expect(imageSources(html)).toEqual(imageSources(text));
+      expect(cuts.filter((cut) => cut.context.attribute === "src")).toEqual([]);
     }
   });
 
@@ -639,14 +639,13 @@ describe("URLs, images and iframes", () => {
   });
 
   it("gives each of the 10 empty fixture wrappers one youtube-wrapper-emptied cut", () => {
-    const emptied = cells.flatMap((cell) =>
+    const rows = cells.flatMap((cell) =>
       sanitiseCommentHtml(cell.text)
-        .cuts.filter((c) => c.kind === "youtube-wrapper-emptied")
-        .map(() => `${cell.fixture.split(" ")[0]} ${cell.fixture.includes("Room") ? "RbR" : ""}${cell.row}`),
+        .cuts.filter((cut) => cut.kind === "youtube-wrapper-emptied")
+        .map(() => cell.row),
     );
-    expect(emptied).toHaveLength(10);
-    const rows = emptied.map((label) => Number(label.replace(/\D/g, ""))).sort((a, b) => a - b);
-    expect(rows).toEqual([209, 264, 311, 314, 318, 319, 374, 429, 484, 623]);
+    expect(rows).toHaveLength(10);
+    expect([...rows].sort((a, b) => a - b)).toEqual([209, 264, 311, 314, 318, 319, 374, 429, 484, 623]);
   });
 });
 
