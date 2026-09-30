@@ -7,7 +7,8 @@ Domain vocabulary for this repo. Use these terms in code, issues, tests and UI. 
 - **Duplicate**: creating an independent **Copy** of an existing Template. The Copy starts its own Version history at Version 1 and records the Template and Version it came from. _Avoid_: clone.
 - **Copy**: a Template made by Duplicate. Editing it never changes the original.
 - **Blank**: creating an empty, named Template to build by hand in the editor. _Avoid_: custom template, wizard.
-- **Version**: a numbered, read-only snapshot of a Template, taken on each explicit Save. For an imported Template, Version 1 is the Template exactly as imported. Restoring an old Version creates a new Version. _Avoid_: revision, draft.
+- **Version**: a numbered, read-only snapshot of a Template's content, taken on each explicit Save. Every Template has a Version 1 from its creation (as imported, empty for Blank, or the source's latest Version for a Copy), and its latest Version is its saved state. Restoring an old Version creates a new Version. The Template's name is not part of a Version. _Avoid_: revision, draft.
+- **Save**: committing all unsaved changes to a Template at once, making exactly one new Version. Refused if another Save made a newer Version meanwhile. _Avoid_: autosave, publish.
 - **Section**: top-level grouping in a Template (e.g. *Roof*). Hive calls this a Section too.
 - **Item**: a grouping inside a Section (e.g. *Roof › Coverings*). Spectora's term; Hive calls it a **Subsection**. We use *Item*.
 - **Comment**: one row of a Spectora export; a reusable entry inside an Item. Has a **Comment type** and an **Answer type**. Hive calls these **Fields**.
