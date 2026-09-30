@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hive Template Importer
 
-## Getting Started
+Import a Spectora template export, edit it, duplicate it, and see proof that nothing was lost. Built as a take-home for Hive Inspect; scope and requirements are in [`docs/brief.md`](docs/brief.md).
 
-First, run the development server:
+> Status: scaffolding. Setup, database initialisation and deployment instructions will be completed as the app is built.
+
+## Setup
+
+Requires Node 22 and npm.
 
 ```bash
+npm install
+cp .env.example .env.local   # fill in Supabase values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Where | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `.env.local` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.local` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | `.env.local` (server only) | Server-side writes |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Test input
 
-## Learn More
+Real Spectora exports live in [`fixtures/spectora/`](fixtures/spectora/), along with a note on where each came from and its quirks. The primary one is `InterNACHI Residential -2026-09-30.xls`.
 
-To learn more about Next.js, take a look at the following resources:
+## How this repo is developed
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Worked on by both Claude Code and Cursor, using provider-neutral agent setup:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **`AGENTS.md`**: shared agent context (`CLAUDE.md` just imports it).
+- **Skills** from [mattpocock/skills](https://github.com/mattpocock/skills) in `.agents/skills/` (symlinked into `.claude/skills/`).
+- **[Sandcastle](https://github.com/mattpocock/sandcastle)** in `.sandcastle/`: an implement → review agent loop over GitHub issues labelled `ready-for-agent`, run in Docker, with the provider chosen per run:
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+cp .sandcastle/.env.example .sandcastle/.env    # add CLAUDE_CODE_OAUTH_TOKEN / CURSOR_API_KEY / GH_TOKEN
+npx sandcastle docker build-image               # once (Docker must be running)
+npm run sandcastle -- --provider claude         # claude-opus-5-5, effort medium
+npm run sandcastle -- --provider cursor         # grok-4.7, effort high
+npm run sandcastle -- --help
+```

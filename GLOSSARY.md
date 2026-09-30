@@ -1,0 +1,18 @@
+# Glossary
+
+Domain vocabulary for this repo. Use these terms in code, issues, tests and UI. Refined by `/domain-modeling`.
+
+- **Template**: an inspector's reusable report structure and comment library. Ordered list of Sections. Can be duplicated into an independent **Copy**.
+- **Section**: top-level grouping in a Template (e.g. *Roof*). Hive calls this a Section too.
+- **Item**: a grouping inside a Section (e.g. *Roof › Coverings*). Spectora's term; Hive calls it a **Subsection**. We use *Item*.
+- **Comment**: one row of a Spectora export; a reusable entry inside an Item. Has a **Comment type** and an **Answer type**. Hive calls these **Fields**.
+- **Comment type**: `info` (Informational), `limit` (Limitation) or `defect` (Deficiency).
+- **Answer type**: how a Comment is answered during an inspection: `boolean`, `checkbox` (multiple choice), `number`, `range`, `text`, `date`.
+- **Category**: severity of a defect, `-1` / `0` / `1` = Low / Medium / High (Hive: Maintenance / Recommendation / Safety).
+- **Recommendation**: the contractor type a defect is referred to, as a Spectora slug (`pro`, `electrician`, `roof`, ...).
+- **Spectora export**: the spreadsheet from *Export to spreadsheet → Export HTML Text*. 42 fixed columns, one row per Comment, no IDs. Named `.xls` but actually `.xlsx`.
+- **Source row**: one data row of a Spectora export, identified by its 1-based sheet row number. Every stored Comment keeps its source row.
+- **Import run**: one upload of one Spectora export, producing one Template plus its **Import issues**.
+- **Import issue**: something the importer skipped, changed or wants the user to check, with a severity and the Source row it came from.
+- **Missing from export**: information Spectora does not put in the file (empty sections, section settings, attachments). Contrast with **Unsupported**: information in the file that our importer does not handle.
+- **Import Trust Report**: the post-import view that reconciles Source rows with stored Comments and lists every Import issue.
