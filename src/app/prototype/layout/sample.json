@@ -1,0 +1,2108 @@
+{
+"name": "InterNACHI Residential",
+"rows": 392,
+"sections": [
+{
+"name": "Inspection Details",
+"items": [
+{
+"name": "General",
+"comments": [
+{
+"row": 2,
+"name": "In Attendance",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Listing Agent, Home Owner, Client, Client's Agent",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 3,
+"name": "Occupancy",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Furnished, Utilities Off, Occupied, Vacant",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 4,
+"name": "Style",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Modern, Rambler, Ranch, Victorian, Contemporary, Modular, Multi-level, Manufactured, Bungalow, Colonial",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 5,
+"name": "Temperature",
+"text": "",
+"type": "info",
+"category": null,
+"options": null,
+"rec": "pro",
+"answer": "number",
+"default": null
+},
+{
+"row": 6,
+"name": "Type of Building",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Multi-Family, Attached, Single Family, Condominium / Townhouse, Detached",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 7,
+"name": "Weather Conditions",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Snow, Cloudy, Recent Rain, Dry, Heavy Rain, Hot, Clear, Light Rain, Humid",
+"rec": null,
+"answer": "checkbox",
+"default": null
+}
+]
+}
+]
+},
+{
+"name": "Exterior",
+"items": [
+{
+"name": "General",
+"comments": [
+{
+"row": 8,
+"name": "Inspection Method",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Visual, Attic Access, Infrared, Crawlspace Access",
+"rec": null,
+"answer": "checkbox",
+"default": null
+}
+]
+},
+{
+"name": "Siding, Flashing & Trim",
+"comments": [
+{
+"row": 9,
+"name": "Siding Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Stucco, Brick Veneer, Asphalt, Fiber Cement, Wood, Shingles, Masonry, Brick, Logs, Vinyl, Stone Veneer, Plastic, Metal, Stone, Engineered Wood, Concrete",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 10,
+"name": "Cracking - Major",
+"text": "Moderate to major cracking was observed at one or more points on the exterior. This can be the result of poor original compaction of soil at the time of construction or excess moisture in the underlying soil. Recommend consulting with a structural engineer and/or soil expert.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 11,
+"name": "Cracking - Minor",
+"text": "Siding showed cracking in one or more places. This is a result of temperature changes, and typical as homes with stucco age. Recommend monitoring.\u00a0",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 12,
+"name": "Evidence of Water Intrusion",
+"text": "<p>Siding showed signs of water intrusion. This could lead to further siding deterioration and/or mold. Recommend a qualified siding contractor evaluate and repair.\u00a0</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 13,
+"name": "Flashing/Trim Improperly Installed",
+"text": "Flashing &amp; trim pieces were improperly installed, which could result in moisture intrusion and damaging leaks. Recommend a qualified siding contractor evaluate and repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 14,
+"name": "Hail Damage - Major",
+"text": "Siding showed signs of major hail damage. This could allow moisture in, resulting in structural damage. Recommend a qualified siding contractor evaluate and repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 15,
+"name": "Hail Damage - Minor",
+"text": "Siding showed signs consistent with hail damage. Recommend monitoring for any areas that being to allow moisture intrusion.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 16,
+"name": "Improper Construction Practices",
+"text": "<p>Siding appears to be installed improperly and not up to standards. This could lead to moisture damage or deterioration of the home structure.\u00a0Recommend a siding specialist evaluate and repair/replace.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 17,
+"name": "Loose Boards",
+"text": "One or more siding boards were loose, which could result in moisture intrusion. Recommend a qualified siding contractor secure and fasten.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 18,
+"name": "Paint Needed",
+"text": "<p>Areas of siding were worn and in need of maintenance. Recommend a qualified painter or siding specialist correct.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 19,
+"name": "Splitting",
+"text": "Siding shingles was splitting in one or more areas, which can lead to moisture intrusion and/or mold. Recommend monitoring for excessive splitting, in which case a qualified siding contractor should evaluate and repair/replace.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 20,
+"name": "Warping/Buckling",
+"text": "<p>Vinyl siding was warping or buckling in areas. This is often as a result of nailing siding boards to tight to the home, preventing expansion/contraction. Recommend a qualified siding contractor evaluate and repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Exterior Doors",
+"comments": [
+{
+"row": 21,
+"name": "Door Does Not Close or Latch",
+"text": "<p>Door does not close or latch properly. Recommend qualified handyman adjust strike plate and/or lock.</p>\n\n<p><a href=\"http://www.familyhandyman.com/doors/repair/fix-sagging-or-sticking-doors/view-all\" target=\"_blank\">Here is a DIY troubleshooting article</a> on fixing door issues.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 22,
+"name": "Exterior Entry Door",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Wood, Glass, Steel, Hollow Core, Single Pane, Fiberglass",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 23,
+"name": "Hardware Damaged",
+"text": "One or more pieces of door hardware are damaged. Recommend repair or replace.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 24,
+"name": "Hardware Missing",
+"text": "Door is missing one or more pieces of hardware. Recommend replacing or upgrading.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 25,
+"name": "Loose Hinge",
+"text": "<p>Loose hinges were observed on exterior door. Recommend hinges be tightened.</p>\n\n<p><a href=\"http://www.familyhandyman.com/doors/repair/fix-sagging-or-sticking-doors/view-all\" target=\"_blank\">Here is a DIY troubleshooting article</a> on fixing minor door issues.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 26,
+"name": "Paint/Refinish Needed",
+"text": "<p>Door finish is worn. Recommend refinish and/or paint to maximize service life.</p>\n\n<p><a href=\"http://www.diynetwork.com/how-to/outdoors/structures/how-to-refinish-a-solid-wood-door\" target=\"_blank\">Here is a DIY article</a> on refinishing a wood door.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 27,
+"name": "Sliding Glass Door - Failed Seal",
+"text": "<p>The sliding glass door had double-pane glazing in which\u00a0condensation was visible. This indicates a loss of thermal\u00a0integrity. The door should be repaired or replaced as necessary by a qualified contractor.\u00a0Replacement is more typical.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 28,
+"name": "Weatherstripping Not Present",
+"text": "<p>Door is missing standard weatherstripping. This can result in significant energy loss and moisture intrusion. Recommend installation of standard weatherstripping.</p>\n\n<p><a href=\"https://www.thisoldhouse.com/ideas/essential-guide-to-weatherstripping\" target=\"_blank\">Here is a DIY guide on weatherstripping</a>.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Decks, Balconies, Porches & Steps",
+"comments": [
+{
+"row": 29,
+"name": "Appurtenance",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Front Porch, Pool, Deck, Covered Porch, Sunroom, Sidewalk, Hot Tub, Retaining Wall, Shed, Deck with Steps, Patio, Balcony",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 30,
+"name": "Deck - Loose Boards",
+"text": "<p>One or more deck boards were observed to be loose. Recommend they be refastened.</p>\n\n<p><a href=\"http://www.homedepot.com/c/simple_steps_to_repair_your_deck_and_joists_HT_PG_LC\" target=\"_blank\">Here is a helpful article</a> for minor DIY deck repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 31,
+"name": "Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Composite, Concrete, Wood",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 32,
+"name": "Deck - Nails Exposed",
+"text": "<p>One or more nails were observed to be exposed. Recommend nails be reset.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 33,
+"name": "Deck - Rotted Boards",
+"text": "<p>One or more deck boards are showing signs of rot. Recommend a qualified deck contractor replace.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 34,
+"name": "Deck - Unstable Support",
+"text": "<p>One of more areas of the deck support appears unstable. This could cause a safety hazard and further deterioration of the deck. Recommend qualified deck contractor evaluate and repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 35,
+"name": "Deck - Water Sealant Required",
+"text": "<p>Deck is showing signs of weathering and/or water damage. Recommend water sealant/weatherproofing be applied.</p>\n\n<p><a href=\"http://www.lowes.com/projects/porch-deck-and-patio/clean-seal-stain-deck/project\" target=\"_blank\">Here is a helpful article</a> on staining &amp; sealing your deck.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 36,
+"name": "Improper Deck Construction Practices",
+"text": "Deck was observed to have general poor construction. Recommend qualified deck contractor evaluate.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 37,
+"name": "Stairs - Deteriorated",
+"text": "<p>One or more sections of the exterior stairs are deteriorated. Recommend qualified concrete contractor evaluate &amp; repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Eaves, Soffits & Fascia",
+"comments": [
+{
+"row": 38,
+"name": "Eaves - Damaged",
+"text": "One or more sections of the eaves are damaged. Recommend qualified roofer evaluate &amp; repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 39,
+"name": "Eaves - Water Stains",
+"text": "Water stains were observed under the roof eaves. This may indicate an active leak. Recommend qualified roofer evaluate &amp; repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 40,
+"name": "Fascia - Damaged",
+"text": "One or more sections of the fascia are damaged. Recommend qualified roofer evaluate &amp; repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 41,
+"name": "Fascia - Loose",
+"text": "One or more sections of the fascia are loose. Recommend qualified roofer evaluate &amp; repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 42,
+"name": "Fascia - Rotted",
+"text": "One or more sections of the fascia are rotted. Recommend qualified roofer evaluate &amp; repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 43,
+"name": "Wasps Nest",
+"text": "Wasp nests were visible under the soffits. Recommend a qualified exterminator evaluate and remove.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Walkways, Patios & Driveways",
+"comments": [
+{
+"row": 44,
+"name": "Driveway Cracking - Major",
+"text": "Major cracks observed. Recommend driveway contractor evaluate and replace.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 45,
+"name": "Driveway Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Concrete, Gravel, Asphalt, Brick, Cobblestone, Street Parking, Pavers, Dirt",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 46,
+"name": "Driveway Cracking - Minor",
+"text": "Minor cosmetic cracks observed, which may indicate movement in the soil. Recommend monitor and/or have driveway contractor patch/seal. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 47,
+"name": "Driveway Draining Towards Home",
+"text": "The driveway has a negative slope and drains towards the structure. Recommend a driveway contractor evaluate and repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 48,
+"name": "Driveway Trip Hazard",
+"text": "Trip hazards observed. Patch or repair recommended.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 49,
+"name": "Patio Cracking - Major",
+"text": "Significant settling &amp; cracking observed. Further deterioration could result. Recommend concrete contractor evaluate &amp; repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 50,
+"name": "Patio Cracking - Minor",
+"text": "<p>Normal settling &amp; cracking observed. Recommend monitor and/or patch/seal.</p>\n\n<p><a href=\"https://www.handymanhowto.com/how-to-repair-a-cracked-concrete-patio-part-1/\" target=\"_blank\">Here is a helpful article</a> on repairing cracked patios.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 51,
+"name": "Walkway Cracking - Major",
+"text": "Major cracks observed. Recommend concrete contractor evaluate and correct to prevent trip hazard &amp; preserve appearance.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 52,
+"name": "Walkway Cracking - Minor",
+"text": "<p>Minor cosmetic cracks observed. Recommend monitor and/or patch/seal.</p>\n\n<p><a href=\"http://www.doityourself.com/stry/repairsidewalkcrack\" target=\"_blank\">Here is a DIY article</a> on repairing cracked sidewalks.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Vegetation, Grading, Drainage & Retaining Walls",
+"comments": [
+{
+"row": 53,
+"name": "Negative Grading",
+"text": "<p>Grading is sloping towards the home in some areas. This could lead to water intrusion and foundation issues. Recommend qualified landscaper or foundation contractor regrade so water flows away from home.</p>\n\n<p><a href=\"http://homeguides.sfgate.com/fix-slope-grading-house-33504.html\" target=\"_blank\">Here is a helpful article</a> discussing negative grading.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": "monitor",
+"answer": "boolean",
+"default": null
+},
+{
+"row": 54,
+"name": "Retaining Wall Cracks",
+"text": "Retaining wall is showing signs of failing. Recommend qualified contractor evaluate and repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 55,
+"name": "Standing Water",
+"text": "<p>Standing water observed, which could indicate poor drainage and/or grading. Recommend monitor and/or have landscaper correct.</p>\n\n<p><a href=\"http://www.lowes.com/projects/lawn-and-garden/solve-simple-drainage-problems/project\" target=\"_blank\">Here is a resource</a> on dealing with standing water in your yard.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 56,
+"name": "Tree Debris on Roof",
+"text": "Tree debris observed on roof. This can cause improper drainage to gutters and downspouts. Recommend clearing debris. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 57,
+"name": "Tree Overhang",
+"text": "<p>Trees observed overhanging the roof. This can cause damage to the roof and prevent proper drainage. Recommend a qualified tree service trim to allow for proper drainage.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+}
+]
+},
+{
+"name": "Roof",
+"items": [
+{
+"name": "General",
+"comments": [
+{
+"row": 58,
+"name": "Inspection Method",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Binoculars, Ladder, Ground, Roof",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 59,
+"name": "Roof Type/Style",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Gambrel, Shed, Mansard, Combination, Gable, Hip, Flat",
+"rec": null,
+"answer": "checkbox",
+"default": null
+}
+]
+},
+{
+"name": "Coverings",
+"comments": [
+{
+"row": 60,
+"name": "Damaged (General)",
+"text": "<p>Roof coverings showed moderate damage. Recommend a qualified roofing professional evaluate and repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 61,
+"name": "Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Slate, Asbestos, Solar, Concrete, Metal, Fiberglass, Wood, Tile, Asphalt, Ceramic",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 62,
+"name": "Delamination",
+"text": "<p>The asphalt shingle roof shows signs of\u00a0delamination. Delamination is separation of the surface layer\u00a0of asphalt. Recommend a qualified roofing contractor evaluate and repair to prevent further deterioration that results in leaking and moisture intrusion.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 63,
+"name": "Discoloration",
+"text": "<p>Roof shingles were discolored, which can be caused by moisture, rust or soot. Recommend a qualified roofing contractor evaluate and remedy with a roof cleaning or repair.\u00a0</p>\n\n<p><a href=\"http://www.bobvila.com/articles/black-roof-stains-check-for-algae/\">Here is a helpful article</a> on common roof stains.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 64,
+"name": "Improper/Incomplete Nailing",
+"text": "<p>Roof coverings showed signs of improper installation and fastening. Recommend a qualified roofing contractor evaluate and repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 65,
+"name": "Ponding",
+"text": "<p>Observed ponding in one or more areas of roof. Ponding can lead to accelerated erosion and deterioration. Recommend a qualified roofing contractor evaluate and repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 66,
+"name": "Shingles Missing",
+"text": "<p>Observed areas that appeared to be missing sufficient coverings. Recommend qualified roofing contractor evaluate &amp; repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 67,
+"name": "Splitting",
+"text": "<p>The asphalt composition shingle roof had torn or split shingles\u00a0which could lead to moisture intrusion. Recommend a qualified roofing contractor repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 68,
+"name": "Tiles Cracked/Broken",
+"text": "<p>Roof had cracked/broken tiles. Recommend a qualified roof contractor repair or replace to prevent moisture intrusion and/or mold.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 69,
+"name": "Under-Driven Nails",
+"text": "<p>Observed one or more under-driven nails/fasteners. Recommend a qualified roofing contractor evaluate and repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 70,
+"name": "Underlayment Damage",
+"text": "<p>The roof underlayment had areas of moderate damage visible at the time of the inspection. These areas should be repaired by a qualified roofing contractor to help prevent damage from roof leakage. The underlayment was inspected in representative areas only.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Roof Drainage Systems",
+"comments": [
+{
+"row": 71,
+"name": "Debris",
+"text": "<p>Debris has accumulated in the gutters. Recommend cleaning to facilitate water flow.</p>\n\n<p><a href=\"http://www.lowes.com/projects/repair-and-maintain/gutter-cleaning-and-repair/project\">Here is a DIY resource</a> for cleaning your gutters.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 72,
+"name": "Gutter Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Aluminum, Steel, Copper, Seamless Aluminum, Vinyl",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 73,
+"name": "Downspouts Drain Near House",
+"text": "<p>One or more downspouts drain too close to the home's foundation. This can result in excessive moisture in the soil at the foundation, which can lead to foundation/structural movement. Recommend a qualified contractor adjust downspout extensions to drain at least 6 feet from the foundation.\u00a0</p>\n\n<p><a href=\"https://www.thisoldhouse.com/how-to/how-to-drain-downspout-water-flow-away-house\" target=\"_blank\">Here is a helpful DIY link</a> and video on draining water flow away from your house.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 74,
+"name": "Downspouts Missing",
+"text": "<p>Home was missing downspouts in one or more areas.\u00a0This can result in excessive moisture in the soil at the foundation, which can lead to foundation/structural movement. Recommend a qualified contractor install downspout\u00a0extensions that\u00a0drain at least 6 feet from the foundation.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 75,
+"name": "Gutter Damaged",
+"text": "<p>Gutters were damaged.\u00a0This can result in excessive moisture in the soil at the foundation, which can lead to foundation/structural movement. Recommend a qualified contractor evaluate and repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 76,
+"name": "Gutter Improperly Sloped",
+"text": "<p>Gutter are improperly sloped in areas, which could result in runoff drainage around the foundation and possible structural shifting. Recommend qualified roofing or gutters contractor repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 77,
+"name": "Gutter Leakage",
+"text": "<p>Gutters were observed to be leaking in one or more areas.\u00a0This can result in excessive moisture in the soil at the foundation, which can lead to foundation/structural movement. Recommend a qualified contractor evaluate and repair gutters to proper functionality.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 78,
+"name": "Gutter Loose",
+"text": "<p>The gutter(s) is loose and needs to be re-fastened to fascia and pitched properly.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 79,
+"name": "Gutters Missing",
+"text": "<p>There are no gutters present on the structure. \u00a0Gutters are recommended because they collect rain water from the roof and direct it away form the building.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Flashings",
+"comments": [
+{
+"row": 80,
+"name": "Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Aluminum, Asphalt, Lead, Copper, Foam, Rubber",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 81,
+"name": "Corroded - Minor",
+"text": "<p>Roof flashing showed signs of corrosion, but are still in working condition. Flashing should be monitored to prevent severe corrosion leading to moisture intrusion.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 82,
+"name": "Corroded - Severe",
+"text": "<p>Roof flashing showed signs of severe corrosion, which can lead to moisture intrusion and/or mold. Recommend a qualified roofing contractor evaluate and repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 83,
+"name": "Loose/Separated",
+"text": "<p>Flashings observed to be loose or separated, which can lead to water intrusion and/or mold. Recommend a qualified roofing contractor repair.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 84,
+"name": "Missing",
+"text": "<p>Flashings were missing at time of inspection. Flashings provide protection against moisture intrusion. Recommend a qualified roofing contractor evaluate and remedy.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Skylights, Chimneys & Other Roof Penetrations",
+"comments": [
+{
+"row": 85,
+"name": "Chimney Cap Missing",
+"text": "<p>No chimney cap was observed. This is important to protect from moisture intrusion and protect the chimney. Recommend a qualified roofer or chimney expert install.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 86,
+"name": "Chimney Flue Cracked",
+"text": "<p>The chimney flue had one or more cracks, which can lead to further damage to the chimney structure. Recommend a qualified contractor repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 87,
+"name": "Chimney Flue Dirty",
+"text": "<p>Chimney flue was excessively dirty, which can pose a serious fire hazard. Recommend a qualified chimney contractor clean the build up in the flue.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 88,
+"name": "Chimney Repoint Needed",
+"text": "<p>Joints in the masonry have deteriorated and should be repointed. (Repointing is the restoration of the mortar joints in the masonry).</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 89,
+"name": "Chimney Unlined",
+"text": "<p>Chimney was unlined, which can deteriorate the chimney structure and allow harmful gasses to enter home. Recommend a qualified masonry or chimney contractor evaluate and remedy.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 90,
+"name": "Metal Chimney Rust",
+"text": "<p>The metal chimney shows evidence of rust and/or rusting. Recommend monitoring the chimney which may have to be replaced at some point.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 91,
+"name": "Skylight Cracked",
+"text": "<p>Skylight was cracked in one or more places. Recommend a qualified roofing contractor repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 92,
+"name": "Skylight Water Penetration",
+"text": "<p>There are signs of possible water penetration at or near the skylight. \u00a0Skylights, if not properly installed, are prone to leaking. Monitor the condition and if there is sign of leak then have the skylight repaired or replaced.</p>\r\n\r\n<p>Proper flashing around the skylight is critical.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+}
+]
+},
+{
+"name": "Basement, Foundation, Crawlspace & Structure",
+"items": [
+{
+"name": "General",
+"comments": [
+{
+"row": 93,
+"name": "Inspection Method",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Infrared, Visual, Attic Access, Crawlspace Access",
+"rec": null,
+"answer": "checkbox",
+"default": null
+}
+]
+},
+{
+"name": "Foundation",
+"comments": [
+{
+"row": 94,
+"name": "Foundation Cracks - Major",
+"text": "<p>Severe cracking noted at the foundation. This is typically consistent with soil movement and could lead to serious damage to structural components, foundation and/or slabs. Recommend a structural engineer evaluate and provide a report on course of action and remedy.</p>\n\n<p><a href=\"https://www.houselogic.com/organize-maintain/home-maintenance-tips/understanding-foundation-problems/\" target=\"_blank\">Here is an informational article</a> on foundation cracks.</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 95,
+"name": "Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Masonry Block, Concrete, Brick, Stone, Rock, Slab on Grade",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 96,
+"name": "Foundation Cracks - Minor",
+"text": "<p>Minor cracking was noted at the foundation. This is common as concrete ages and shrinkage surface cracks are normal. Recommend monitoring for more serious shifting/displacement.\u00a0</p>\n\n<p><a href=\"https://www.houselogic.com/organize-maintain/home-maintenance-tips/understanding-foundation-problems/\" target=\"_blank\">Here is an informational article</a> on foundation cracks.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 97,
+"name": "Heaving/Settling",
+"text": "The floor slab shows movement/settling due to soil movement. This can compromise the structural integrity of the home. Recommend a qualified structural engineer evaluate and advise on how to remedy.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 98,
+"name": "Improper Construction Practices",
+"text": "<p>Improper or sub-standard construction practices were noted at the foundation wall or slabs/piers. Recommend a structural engineer evaluate and advise on how to bring the construction up to standards.\u00a0</p>\r\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 99,
+"name": "Poor Ventilation of Foundation Area",
+"text": "<p>The foundation is poorly ventilated. Increased ventilation (introduction and movement of fresh air) is recommended. This can be accomplished by partially opening basement windows, doors and/or vents on opposite sides of the foundation on a regular basis (when weather is suitable). \u00a0And by installing a dehumidifier to decrease moisture.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 100,
+"name": "Wall(s) Bowing/Leaning",
+"text": "<p>Foundation wall is bowing and/or leaning. \u00a0Repair of wall is required.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 101,
+"name": "Water Intrusion",
+"text": "<p>Water intrusion was evident on the surface of the floor slab or\u00a0in the basement/crawlspace. This can compromise the soil's ability to stabilize the structure and could cause damage. Recommend a qualified contractor identify the source of moisture and remedy.\u00a0</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Basements & Crawlspaces",
+"comments": [
+{
+"row": 102,
+"name": "Efflorescence",
+"text": "<p>Efflorescence noted on the crawlspace surface. This a white, powdery deposit that is consistent with moisture intrusion. This can compromise the soil's ability to support the home structure and/or lead to mold growth. Recommend a qualified contractor identify source or moisture and correct.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 103,
+"name": "High Moisture Levels",
+"text": "<p>High levels of moisture were noted in areas of the basement. Recommend\u00a0monitoring and finding source of moisture intrusion to prevent damage to structure.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 104,
+"name": "Standing Water",
+"text": "<p>Observed signs on basement floor that standing water may have been present. Recommend a qualified contractor evaluate and find potential moisture source.\u00a0</p>",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Floor Structure",
+"comments": [
+{
+"row": 105,
+"name": "Concrete Slab Shifting/Cracking",
+"text": "Concrete slab was found to be shifting/cracking at the floor structure. This can be caused by moisture intrusion and/or soil movement. Recommend a structural engineer evaluate and repair to preserve structural integrity of the home. ",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 106,
+"name": "Basement/Crawlspace Floor",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Concrete, Dirt, Wood",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 107,
+"name": "Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Wood Beams, Inaccessible, Slab, Concrete, Wood I-Joists, Steel Joists, Steel I-Beams, Engineered Floor Trusses",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 108,
+"name": "Evidence of Structural Damage",
+"text": "<p>Structural damage was observed in the underlying floor structure. Recommend a structural engineer evaluate.\u00a0</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 109,
+"name": "Sub-floor",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Inaccessible, OSB, Plank, Plywood",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 110,
+"name": "Evidence of Water Intrusion",
+"text": "<p>There were signs of water intrusion in the underlying floor structure. Recommend identifying source of moisture and repairing.\u00a0</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 111,
+"name": "Joists Need Repair",
+"text": "One or more floor joists were damaged or improperly installed. This can cause damage to the structural integrity of the home. Recommend a qualified structural engineer evaluate and advise on how to correct. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 112,
+"name": "Mold",
+"text": "<p>Observed signs of mold in one or more areas in the flooring structure. Recommend identifying source or moisture intrusion and sending samples to a lab for testing.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Wall Structure",
+"comments": [
+{
+"row": 113,
+"name": "Cracks - Major",
+"text": "<p>Major cracking observed in wall structure. This could be from moisture intrusion at the structure and/or soil movement. Recommend a qualified structural engineer evaluate and advise on course of action.\u00a0</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 114,
+"name": "Cracks - Minor",
+"text": "<p>Minor cracking was observed in wall structure. This is common in homes this age. Recommend monitoring.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 115,
+"name": "Evidence of Structural Damage",
+"text": "<p>Evidence of structural damage was found in the wall structure. Recommend a structural engineer evaluate and advise on how to repair.\u00a0</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 116,
+"name": "Evidence of Water Intrusion",
+"text": "<p>Wall structure showed signs of water intrusion, which could lead to more serious structural damage. Recommend a qualified contractor identify source or moisture and remedy.</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 117,
+"name": "Mold",
+"text": "<p>Observed signs of mold in one or more areas in the wall\u00a0structure. Recommend identifying source or moisture intrusion and sending samples to a lab for testing.\u00a0</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Ceiling Structure",
+"comments": [
+{
+"row": 118,
+"name": "Evidence of Structural Damage",
+"text": "<p>Evidence of structural damage was found in the ceiling\u00a0structure. Recommend a structural engineer evaluate and advise on how to repair.\u00a0</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 119,
+"name": "Evidence of Water Intrusion",
+"text": "<p>Ceiling structure showed signs of water intrusion, which could lead to more serious structural damage. Recommend a qualified contractor identify source or moisture and remedy.</p>\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 120,
+"name": "Mold",
+"text": "<p>Observed signs of mold in one or more areas in the ceiling\u00a0structure. Recommend identifying source or moisture intrusion and sending samples to a lab for testing.\u00a0</p>\r\n",
+"type": "defect",
+"category": "1",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Roof Structure & Attic",
+"comments": [
+{
+"row": 121,
+"name": "Sagging",
+"text": "Areas of the roof sagged, indicating sheathing or rafter deficiencies. Recommend a qualified roofer evaluate and repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 122,
+"name": "Safety Hazard",
+"text": "<p>This area was unsafe to inspect. If you are interested in having this area inspected, please contact me about a follow-up inspection.</p>\n",
+"type": "limit",
+"category": null,
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 123,
+"name": "Material",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Brick, Concrete, Inaccessible, OSB, Plywood, Steel, Wood",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 124,
+"name": "Type",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Flat, Gable, Hip, Round, Shed",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 125,
+"name": "Thin/Soft Sheathing",
+"text": "Roof sheathing appears to be soft/thin in certain areas. This can be from decay in the underlying wood panels &amp; structure. Recommend further examination by a qualified roofer.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+}
+]
+},
+{
+"name": "Heating",
+"items": [
+{
+"name": "General",
+"comments": [
+{
+"row": 126,
+"name": "Homeowner's Responsibility",
+"text": "<p>Most HVAC (heating, ventilating and air-conditioning) systems in houses are relatively simple in design and operation. They consist of four components: controls, fuel supply, heating or cooling unit, and distribution system. The adequacy of heating and cooling is often quite subjective and depends upon occupant perceptions that are affected by the distribution of air, the location of return-air vents, air velocity, the sound of the system in operation, and similar characteristics.\u00a0</p><p><strong>It's your job</strong> to get the HVAC system inspected and serviced every year. And if you're system as an air filter, be sure to keep that filter cleaned.\u00a0</p>",
+"type": "info",
+"category": null,
+"options": null,
+"rec": "pro",
+"answer": "boolean",
+"default": "true"
+},
+{
+"row": 127,
+"name": "AFUE Rating",
+"text": "<p>AFUE (Annual fuel utilization efficiency) is a metric used to measure furnace efficiency in converting fuel to energy. A higher AFUE rating means greater energy efficiency. 90% or higher meets the Department of Energy's Energy Star program standard.</p>\n",
+"type": "info",
+"category": null,
+"options": null,
+"rec": null,
+"answer": "text",
+"default": null
+}
+]
+},
+{
+"name": "Equipment",
+"comments": [
+{
+"row": 128,
+"name": "Blower - Excessive Noise",
+"text": "<p>Furnace blower was excessively noisy during operation. Recommend a qualified HVAC technician evaluate and repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 129,
+"name": "Brand",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Rheem, Goodman, Carrier, American Standard, Bryant, York, Trane, Payne, Amana, Lennox, Coleman",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 130,
+"name": "Inaccessible",
+"text": "<p>This area was obstructed and inaccessible. If you are interested in having this area inspected, please contact me about a follow-up inspection.</p>\n",
+"type": "limit",
+"category": null,
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 131,
+"name": "Energy Source",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Natural Gas, Kerosene, Coal, Corn, Gas, Solar, Oil, Propane, Electric, Wood",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 132,
+"name": "Corrosion",
+"text": "<p>Furnace was corroded in one or more areas. This could be the result of improper venting, which the source would need to be identified. Recommend a HVAC contractor evaluate and repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 133,
+"name": "Filter Dirty",
+"text": "<p>The furnace filter is dirty and needs to be replaced every 6 months.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 134,
+"name": "Heat Type",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Heat Pump, Forced Air, Radiant Heat, Electric Wall Heater, Electric Baseboard, Steam Boiler, Space Heater, Gas-Fired Heat, Hydronic, None",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 135,
+"name": "Filter Missing",
+"text": "<p>The furnace filter was missing. Recommend replacement.</p>\n\n<p>Here is a DIY video on changing furnace filters.\u00a0</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 136,
+"name": "Inadequate Heat",
+"text": "Furnace was operating at the time of inspection, however very little or no heat was produced. Recommend a qualified HVAC technician evaluate and repair. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 137,
+"name": "Inoperable",
+"text": "Heating element was inoperable at time of inspection. Recommend qualified HVAC professional evaluate &amp; ensure functionality.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 138,
+"name": "Manifold Dirty",
+"text": "<p>Manifold was dirty.\u00a0Cleaning manifolds will result in better air quality.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 139,
+"name": "Needs Servicing/Cleaning",
+"text": "<p>Furnace should be cleaned and serviced annually. Recommend a qualified HVAC contractor clean, service and certify furnace.</p>\n\n<p><a href=\"https://www.directenergy.com/learning-center/home-improvement/importance-of-furnace-maintenance\" target=\"_blank\">Here is a resource</a> on the importance of furnace maintenance.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Normal Operating Controls",
+"comments": [
+{
+"row": 140,
+"name": "Inoperable",
+"text": "Thermostat was inoperable. Recommend a qualified HVAC contractor replace. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 141,
+"name": "Loose Thermostat",
+"text": "<p>Thermostat was loose on the wall. Recommend repair or replacement.\u00a0</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Distribution Systems",
+"comments": [
+{
+"row": 142,
+"name": "Ductwork",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Insulated, Non-insulated",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 143,
+"name": "Duct Damaged",
+"text": "<p>Air supply duct was damaged. Recommend a qualified HVAC contractor repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 144,
+"name": "Duct Leaking",
+"text": "<p>Air supply duct was leaking air. Recommend a qualified HVAC technician or vents &amp; ducts contractor repair.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 145,
+"name": "Ducts Not Sealed",
+"text": "<p>Air supply ducts were not properly sealed. Recommend a qualified HVAC contractor seal supply and return ducts for maximum efficiency.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 146,
+"name": "Radiator Damaged",
+"text": "<p>The radiator is damaged and will not function properly. Recommend that a licensed plumber replace or repair the radiator.</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 147,
+"name": "Return Air System Missing/Insufficient",
+"text": "<p>Return air registers were missing or insufficient. This can result in poor heating efficiency. Recommend a qualified HVAC contractor evaluate and remedy.</p>\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+}
+]
+},
+{
+"name": "Cooling",
+"items": [
+{
+"name": "Cooling Equipment",
+"comments": [
+{
+"row": 148,
+"name": "Air Flow Restricted",
+"text": "Air flow to the air conditioner condenser was restricted. This may result in inefficient operation. Recommend cleaning dirt and/or debris from unit.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 149,
+"name": "Brand",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Amana, Trane, Frigidaire, Bryant, Carrier, Maytag, Coleman, General Electric, Goodman, Luxaire, Lennox, Armstrong, Rheem, Unknown, York",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 150,
+"name": "Low Temperature",
+"text": "The A/C unit was not tested due to low outdoor temperature. This may cause damage the unit.",
+"type": "limit",
+"category": null,
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 151,
+"name": "Energy Source/Type",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Ceiling Fan, Gas, Whole House Fan, Electric, Window AC, Central Air Conditioner, Heat Pump, Swamp Cooler, Oil, Attic Fan",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 152,
+"name": "Condensate Tube Damaged",
+"text": "Condensate tube was damaged, which limits safe discharge of condensation produced by evaporator coils. Recommend a qualified HVAC technician repair. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 153,
+"name": "Location",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Exterior East, Exterior West, Exterior North, Exterior South, Patio Area, Roof",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 154,
+"name": "Failed to Produce Cold Air",
+"text": "The air conditioner was funtional but did not produce cold air. Recommend licensed HVAC contractor evaluate.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 155,
+"name": "SEER Rating",
+"text": "<p>Modern standards call for at least 13 SEER rating for new install.\u00a0</p>\n\n<p>Read more on energy efficient air conditioning <a href=\"http://energy.gov/energysaver/central-air-conditioning\" target=\"_blank\">at Energy.gov.</a></p>\n",
+"type": "info",
+"category": null,
+"options": null,
+"rec": null,
+"answer": "number",
+"default": null
+},
+{
+"row": 156,
+"name": "Insulation Missing or Damaged",
+"text": "Missing or damaged insulation on refrigerant line can cause energy loss and condensation.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 157,
+"name": "Power Shut Off",
+"text": "Condensing unit can be damaged when operated immediately after power is restored. Recommend power be restored for at least 4 hours and unit evaluated by licensed HVAC contractor.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 158,
+"name": "Swamp Cooler Needs Draining",
+"text": "Swamp cooler needs draining to prevent freeze damage and unhealthy indoor air quality. Recommend a qualified HVAC contractor drain and service before winter. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 159,
+"name": "Unit Not Level",
+"text": "Concrete pad supporting the outdoor condensing unit is not level. This can cause acceleratead deterioration of components. Recommend licensed HVAC contractor level the unit.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 160,
+"name": "Unusually Noisy",
+"text": "Compressor started and operated but unit was unusually noisy. Recommend licensed HVAC contractor evaluate.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 161,
+"name": "Vegetation Too Close",
+"text": "Vegetation was too close to the compressor, which can limit heat dissipation and limit effectiveness. Recommend cutting back vegetation to avoid overheating compressor. ",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Normal Operating Controls",
+"comments": [
+{
+"row": 162,
+"name": "Loose Thermostat",
+"text": "<p>Thermostat was loose. Recommend repair or replacement.\u00a0</p>\r\n",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+},
+{
+"name": "Distribution System",
+"comments": [
+{
+"row": 163,
+"name": "Cold Air Return Leaking",
+"text": "The cold air return is leaking at the unit. Recommend licensed HVAC contractor seal or patch ductwork.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 164,
+"name": "Configuration",
+"text": "",
+"type": "info",
+"category": null,
+"options": "Central, Split",
+"rec": null,
+"answer": "checkbox",
+"default": null
+},
+{
+"row": 165,
+"name": "Ducts Dented",
+"text": "There is denting in one or more areas of ductwork. This does not appear to affect air flow. Recommend licensed HVAC contractor repair.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 166,
+"name": "Ducts Deteriorated",
+"text": "Deteriorated ducts were observed. Recommend licensed HVAC contractor repair or replace.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 167,
+"name": "Ducts Heavily Dented",
+"text": "There is major denting in one or more areas of ductwork restricting air flow. Recommend licensed HVAC contractor repair or replace.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 168,
+"name": "Ducts Partially Uninsulated",
+"text": "Parts of the ductwork are uninsulated, resulting in energy loss. Recommend licensed HVAC contractor insulate.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 169,
+"name": "Ducts Uninsulated",
+"text": "Ducts are not insulated, resulting in energy loss. Recommend licensed HVAC contractor insulate ducts.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 170,
+"name": "Joint Disconnected",
+"text": "There are disconnected joints in the ductwork, resulting in significant energy loss. Recommend licensed HVAC contractor repair or replace.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+},
+{
+"row": 171,
+"name": "Loose Connection",
+"text": "There are loose connections on ducts, resulting in energy loss. Recommend licensed HVAC contractor resecure.",
+"type": "defect",
+"category": "0",
+"options": null,
+"rec": null,
+"answer": "boolean",
+"default": null
+}
+]
+}
+]
+}
+],
+"allSections": [
+{
+"name": "Inspection Details",
+"items": 1,
+"comments": 6
+},
+{
+"name": "Exterior",
+"items": 7,
+"comments": 50
+},
+{
+"name": "Roof",
+"items": 5,
+"comments": 35
+},
+{
+"name": "Basement, Foundation, Crawlspace & Structure",
+"items": 7,
+"comments": 33
+},
+{
+"name": "Heating",
+"items": 4,
+"comments": 22
+},
+{
+"name": "Cooling",
+"items": 3,
+"comments": 24
+},
+{
+"name": "Plumbing",
+"items": 7,
+"comments": 43
+},
+{
+"name": "Electrical",
+"items": 7,
+"comments": 40
+},
+{
+"name": "Fireplace",
+"items": 5,
+"comments": 13
+},
+{
+"name": "Attic, Insulation & Ventilation",
+"items": 5,
+"comments": 20
+},
+{
+"name": "Doors, Windows & Interior",
+"items": 7,
+"comments": 54
+},
+{
+"name": "Built-in Appliances",
+"items": 5,
+"comments": 26
+},
+{
+"name": "Garage",
+"items": 6,
+"comments": 26
+}
+]
+}
