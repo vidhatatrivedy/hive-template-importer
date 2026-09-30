@@ -1,0 +1,90 @@
+# Working plan
+
+State of the plan as of 2026-09-30, end of the exploration session. **Decided** items are settled. **Proposed** items are starting positions for the `/wayfinder` + `/grill-with-docs` session, which turns them into the functional and technical spec (and ADRs). Once decided there, a decision lives in its wayfinder ticket or ADR, not here.
+
+## Workflow from here
+
+1. `/wayfinder` map, destination: *functional + technical specification* (app capabilities, schema, architecture). Resolve decision tickets with `/grill-with-docs` (updates `GLOSSARY.md` and `docs/adr/` inline).
+2. `/to-spec` per vertical slice.
+3. `/to-tickets` per spec, labelled `ready-for-agent` or `ready-for-human`.
+4. Implement by hand (Claude Code or Cursor) or AFK via `npm run sandcastle -- --provider claude|cursor`.
+
+## Decided
+
+- **Stack:** Next.js (App Router) + TypeScript + Tailwind, Supabase Postgres, Vercel, Vitest.
+- **Deterministic parser, no LLM** in the import path. It's faithful and testable, and avoids invented or dropped content. Explain this in the video (brief section "Use AI tools").
+- **Improvement:** the **Import Trust Report** (see `hive-importer-findings.md` for the evidence). Hive already matches counts; the gap is proof and transparency.
+- **Issue tracker:** GitHub Issues on `vidhatatrivedy/hive-template-importer`, default triage labels.
+- **Primary fixture and live-app seed:** `InterNACHI Residential -2026-09-30.xls`. Ben Gromicko is the stress test; Radon demonstrates what's missing from the export.
+- **Order truth:** row position in the file, not the `Order` column.
+- **Duplicates are preserved**, and flagged as a notice.
+
+## Proposed (to settle in grilling)
+
+### Capabilities
+
+- Upload → parse → **preview Trust Report before committing?** (or commit, then report). The template name is editable at upload, prefilled from the filename with the `-YYYY-MM-DD` suffix stripped.
+- Template list; template view in Spectora-like order, comments **grouped by type** for display.
+- Edit: section, item and comment names, and comment text (the baseline). Stretch: reorder, add/delete, edit options and defaults.
+- Duplicate a template, with deep-copy independence.
+- Trust Report:
+  - per-section reconciliation (source rows vs stored comments)
+  - Import issues list with severity and source row
+  - an empty-sections notice (missing from the export)
+  - externally hosted assets
+  - duplicates
+  - default-looking estimate ranges (10/1000)
+  - per-comment view of sanitiser changes (source vs stored)
+- Failure cases with specific messages:
+  - plain-text export or random file
+  - missing or renamed columns
+  - empty sheet
+  - bad cell values (unknown comment or answer type)
+  - oversized file
+- Auth: none, or a single demo login? Must be low friction for reviewers.
+
+### Technical
+
+- **Schema (draft):**
+  - `templates(id, name, source_filename, created_at, copied_from_template_id)`
+  - `sections(id, template_id, position, name)`
+  - `items(id, section_id, position, name)`
+  - `comments(id, item_id, position, source_row, name, text_html, comment_type, answer_type, category, recommendation, options text[], unit_options text[], default_value, default_value_2, default_unit, default_location, estimate_min, estimate_max, locked, simple_format, disable_photos, raw_row jsonb)`
+  - `comment_photos(comment_id, position, url, caption)`
+  - `import_runs(id, template_id, filename, sha256, rows_read, rows_imported, created_at)`
+  - `import_issues(id, import_run_id, source_row, severity, kind, message, detail jsonb)`
+- **Parsing library:** choose an xlsx reader that runs in a Next.js route or server action, reads from bytes, and handles the `.xls` naming (e.g. SheetJS from its CDN tarball, `exceljs`, or `read-excel-file`). Decide by spike.
+- **Pure core module:** `parseSpectoraExport(bytes) → { template tree, issues }`, with no framework imports (see `.sandcastle/CODING_STANDARDS.md`).
+- **HTML handling:** allowlist sanitiser that keeps `p, br, strong/b, em/i, u, ul/ol/li, a[href], img[src,width,height,alt], h1-h6, span, div, table` and YouTube iframes (or converts them to links). It strips Froala noise attributes and records every change as an Import issue. Entity-decode names; trim whitespace, but record the trim.
+- **Atomic writes:** one import = one transaction (Postgres function / RPC). Duplicate = one transaction.
+- **Preservation proof:** a round-trip test that exports stored data back to the 42 columns and diffs against the source for all six fixtures, plus an edit-persistence test and a copy-independence test.
+- **Assets:** keep external URLs (listed in the report). Optional stretch: copy `cdn.spectora.com` images into Supabase Storage.
+
+## Open questions
+
+- Is the Trust Report shown *before* the import is committed (review → confirm), or after?
+- How far does the editor go beyond names and text (options, defaults, reorder, add/delete)?
+- Are answer types editable, or read-only metadata?
+- Auth model for the live app.
+- Split runs: how do we treat an item name that reappears non-contiguously in a section? (No fixture has one; decide the policy and the Import issue.)
+- `Default Value` `f` vs `false`: normalise, or store raw plus a normalised value?
+- Mirror Spectora's type-grouped display, or show file order?
+
+## To do outside the code
+
+- [ ] Supabase project; fill `.env.local` (template `.env.example`).
+- [ ] Vercel project linked to the repo.
+- [ ] `.sandcastle/.env` (Claude token, Cursor key, GitHub token), then update Docker Desktop (installed version is 20.10 from 2022), start it, and run `npx sandcastle docker build-image`.
+- [ ] Verify the Cursor model id: `cursor-agent --list-models` (default assumed `grok-4.7[effort=high]`).
+- [ ] Hive: open "We'll Buy Your Home Back" in `</>` code view to confirm whether the iframes are stored-but-hidden or dropped.
+- [ ] Hive: import, reload without saving, and check it persisted (the "unsaved changes" banner question).
+- [ ] Hive: finish a sample inspection and publish a report (required by the brief).
+- [ ] Optional: Binsr trial, and compare its template import with Hive's.
+
+## Deliverables checklist (from `docs/brief.md`)
+
+- [ ] Repo with meaningful history, fixtures, README (setup, DB init, env vars)
+- [ ] NOTES.md (cuts, supported input and limitations, how it was checked, time spent, credits)
+- [ ] Live URL seeded with InterNACHI Residential
+- [ ] 8-10 min video
+- [ ] Reply to Apoorv with repo, URL, video link

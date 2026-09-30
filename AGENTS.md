@@ -33,7 +33,8 @@ Run `npm run typecheck` and `npm test` before every commit.
 ## Where things are
 
 - `docs/brief.md`: the assignment, condensed. Source of truth for scope.
-- `docs/research/`: verified findings about the Spectora export format and Hive's own importer. Cite these instead of re-deriving.
+- `docs/plan.md`: what's decided, what's proposed, open questions and to-dos. Start here when planning.
+- `docs/research/`: verified findings. `spectora-export-format.md` (column-by-column reference), `hive-importer-findings.md` (how Hive's importer behaves), `product-models.md` (how Spectora and Hive structure templates in their UIs). Cite these instead of re-deriving.
 - `fixtures/spectora/`: six real Spectora exports plus a README of their quirks. Tests import against these. Never edit them; add new fixtures instead.
 - `GLOSSARY.md`, `docs/adr/`: domain vocabulary and decisions (see Agent skills below).
 - `.sandcastle/`: sandboxed agent runner (implement → review loop over GitHub issues).
