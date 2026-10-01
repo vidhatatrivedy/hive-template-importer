@@ -5,8 +5,8 @@ import { applyCuts, type Cut } from "@/core/sanitise";
 
 export type Cell = string | number | boolean | null;
 
-/** Issue kinds, or a named rule. Null means an Unexplained difference. */
-export type DifferenceExplanation = { issues: IssueKind[] } | { rule: string };
+/** Import issue kinds, or the entity-decoding rule. A null explanation is an Unexplained difference. */
+export type DifferenceExplanation = { issues: IssueKind[] } | { rule: "entity-decoding" };
 
 export type Difference = {
   column: string;
@@ -22,6 +22,7 @@ export type ExportRow = {
 
 export type ReconcileRow = {
   sourceRow: number | null;
+  /** ✓ when every difference is explained; ✗ when any is Unexplained. */
   status: "✓" | "✗";
   differences: Difference[];
 };
@@ -62,8 +63,8 @@ type PlacedComment = {
   comment: Comment;
 };
 
-type Anchor = PlacedComment & {
-  cells: Cell[];
+/** A Comment in tree order, with the difference list its check writes into. */
+type CheckedComment = PlacedComment & {
   differences: Difference[];
   source: SourceRow | null;
 };
@@ -76,7 +77,7 @@ export function toExportRows(tree: EditableTree, evidence: ImportEvidence): Expo
   const headers = evidence.run.headers;
   const sourceByRow = indexSourceRows(evidence);
   return walk(tree).map(({ section, item, comment }) => {
-    const source = comment.sourceRow === null ? undefined : sourceByRow.get(comment.sourceRow);
+    const source = sourceRowOf(comment, sourceByRow);
     const cells = source ? copyCells(source.cells, headers.length) : blankCells(headers.length);
     writeTypedCells(cells, headers, section, item, comment);
     return { sourceRow: comment.sourceRow, cells };
@@ -95,24 +96,25 @@ export function reconcile(evidence: ImportEvidence, tree: EditableTree): Reconci
   for (const source of evidence.sourceRows) differencesByRow.set(source.rowNumber, []);
 
   const exported = toExportRows(tree, evidence);
-  const anchors: Anchor[] = [];
+  const checked: CheckedComment[] = [];
   const commentCount = new Map<number, number>();
-  let exportIndex = 0;
 
-  for (const placed of walk(tree)) {
-    const cells = exported[exportIndex]?.cells ?? blankCells(headers.length);
-    exportIndex += 1;
-    const source = placed.comment.sourceRow === null ? undefined : sourceByRow.get(placed.comment.sourceRow);
-    if (source && differencesByRow.has(source.rowNumber)) {
-      const differences = differencesByRow.get(source.rowNumber) ?? [];
+  // A sourced Comment shares its Source row's difference list, so later order and boundary
+  // flags land on that row. A Comment with no Source row keeps a list of its own.
+  for (const [index, placed] of walk(tree).entries()) {
+    const cells = exported[index]?.cells ?? blankCells(headers.length);
+    const source = sourceRowOf(placed.comment, sourceByRow);
+    const differences = source ? differencesByRow.get(source.rowNumber) : undefined;
+    if (source && differences) {
       differences.push(...fieldDifferences(headers, cells, source, issuesByRow.get(source.rowNumber) ?? []));
       commentCount.set(source.rowNumber, (commentCount.get(source.rowNumber) ?? 0) + 1);
-      anchors.push({ ...placed, cells, differences, source });
+      checked.push({ ...placed, differences, source });
     } else {
-      const differences: Difference[] = [
-        { column: "Source row", raw: placed.comment.sourceRow, stored: null, explanation: null },
-      ];
-      anchors.push({ ...placed, cells, differences, source: null });
+      checked.push({
+        ...placed,
+        differences: [{ column: "Source row", raw: placed.comment.sourceRow, stored: null, explanation: null }],
+        source: null,
+      });
     }
   }
 
@@ -127,27 +129,19 @@ export function reconcile(evidence: ImportEvidence, tree: EditableTree): Reconci
     }
   }
 
-  flagOrder(anchors);
-  flagBoundaries(anchors, headers);
+  flagSourceRowOrder(checked);
+  flagBoundaries(checked, headers);
 
   const rows: ReconcileRow[] = [];
   for (const source of evidence.sourceRows) {
     rows.push(toRow(source.rowNumber, differencesByRow.get(source.rowNumber) ?? []));
   }
-  for (const anchor of anchors) {
-    if (anchor.source === null) rows.push(toRow(anchor.comment.sourceRow, anchor.differences));
+  for (const entry of checked) {
+    if (entry.source === null) rows.push(toRow(entry.comment.sourceRow, entry.differences));
   }
   rows.push(...emptyStructure(tree));
 
-  let explained = 0;
-  let unexplained = 0;
-  for (const row of rows) {
-    for (const difference of row.differences) {
-      if (difference.explanation === null) unexplained += 1;
-      else explained += 1;
-    }
-  }
-  return { rows, verified: rows.filter((row) => row.status === "✓").length, total: rows.length, explained, unexplained };
+  return { rows, ...tally(rows) };
 }
 
 function walk(tree: EditableTree): PlacedComment[] {
@@ -162,6 +156,11 @@ function walk(tree: EditableTree): PlacedComment[] {
 
 function indexSourceRows(evidence: ImportEvidence): Map<number, SourceRow> {
   return new Map(evidence.sourceRows.map((row) => [row.rowNumber, row]));
+}
+
+function sourceRowOf(comment: Comment, sourceByRow: ReadonlyMap<number, SourceRow>): SourceRow | undefined {
+  if (comment.sourceRow === null) return undefined;
+  return sourceByRow.get(comment.sourceRow);
 }
 
 function indexIssues(issues: readonly ImportIssue[]): Map<number, ImportIssue[]> {
@@ -205,7 +204,12 @@ function defaultCell(comment: Comment): Cell {
   return comment.defaultText;
 }
 
-function fieldDifferences(headers: readonly string[], storedCells: readonly Cell[], source: SourceRow, issues: readonly ImportIssue[]): Difference[] {
+function fieldDifferences(
+  headers: readonly string[],
+  storedCells: readonly Cell[],
+  source: SourceRow,
+  issues: readonly ImportIssue[],
+): Difference[] {
   const differences: Difference[] = [];
   for (let index = 0; index < headers.length; index += 1) {
     const column = headers[index] ?? "";
@@ -219,7 +223,7 @@ function fieldDifferences(headers: readonly string[], storedCells: readonly Cell
 }
 
 function compareCell(column: string, raw: Cell, stored: Cell, issues: readonly ImportIssue[]): Difference | null {
-  if (matchesAny(column, [COMMENT_TEXT])) return commentTextDifference(column, raw, stored, issues);
+  if (sameHeader(column, COMMENT_TEXT)) return commentTextDifference(column, raw, stored, issues);
   if (matchesAny(column, NAME_COLUMNS)) return nameDifference(column, raw, stored, issues);
   return equalityDifference(column, raw, stored);
 }
@@ -237,17 +241,21 @@ function commentTextDifference(column: string, raw: Cell, stored: Cell, issues: 
 
 function nameDifference(column: string, raw: Cell, stored: Cell, issues: readonly ImportIssue[]): Difference | null {
   if (Object.is(raw, stored)) return null;
-  const decoded = typeof raw === "string" ? decodeHTML(raw) : raw === null ? "" : String(raw);
+
+  const decoded = cellText(raw);
   const trimmed = decoded.trim();
   const storedText = typeof stored === "string" ? stored : null;
+  const decodedEntities = typeof raw === "string" && decoded !== raw;
 
-  if (storedText !== null && storedText === decoded && typeof raw === "string" && decoded !== raw) {
+  if (storedText === decoded && decodedEntities) {
     return { column, raw, stored, explanation: { rule: "entity-decoding" } };
   }
 
-  const becameBlank = stored === null && trimmed === "";
-  if ((storedText === trimmed || becameBlank) && trimmed !== decoded) {
-    const explained = issues.some((issue) => issue.kind === "whitespace-trimmed" && sameHeader(fieldOf(issue.detail) ?? "", column));
+  const storedAsBlank = stored === null && trimmed === "";
+  if ((storedText === trimmed || storedAsBlank) && trimmed !== decoded) {
+    const explained = issues.some(
+      (issue) => issue.kind === "whitespace-trimmed" && sameHeader(fieldOf(issue.detail) ?? "", column),
+    );
     return { column, raw, stored, explanation: explained ? { issues: ["whitespace-trimmed"] } : null };
   }
 
@@ -261,19 +269,18 @@ function equalityDifference(column: string, raw: Cell, stored: Cell): Difference
 
 /** Cuts sorted by start. Null when they are out of range or overlapping, which the check cannot explain. */
 function replay(input: string, issues: readonly ImportIssue[]): string | null {
-  const cuts: Cut[] = [];
-  for (const issue of issues) {
-    for (const cut of issue.cuts) {
-      cuts.push({
+  const cuts: Cut[] = issues.flatMap((issue) =>
+    issue.cuts.map(
+      (cut): Cut => ({
         start: cut.start,
         end: cut.end,
         kind: cut.kind,
         removedText: cut.removedText,
         replacement: cut.replacement ?? undefined,
         context: { tag: "" },
-      });
-    }
-  }
+      }),
+    ),
+  );
   cuts.sort((left, right) => left.start - right.start || left.end - right.end);
   try {
     return applyCuts(input, cuts);
@@ -282,37 +289,39 @@ function replay(input: string, issues: readonly ImportIssue[]): string | null {
   }
 }
 
-function flagOrder(anchors: readonly Anchor[]): void {
+function flagSourceRowOrder(checked: readonly CheckedComment[]): void {
   let previous: number | null = null;
-  for (const anchor of anchors) {
-    const rowNumber = anchor.comment.sourceRow;
+  for (const entry of checked) {
+    const rowNumber = entry.comment.sourceRow;
     if (typeof rowNumber !== "number") continue;
     if (previous !== null && rowNumber <= previous) {
-      anchor.differences.push({ column: "Source row", raw: previous, stored: rowNumber, explanation: null });
+      entry.differences.push({ column: "Source row", raw: previous, stored: rowNumber, explanation: null });
     }
     previous = rowNumber;
   }
 }
 
-function flagBoundaries(anchors: readonly Anchor[], headers: readonly string[]): void {
+function flagBoundaries(checked: readonly CheckedComment[], headers: readonly string[]): void {
   const sectionIndex = columnIndex(headers, SECTION_NAME);
   const itemIndex = columnIndex(headers, ITEM_NAME);
-  let previous: Anchor | null = null;
-  for (const anchor of anchors) {
-    if (previous?.source && anchor.source) {
-      const sourceSectionBreak = normalisedName(cellAt(previous.source, sectionIndex)) !== normalisedName(cellAt(anchor.source, sectionIndex));
-      const treeSectionBreak = previous.section !== anchor.section;
+  let previous: CheckedComment | null = null;
+  for (const current of checked) {
+    if (previous?.source && current.source) {
+      const sourceSectionBreak =
+        normalisedName(cellAt(previous.source, sectionIndex)) !== normalisedName(cellAt(current.source, sectionIndex));
+      const treeSectionBreak = previous.section !== current.section;
       if (sourceSectionBreak !== treeSectionBreak) {
-        anchor.differences.push(boundary("Section boundary", sourceSectionBreak, treeSectionBreak));
+        current.differences.push(boundary("Section boundary", sourceSectionBreak, treeSectionBreak));
       }
       const sourceItemBreak =
-        sourceSectionBreak || normalisedName(cellAt(previous.source, itemIndex)) !== normalisedName(cellAt(anchor.source, itemIndex));
-      const treeItemBreak = previous.item !== anchor.item;
+        sourceSectionBreak ||
+        normalisedName(cellAt(previous.source, itemIndex)) !== normalisedName(cellAt(current.source, itemIndex));
+      const treeItemBreak = previous.item !== current.item;
       if (sourceItemBreak !== treeItemBreak) {
-        anchor.differences.push(boundary("Item boundary", sourceItemBreak, treeItemBreak));
+        current.differences.push(boundary("Item boundary", sourceItemBreak, treeItemBreak));
       }
     }
-    if (anchor.source) previous = anchor;
+    if (current.source) previous = current;
   }
 }
 
@@ -341,12 +350,30 @@ function emptyStructure(tree: EditableTree): ReconcileRow[] {
 }
 
 function toRow(sourceRow: number | null, differences: Difference[]): ReconcileRow {
-  return { sourceRow, status: differences.some((difference) => difference.explanation === null) ? "✗" : "✓", differences };
+  const unexplained = differences.some((difference) => difference.explanation === null);
+  return { sourceRow, status: unexplained ? "✗" : "✓", differences };
+}
+
+function tally(rows: readonly ReconcileRow[]): Pick<ReconcileResult, "verified" | "total" | "explained" | "unexplained"> {
+  let explained = 0;
+  let unexplained = 0;
+  for (const row of rows) {
+    for (const difference of row.differences) {
+      if (difference.explanation === null) unexplained += 1;
+      else explained += 1;
+    }
+  }
+  return { verified: rows.filter((row) => row.status === "✓").length, total: rows.length, explained, unexplained };
+}
+
+function cellText(value: Cell): string {
+  if (typeof value === "string") return decodeHTML(value);
+  if (value === null) return "";
+  return String(value);
 }
 
 function normalisedName(value: Cell): string {
-  const text = typeof value === "string" ? decodeHTML(value) : value === null ? "" : String(value);
-  return text.trim();
+  return cellText(value).trim();
 }
 
 function fieldOf(detail: unknown): string | null {

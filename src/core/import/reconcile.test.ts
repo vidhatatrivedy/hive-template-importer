@@ -81,15 +81,7 @@ describe("reconciliation", () => {
 
     const stripped = structuredClone(draft);
     stripped.issues = stripped.issues.filter(
-      (issue) =>
-        !(
-          issue.kind === "whitespace-trimmed" &&
-          issue.sourceRow === 474 &&
-          typeof issue.detail === "object" &&
-          issue.detail !== null &&
-          "field" in issue.detail &&
-          issue.detail.field === "Item Name"
-        ),
+      (issue) => !(issue.kind === "whitespace-trimmed" && issue.sourceRow === 474 && detailField(issue.detail) === "Item Name"),
     );
     const broken = reconcile(stripped, stripped.tree);
     expect(rowAt(broken.rows, 474)?.status).toBe("✗");
@@ -106,21 +98,21 @@ describe("reconciliation", () => {
     const changed = draft.sourceRows.find((row) =>
       draft.issues.some((issue) => issue.sourceRow === row.rowNumber && issue.cuts.length > 0),
     );
-    expect(changed).toBeDefined();
+    if (!changed) throw new Error("No Source row with cuts");
 
     const faithful = reconcile(draft, draft.tree);
-    const text = rowAt(faithful.rows, changed?.rowNumber)?.differences.find((difference) => difference.column === "Comment Text");
+    const text = rowAt(faithful.rows, changed.rowNumber)?.differences.find((difference) => difference.column === "Comment Text");
     expect(text?.explanation).toEqual({
       issues: draft.issues
-        .filter((issue) => issue.sourceRow === changed?.rowNumber && issue.cuts.length > 0)
+        .filter((issue) => issue.sourceRow === changed.rowNumber && issue.cuts.length > 0)
         .map((issue) => issue.kind),
     });
 
     const corrupted = structuredClone(draft);
-    const comment = commentOn(corrupted, changed!.rowNumber);
+    const comment = commentOn(corrupted, changed.rowNumber);
     comment.textHtml = `${comment.textHtml}x`;
     const broken = reconcile(corrupted, corrupted.tree);
-    expect(rowAt(broken.rows, changed?.rowNumber)?.differences).toContainEqual(
+    expect(rowAt(broken.rows, changed.rowNumber)?.differences).toContainEqual(
       expect.objectContaining({ column: "Comment Text", stored: comment.textHtml, explanation: null }),
     );
   });
@@ -145,11 +137,11 @@ describe("reconciliation", () => {
     const draft = structuredClone(await draftOf(RADON));
     const comments = draft.tree.sections[0]?.items[0]?.comments;
     const original = comments?.[0];
-    expect(original).toBeDefined();
-    comments?.push(structuredClone(original!));
+    if (!comments || !original) throw new Error("Tree has no Comment");
+    comments.push(structuredClone(original));
 
     const result = reconcile(draft, draft.tree);
-    expect(rowAt(result.rows, original?.sourceRow)?.differences).toContainEqual(
+    expect(rowAt(result.rows, original.sourceRow)?.differences).toContainEqual(
       expect.objectContaining({ column: "Comment", raw: original?.sourceRow, stored: 2, explanation: null }),
     );
   });
@@ -184,17 +176,18 @@ describe("reconciliation", () => {
   it("flags Source row numbers that are not strictly increasing", async () => {
     const draft = structuredClone(await draftOf(RADON));
     const item = draft.tree.sections.flatMap((section) => section.items).find((entry) => entry.comments.length >= 2);
-    expect(item).toBeDefined();
-    const [first, second] = item!.comments;
-    item!.comments[0] = second!;
-    item!.comments[1] = first!;
+    if (!item || item.comments.length < 2) throw new Error("Tree has no Item with two Comments");
+    const first = item.comments[0];
+    const second = item.comments[1];
+    item.comments[0] = second;
+    item.comments[1] = first;
 
     const result = reconcile(draft, draft.tree);
-    expect(rowAt(result.rows, first?.sourceRow)?.differences).toContainEqual(
+    expect(rowAt(result.rows, first.sourceRow)?.differences).toContainEqual(
       expect.objectContaining({
         column: "Source row",
-        raw: second?.sourceRow,
-        stored: first?.sourceRow,
+        raw: second.sourceRow,
+        stored: first.sourceRow,
         explanation: null,
       }),
     );
@@ -226,10 +219,11 @@ describe("reconciliation", () => {
     const draft = structuredClone(await draftOf(RADON));
     const section = draft.tree.sections.find((entry) => entry.items.some((item) => item.comments.length >= 2));
     const item = section?.items.find((entry) => entry.comments.length >= 2);
-    expect(section && item).toBeTruthy();
-    const [first, ...rest] = item!.comments;
-    const index = section!.items.indexOf(item!);
-    section!.items.splice(index, 1, { name: item!.name, comments: [first!] }, { name: item!.name, comments: rest });
+    if (!section || !item || item.comments.length < 2) throw new Error("Tree has no Item with two Comments");
+    const first = item.comments[0];
+    const rest = item.comments.slice(1);
+    const index = section.items.indexOf(item);
+    section.items.splice(index, 1, { name: item.name, comments: [first] }, { name: item.name, comments: rest });
 
     const result = reconcile(draft, draft.tree);
     expect(rowAt(result.rows, rest[0]?.sourceRow)?.differences).toContainEqual({
@@ -287,6 +281,11 @@ describe("verify", () => {
     expect(verifyExitCode([broken])).toBe(1);
   });
 });
+
+function detailField(detail: unknown): string | null {
+  if (typeof detail !== "object" || detail === null || !("field" in detail)) return null;
+  return typeof detail.field === "string" ? detail.field : null;
+}
 
 function rowAt(rows: ReconcileRow[], sourceRow: number | null | undefined): ReconcileRow | undefined {
   return rows.find((row) => row.sourceRow === sourceRow);
