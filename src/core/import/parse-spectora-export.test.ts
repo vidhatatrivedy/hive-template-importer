@@ -293,11 +293,11 @@ describe("parseSpectoraExport", () => {
     expect(renderIssueMessage("boolean-default-normalised", { value: false })).toBe("Default Value was stored as no.");
     expect(renderIssueMessage("boolean-default-normalised", { value: true })).toBe("Default Value was stored as yes.");
 
-    const fRows = [71, 141, 245, 263, 278, 285, 294, 340, 368, 573, 575, 1142];
+    const sourceRowsWithF = [71, 141, 245, 263, 278, 285, 294, 340, 368, 573, 575, 1142];
     expect(draft.issues.filter((issue) => issue.kind === "boolean-default-normalised").map((issue) => issue.sourceRow)).toEqual(
-      fRows,
+      sourceRowsWithF,
     );
-    for (const rowNumber of fRows) {
+    for (const rowNumber of sourceRowsWithF) {
       const comment = commentOn(draft, rowNumber);
       expect(comment.defaultBoolean, String(rowNumber)).toBe(false);
       expect(comment.defaultText, String(rowNumber)).toBeNull();
@@ -309,7 +309,7 @@ describe("parseSpectoraExport", () => {
       });
     }
     const defaultColumn = draft.run.headers.indexOf(DEFAULT_VALUE);
-    for (const rowNumber of fRows) {
+    for (const rowNumber of sourceRowsWithF) {
       expect(draft.sourceRows.find((row) => row.rowNumber === rowNumber)?.cells[defaultColumn], String(rowNumber)).toBe("f");
     }
 
@@ -1649,6 +1649,7 @@ async function defaultsDraft(): Promise<ImportDraft> {
     rowFor(HEADERS, { "comment name": "Padded true", "default value": " true" }),
     rowFor(HEADERS, { "comment name": "Maybe", "default value": "maybe" }),
     rowFor(HEADERS, { "comment name": "Exact true", "default value": "true" }),
+    xlsxBooleanDefault("Xlsx false", false),
     rowFor(HEADERS, { "comment name": "Not an option", "answer type": "checkbox", "default value": "Other", "multiple choice options": "Client, Agent" }),
     rowFor(HEADERS, { "comment name": "Trimmed missing", "answer type": "checkbox", "default value": " Other ", "multiple choice options": "Client, Agent" }),
     rowFor(HEADERS, { "comment name": "Trimmed present", "answer type": "checkbox", "default value": " Client ", "multiple choice options": "Client, Agent" }),
@@ -1662,15 +1663,14 @@ async function defaultsDraft(): Promise<ImportDraft> {
     rowFor(HEADERS, { "comment name": "Text trim", "answer type": "text", "default value": "  hello  " }),
     rowFor(HEADERS, { "comment name": "Blank boolean", "default value": "   " }),
   ];
-  const xlsxFalse = rowFor(HEADERS, { "comment name": "Xlsx false", "answer type": "boolean", "default value": null });
+  return expectDraft(await parseSpectoraExport(await writeXlsxFile([HEADERS, ...rows]).toBuffer(), "defaults.xls"));
+}
+
+/** `rowFor` cannot write an xlsx boolean cell, so the Default Value cell is replaced after the row is built. */
+function xlsxBooleanDefault(name: string, value: boolean) {
+  const row = rowFor(HEADERS, { "comment name": name, "answer type": "boolean", "default value": null });
   const defaultIndex = HEADERS.indexOf(DEFAULT_VALUE);
-  const booleanFalse = xlsxFalse.map((cell, index) => (index === defaultIndex ? { value: false, type: Boolean } : cell));
-  const ordered = [
-    ...rows.slice(0, 5),
-    booleanFalse,
-    ...rows.slice(5),
-  ];
-  return expectDraft(await parseSpectoraExport(await writeXlsxFile([HEADERS, ...ordered]).toBuffer(), "defaults.xls"));
+  return row.map((cell, index) => (index === defaultIndex ? { value, type: Boolean } : cell));
 }
 
 function storedDefaults(draft: ImportDraft) {

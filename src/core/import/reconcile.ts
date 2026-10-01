@@ -254,6 +254,9 @@ function compareCell(
   return equalityDifference(column, raw, stored);
 }
 
+/** `changed: false` means the stored text matches. `explanation: null` means it changed and nothing explains it. */
+type ValueChange = { changed: false } | { changed: true; explanation: DifferenceExplanation | null };
+
 /**
  * A boolean default of `f`/`t` or odd case needs `boolean-default-normalised`.
  * Anything else non-blank needs `boolean-default-invalid`. Exact `true`/`false` and an xlsx
@@ -274,13 +277,9 @@ function defaultDifference(
   const storedText = typeof stored === "string" ? stored : null;
   if (storedText === null || storedText === "") return diff;
   if (splitOptions(choiceOptions).includes(storedText)) return diff;
-  const notIn = explanationForKind(issues, "checkbox-default-not-in-options");
-  if (diff === null) return { column, raw, stored, explanation: notIn };
-  if (!notIn || diff.explanation === null) return { column, raw, stored, explanation: null };
-  if ("issues" in diff.explanation) {
-    return { column, raw, stored, explanation: { issues: [...diff.explanation.issues, "checkbox-default-not-in-options"] } };
-  }
-  return diff;
+  const change: ValueChange =
+    diff === null ? { changed: false } : { changed: true, explanation: diff.explanation };
+  return withCheckIssue(column, raw, stored, change, issues, "checkbox-default-not-in-options");
 }
 
 function booleanDefaultDifference(
@@ -290,16 +289,16 @@ function booleanDefaultDifference(
   issues: readonly ImportIssue[],
 ): Difference | null {
   if (raw === true || raw === false) {
-    if (stored !== (raw ? "true" : "false")) return { column, raw, stored, explanation: null };
-    return null;
+    const expected = raw ? "true" : "false";
+    if (stored === expected) return null;
+    return { column, raw, stored, explanation: null };
   }
-  const text = (typeof raw === "string" ? cellText(raw) : raw === null ? "" : String(raw)).trim();
+  const text = cellText(raw).trim();
   if (text === "") {
     if (stored === null) return null;
     return { column, raw, stored, explanation: null };
   }
-  const lower = text.toLowerCase();
-  const canonical = lower === "true" || lower === "t" ? "true" : lower === "false" || lower === "f" ? "false" : null;
+  const canonical = canonicalBooleanText(text);
   if (canonical === null) {
     if (stored !== null) return { column, raw, stored, explanation: null };
     return { column, raw, stored, explanation: explanationForKind(issues, "boolean-default-invalid") };
@@ -307,6 +306,14 @@ function booleanDefaultDifference(
   if (stored !== canonical) return { column, raw, stored, explanation: null };
   if (raw === canonical) return null;
   return { column, raw, stored, explanation: explanationForKind(issues, "boolean-default-normalised") };
+}
+
+/** `true`/`t` and `false`/`f` as the stored words. Own copy of the parser's rule. */
+function canonicalBooleanText(text: string): "true" | "false" | null {
+  const lower = text.toLowerCase();
+  if (lower === "true" || lower === "t") return "true";
+  if (lower === "false" || lower === "f") return "false";
+  return null;
 }
 
 /** A non-boolean default. A number or boolean cell's string form is not a difference. */
@@ -338,9 +345,10 @@ function textDefaultDifference(
 
 /**
  * Entries are split, decoded and trimmed independently of the parser.
- * Whitespace only around commas is the `option-list` rule. A dropped empty entry needs
- * `empty-option-dropped`. Choice options on a non-checkbox answer need `options-orphan`,
- * even when the joined text matches.
+ * A dropped empty entry needs `empty-option-dropped`. Entity decoding is its own rule.
+ * Any other matched list is the `option-list` rule: whitespace around commas, and trimming
+ * of entries. Choice options on a non-checkbox answer need `options-orphan`, even when
+ * the joined text matches.
  */
 function optionDifference(
   column: string,
@@ -360,36 +368,69 @@ function optionDifference(
   if (!sameList(normalised.entries, storedEntries)) return { column, raw, stored, explanation: null };
 
   const orphan = choiceColumn && answerType !== "checkbox" && normalised.entries.length > 0;
-  const unchanged = !normalised.droppedEmpty && !normalised.decoded && (text.trim() === "" ? stored === null : text === stored);
-  if (unchanged) return finishOption(column, raw, stored, undefined, issues, orphan);
+  if (optionTextUnchanged(text, stored, normalised)) {
+    return finishOption(column, raw, stored, { changed: false }, issues, orphan);
+  }
 
-  let explanation: DifferenceExplanation | null;
-  if (normalised.droppedEmpty) explanation = explanationForField(issues, "empty-option-dropped", column);
-  else if (normalised.decoded) explanation = { rule: "entity-decoding" };
-  else explanation = { rule: "option-list" };
-  return finishOption(column, raw, stored, explanation, issues, orphan);
+  const explanation = optionChangeExplanation(column, issues, normalised);
+  return finishOption(column, raw, stored, { changed: true, explanation }, issues, orphan);
 }
 
-/** `undefined` means the joined text did not change. `null` means it changed and nothing explains it. */
+function optionChangeExplanation(
+  column: string,
+  issues: readonly ImportIssue[],
+  normalised: { droppedEmpty: boolean; decoded: boolean },
+): DifferenceExplanation | null {
+  if (normalised.droppedEmpty) return explanationForField(issues, "empty-option-dropped", column);
+  if (normalised.decoded) return { rule: "entity-decoding" };
+  return { rule: "option-list" };
+}
+
+function optionTextUnchanged(
+  text: string,
+  stored: Cell,
+  normalised: { droppedEmpty: boolean; decoded: boolean },
+): boolean {
+  if (normalised.droppedEmpty || normalised.decoded) return false;
+  if (text.trim() === "") return stored === null;
+  return text === stored;
+}
+
 function finishOption(
   column: string,
   raw: Cell,
   stored: Cell,
-  valueExplanation: DifferenceExplanation | null | undefined,
+  change: ValueChange,
   issues: readonly ImportIssue[],
   orphan: boolean,
 ): Difference | null {
   if (!orphan) {
-    if (valueExplanation === undefined) return null;
-    return { column, raw, stored, explanation: valueExplanation };
+    if (!change.changed) return null;
+    return { column, raw, stored, explanation: change.explanation };
   }
-  const orphanExplanation = explanationForKind(issues, "options-orphan");
-  if (valueExplanation === undefined) return { column, raw, stored, explanation: orphanExplanation };
-  if (valueExplanation === null || !orphanExplanation) return { column, raw, stored, explanation: null };
-  if ("issues" in valueExplanation) {
-    return { column, raw, stored, explanation: { issues: [...valueExplanation.issues, "options-orphan"] } };
+  return withCheckIssue(column, raw, stored, change, issues, "options-orphan");
+}
+
+/**
+ * No text change is explained by the Check issue alone.
+ * A named rule stays the explanation, but the Check issue still has to be present.
+ * An issue list gains the Check kind. A missing Check issue, or an unexplained text change, is unexplained.
+ */
+function withCheckIssue(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  change: ValueChange,
+  issues: readonly ImportIssue[],
+  kind: IssueKind,
+): Difference {
+  const check = explanationForKind(issues, kind);
+  if (!change.changed) return { column, raw, stored, explanation: check };
+  if (change.explanation === null || check === null) return { column, raw, stored, explanation: null };
+  if ("issues" in change.explanation) {
+    return { column, raw, stored, explanation: { issues: [...change.explanation.issues, kind] } };
   }
-  return { column, raw, stored, explanation: valueExplanation };
+  return { column, raw, stored, explanation: change.explanation };
 }
 
 function normaliseOptionCell(raw: string): { entries: string[]; droppedEmpty: boolean; decoded: boolean } {

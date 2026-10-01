@@ -526,16 +526,24 @@ function booleanDefault(
   if (value === true || value === false) return { defaultBoolean: value, defaultText: null };
   const text = decodeCell(value).text.trim();
   if (text === "") return { defaultBoolean: null, defaultText: null };
-  const lower = text.toLowerCase();
-  const canonical = lower === "true" || lower === "t" ? true : lower === "false" || lower === "f" ? false : null;
+  const canonical = booleanFromText(text);
   if (canonical === null) {
     issues.push({ kind: "boolean-default-invalid", sourceRow: rowNumber, detail: {}, cuts: [] });
     return { defaultBoolean: null, defaultText: null };
   }
-  if (value !== (canonical ? "true" : "false")) {
+  const exact = canonical ? "true" : "false";
+  if (value !== exact) {
     issues.push({ kind: "boolean-default-normalised", sourceRow: rowNumber, detail: { value: canonical }, cuts: [] });
   }
   return { defaultBoolean: canonical, defaultText: null };
+}
+
+/** `true`/`t` and `false`/`f`, after the caller has trimmed. */
+function booleanFromText(text: string): boolean | null {
+  const lower = text.toLowerCase();
+  if (lower === "true" || lower === "t") return true;
+  if (lower === "false" || lower === "f") return false;
+  return null;
 }
 
 /**
