@@ -880,7 +880,7 @@ describe("parseSpectoraExport", () => {
     expect(result.rejection).toEqual({ kind: "too-large", byteSize: bytes.byteLength, limit: MAX_UPLOAD_BYTES });
     expect(MAX_UPLOAD_BYTES).toBe(4_194_304);
     expect(rejectionMessage(result.rejection)).toBe(
-      "This file is 5242880 bytes, which is over the 4194304-byte limit.",
+      "This file is 5.0 MB, which is over the 4.0 MB limit.",
     );
   });
 

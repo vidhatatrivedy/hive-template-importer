@@ -3,6 +3,8 @@ export type { IssueClass, IssueKind, IssueLevel, IssueSeverity } from "./catalog
 export { parseSpectoraExport } from "./parse-spectora-export";
 export type { ParseResult } from "./parse-spectora-export";
 export { MAX_UPLOAD_BYTES, rejectionKinds, rejectionMessage } from "./rejections";
+export { importErrorKinds, importErrorMessage } from "./import-errors";
+export type { ImportActionError, ImportErrorKind } from "./import-errors";
 export type { Rejection, RejectionKind } from "./rejections";
 export { reconcile, toExportRows } from "./reconcile";
 export type { Cell, Difference, DifferenceExplanation, ExportRow, ReconcileResult, ReconcileRow } from "./reconcile";

@@ -9,10 +9,10 @@ export const glassSheetClass = `${glassClass} !bg-white/75 dark:!bg-neutral-900/
 export const labelClass = "text-[10px] uppercase tracking-[0.08em] text-neutral-400";
 
 export const buttonClass =
-  "inline-flex h-6 items-center rounded-md border border-black/[0.08] px-2.5 text-[11px] hover:bg-black/[0.04] dark:border-white/[0.1] dark:hover:bg-white/[0.06]";
+  "inline-flex h-6 items-center rounded-md border border-black/[0.08] px-2.5 text-[11px] hover:bg-black/[0.04] dark:border-white/[0.1] dark:hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-40";
 
 export const primaryButtonClass =
-  "inline-flex h-6 items-center rounded-md bg-neutral-900 px-2.5 text-[11px] text-white dark:bg-white dark:text-neutral-900";
+  "inline-flex h-6 items-center rounded-md bg-neutral-900 px-2.5 text-[11px] text-white dark:bg-white dark:text-neutral-900 disabled:pointer-events-none disabled:opacity-40";
 
 /** Import issue severity is weight, never colour. */
 export const severityWarningClass = "font-medium text-neutral-900 dark:text-white";

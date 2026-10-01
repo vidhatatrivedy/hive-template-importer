@@ -26,7 +26,7 @@ const EXPORT_HTML_TEXT = "In Spectora: Template → ⋮ → Export to spreadshee
 export function rejectionMessage(rejection: Rejection): string {
   switch (rejection.kind) {
     case "too-large":
-      return `This file is ${rejection.byteSize} bytes, which is over the ${rejection.limit}-byte limit.`;
+      return `This file is ${megabytes(rejection.byteSize)}, which is over the ${megabytes(rejection.limit)} limit.`;
     case "not-xlsx":
       return `This isn't a Spectora spreadsheet export. ${EXPORT_HTML_TEXT}`;
     case "unreadable-xlsx":
@@ -42,6 +42,11 @@ export function rejectionMessage(rejection: Rejection): string {
       throw new Error(`Unknown rejection kind: ${String(unreachable)}`);
     }
   }
+}
+
+/** MB as the limit is defined: 1 MB = 1024 × 1024 bytes, so the limit reads 4.0 MB. */
+function megabytes(byteSize: number): string {
+  return `${(byteSize / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function joinNames(names: readonly string[]): string {
