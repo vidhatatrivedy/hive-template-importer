@@ -3,6 +3,7 @@ import {
   lifecyclePrompt,
   parseOpenTemplate,
   relativeTime,
+  renamePlan,
   sidebarLine,
   type ActionTarget,
   type OpenTemplate,
@@ -103,6 +104,28 @@ describe("parseOpenTemplate", () => {
 
   it("decodes the id the way templateHref encodes it", () => {
     expect(parseOpenTemplate("/t/a%20b")).toEqual({ templateId: "a b", viewingVersion: null });
+  });
+});
+
+describe("renamePlan", () => {
+  it("refuses a blank name, including spaces and a non-breaking space", () => {
+    expect(renamePlan("Kitchen", "")).toEqual({ kind: "blank" });
+    expect(renamePlan("Kitchen", "   ")).toEqual({ kind: "blank" });
+    expect(renamePlan("Kitchen", "\u00a0")).toEqual({ kind: "blank" });
+    expect(renamePlan("Kitchen", " \u00a0 ")).toEqual({ kind: "blank" });
+  });
+
+  it("closes without saving when the trimmed name is the current name", () => {
+    expect(renamePlan("Kitchen", "Kitchen")).toEqual({ kind: "unchanged" });
+    expect(renamePlan("Kitchen", "  Kitchen  ")).toEqual({ kind: "unchanged" });
+    expect(renamePlan("InterNACHI Residential", "\u00a0InterNACHI Residential\u00a0")).toEqual({
+      kind: "unchanged",
+    });
+  });
+
+  it("stores the trimmed name when it changed", () => {
+    expect(renamePlan("Kitchen", "  Bath  ")).toEqual({ kind: "rename", name: "Bath" });
+    expect(renamePlan("Kitchen", "\u00a0Kitchen fan")).toEqual({ kind: "rename", name: "Kitchen fan" });
   });
 });
 

@@ -78,6 +78,7 @@ export async function TemplateScreen({
         <Editor
           templateId={template.id}
           templateName={template.name}
+          latestNumber={latest.number}
           versionId={viewed.id}
           versionNumber={viewed.number}
           tree={tree}

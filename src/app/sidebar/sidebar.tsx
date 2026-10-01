@@ -1,8 +1,9 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useSyncExternalStore } from "react";
-import { parseOpenTemplate, sidebarLine } from "@/app/sidebar/sidebar-view";
+import { useState, useSyncExternalStore } from "react";
+import { parseOpenTemplate, sidebarLine, type ActionTarget } from "@/app/sidebar/sidebar-view";
+import { TemplateActions } from "@/app/sidebar/template-actions";
 import { templateHref } from "@/app/template-view";
 import { GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass, glassClass, labelClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
@@ -18,10 +19,13 @@ export type SidebarList =
  * instead of widening the row, so the editor's columns never reflow.
  */
 export function Sidebar({ list }: { list: SidebarList }) {
+  const [actionsOpen, setActionsOpen] = useState(false);
   return (
     <aside
       aria-label="Templates"
-      className={`${glassClass} group absolute top-3 bottom-3 left-3 z-30 flex w-11 flex-col overflow-hidden rounded-2xl transition-[width] duration-150 focus-within:w-60 hover:w-60`}
+      className={`${glassClass} group absolute top-3 bottom-3 left-3 z-30 flex flex-col overflow-hidden rounded-2xl transition-[width] duration-150 ${
+        actionsOpen ? "w-60" : "w-11 focus-within:w-60 hover:w-60"
+      }`}
     >
       <div className="flex w-60 shrink-0 flex-col gap-2 py-3">
         <div className="flex items-center">
@@ -36,14 +40,24 @@ export function Sidebar({ list }: { list: SidebarList }) {
           </GuardedLink>
         </div>
       </div>
-      <div className="w-60 min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-        <SidebarContent list={list} />
+      <div
+        className={`w-60 min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 transition-opacity ${
+          actionsOpen ? "opacity-100" : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+        }`}
+      >
+        <SidebarContent list={list} onActionsOpenChange={setActionsOpen} />
       </div>
     </aside>
   );
 }
 
-function SidebarContent({ list }: { list: SidebarList }) {
+function SidebarContent({
+  list,
+  onActionsOpenChange,
+}: {
+  list: SidebarList;
+  onActionsOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   if (list.state === "loading") return null;
   if (list.state === "failed") {
@@ -57,27 +71,40 @@ function SidebarContent({ list }: { list: SidebarList }) {
     );
   }
   if (list.summaries.length === 0) return <p className="px-1.5 text-neutral-500">No Templates yet.</p>;
-  return <TemplateRows summaries={list.summaries} />;
+  return <TemplateRows summaries={list.summaries} onActionsOpenChange={onActionsOpenChange} />;
 }
 
-/** Rows in `listTemplates()` order, never re-sorted. */
-function TemplateRows({ summaries }: { summaries: TemplateSummary[] }) {
+/** Rows in `listTemplates()` order, never re-sorted. The "⋯" sits outside the link. */
+function TemplateRows({
+  summaries,
+  onActionsOpenChange,
+}: {
+  summaries: TemplateSummary[];
+  onActionsOpenChange: (open: boolean) => void;
+}) {
   const openId = parseOpenTemplate(usePathname())?.templateId;
   return (
     <ul className="flex flex-col gap-px">
       {summaries.map((summary) => {
         const active = summary.id === openId;
+        const target: ActionTarget = { id: summary.id, name: summary.name, latestNumber: summary.latest.number };
         return (
-          <li key={summary.id}>
+          <li key={summary.id} className="group/row relative">
             <GuardedLink
               href={templateHref(summary.id, { panes: new Set(), row: null })}
               title={summary.name}
               aria-current={active ? "page" : undefined}
-              className={`flex flex-col rounded-lg px-1.5 py-1 ${active ? rowActiveClass : rowIdleClass}`}
+              className={`flex flex-col rounded-lg py-1 pr-7 pl-1.5 ${active ? rowActiveClass : rowIdleClass}`}
             >
               <span className="truncate text-neutral-900 dark:text-white">{summary.name}</span>
               <SidebarLine summary={summary} />
             </GuardedLink>
+            <TemplateActions
+              target={target}
+              placement="row"
+              revealed={active}
+              onOpenChange={onActionsOpenChange}
+            />
           </li>
         );
       })}

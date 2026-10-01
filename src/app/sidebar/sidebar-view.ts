@@ -30,6 +30,20 @@ export type Prompt =
   | { kind: "duplicate-viewing"; name: string; viewing: number; latestNumber: number }
   | { kind: "delete"; name: string; versions: number; losesEdits: boolean; leaves: boolean };
 
+/**
+ * What Rename does with the name in the field.
+ * Trim matches Save: `String#trim`, which also strips U+00A0.
+ */
+export type RenamePlan = { kind: "blank" } | { kind: "unchanged" } | { kind: "rename"; name: string };
+
+/** A blank trimmed name stays disabled. The current name closes the dialog and saves nothing. */
+export function renamePlan(currentName: string, entered: string): RenamePlan {
+  const name = entered.trim();
+  if (name === "") return { kind: "blank" };
+  if (name === currentName) return { kind: "unchanged" };
+  return { kind: "rename", name };
+}
+
 /** Rename and links never prompt here: Rename leaves the edits alone, and links use the guard. */
 export function lifecyclePrompt(
   action: "blank" | "duplicate" | "delete",

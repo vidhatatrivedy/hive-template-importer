@@ -30,6 +30,7 @@ import {
   type NodeRef,
   type OptionChange,
 } from "@/app/editor/editor-state";
+import { TemplateActions } from "@/app/sidebar/template-actions";
 import { templateHref } from "@/app/template-view";
 import { confirmChoice, ConfirmDialog, confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, labelClass, primaryButtonClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
@@ -94,6 +95,7 @@ const controlClass =
 export function Editor({
   templateId,
   templateName,
+  latestNumber,
   versionId,
   versionNumber,
   tree,
@@ -108,6 +110,8 @@ export function Editor({
 }: {
   templateId: string;
   templateName: string;
+  /** How many Versions the Template has. Rename's target, not the Version on screen. */
+  latestNumber: number;
   versionId: string;
   versionNumber: number;
   tree: EditableTree;
@@ -271,6 +275,12 @@ export function Editor({
           itemName={item?.name ?? null}
           commentName={comment?.name ?? null}
           onFocus={focusColumn}
+          actions={
+            <TemplateActions
+              target={{ id: templateId, name: templateName, latestNumber }}
+              placement="header"
+            />
+          }
         />
         <p className="shrink-0 text-neutral-500 tabular-nums">{counts}</p>
         {showEditing ? (
@@ -1357,12 +1367,14 @@ function Breadcrumb({
   itemName,
   commentName,
   onFocus,
+  actions,
 }: {
   templateName: string;
   sectionName: string | null;
   itemName: string | null;
   commentName: string | null;
   onFocus: (column: Column) => void;
+  actions: ReactNode;
 }) {
   return (
     <nav aria-label="Template" className="flex min-w-0 items-center gap-1.5">
@@ -1371,6 +1383,7 @@ function Breadcrumb({
           {templateName}
         </button>
       </h1>
+      {actions}
       {sectionName ? <Crumb label={sectionName} onClick={() => onFocus("sections")} /> : null}
       {itemName ? <Crumb label={itemName} onClick={() => onFocus("items")} /> : null}
       {commentName ? <Crumb label={commentName} onClick={() => onFocus("comments")} /> : null}
