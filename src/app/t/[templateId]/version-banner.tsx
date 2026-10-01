@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { restoreErrorMessage, type RestoreError } from "@/core/import/editor-messages";
 import { templateHref, type TemplateView } from "@/app/template-view";
 import { restorePrompt } from "@/app/version-label";
@@ -10,6 +10,9 @@ import { ConfirmDialog, GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
 import { restoreVersion } from "./actions";
+
+const bannerButton = `${buttonClass} shrink-0`;
+const restoringLabel = "Restoring…";
 
 /** Across the editor while an old Version is open. */
 export function VersionBanner({
@@ -30,7 +33,8 @@ export function VersionBanner({
   panes: TemplateView["panes"];
 }) {
   const router = useRouter();
-  const lock = useRef(false);
+  /** Stops a second Restore before `pending` has rendered. */
+  const restoreLock = useRef(false);
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<RestoreError | null>(null);
@@ -38,29 +42,27 @@ export function VersionBanner({
   const errorMessage = error ? restoreErrorMessage(error) : null;
 
   async function confirmRestore() {
-    if (lock.current) return;
-    lock.current = true;
+    if (restoreLock.current) return;
+    restoreLock.current = true;
     setPending(true);
     setError(null);
-    let navigated = false;
+
+    const attempt = await attemptRestore();
+    if (attempt.redirected) return;
+    setError(attempt.error);
+    setOpen(false);
+    restoreLock.current = false;
+    setPending(false);
+  }
+
+  /** A resolved action is a refusal. `redirect` rejects the promise, which is navigation. */
+  async function attemptRestore(): Promise<RestoreAttempt> {
     try {
       const result = await restoreVersion(templateId, versionId, latestNumber, panes);
-      if (!result.ok) {
-        setError(result.error);
-        setOpen(false);
-      }
+      return { redirected: false, error: result.error };
     } catch (caught) {
-      if (isNextRedirect(caught)) {
-        navigated = true;
-        return;
-      }
-      setError({ kind: "restore-failed" });
-      setOpen(false);
-    } finally {
-      if (!navigated) {
-        lock.current = false;
-        setPending(false);
-      }
+      if (isNextRedirect(caught)) return { redirected: true };
+      return { redirected: false, error: { kind: "restore-failed" } };
     }
   }
 
@@ -73,34 +75,17 @@ export function VersionBanner({
           </>
         )}
       </p>
-      {error?.kind === "stale-base" ? (
-        <button type="button" className={`${buttonClass} shrink-0`} onClick={() => router.refresh()}>
-          Reload
-        </button>
-      ) : null}
-      {error?.kind === "template-not-found" ? (
-        <Link href="/import" className={`${buttonClass} shrink-0`}>
-          Import
-        </Link>
-      ) : null}
-      <button
-        type="button"
-        className={`${buttonClass} shrink-0`}
-        disabled={pending}
-        onClick={() => {
-          if (pending) return;
-          setOpen(true);
-        }}
-      >
-        {pending ? "Restoring…" : "Restore this version"}
+      {restoreRecovery(error, () => router.refresh())}
+      <button type="button" className={bannerButton} disabled={pending} onClick={() => setOpen(true)}>
+        {pending ? restoringLabel : "Restore this version"}
       </button>
-      <GuardedLink href={backHref} className={`${buttonClass} shrink-0`}>
+      <GuardedLink href={backHref} className={bannerButton}>
         Back to current
       </GuardedLink>
       {open ? (
         <ConfirmDialog
           message={restorePrompt(number, latestNumber)}
-          confirmLabel={pending ? "Restoring…" : "Restore"}
+          confirmLabel={pending ? restoringLabel : "Restore"}
           cancelLabel="Cancel"
           pending={pending}
           onConfirm={() => void confirmRestore()}
@@ -111,13 +96,30 @@ export function VersionBanner({
   );
 }
 
+type RestoreAttempt = { redirected: true } | { redirected: false; error: RestoreError };
+
+/** Reload or Import, for the two refusals that name a next step. Other failures stay on the banner text. */
+function restoreRecovery(error: RestoreError | null, refresh: () => void): ReactNode {
+  switch (error?.kind) {
+    case "stale-base":
+      return (
+        <button type="button" className={bannerButton} onClick={refresh}>
+          Reload
+        </button>
+      );
+    case "template-not-found":
+      return (
+        <Link href="/import" className={bannerButton}>
+          Import
+        </Link>
+      );
+    default:
+      return null;
+  }
+}
+
 /** A Server Action `redirect` rejects the client promise. That is navigation, not a failed Restore. */
 function isNextRedirect(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "digest" in error &&
-    typeof error.digest === "string" &&
-    error.digest.startsWith("NEXT_REDIRECT")
-  );
+  if (typeof error !== "object" || error === null || !("digest" in error)) return false;
+  return typeof error.digest === "string" && error.digest.startsWith("NEXT_REDIRECT");
 }
