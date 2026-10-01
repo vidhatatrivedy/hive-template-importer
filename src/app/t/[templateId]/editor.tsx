@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useReducer, useRef, type ReactNode, type Ref } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type Ref } from "react";
 import { saveErrorMessage } from "@/core/import/editor-messages";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 import {
+  blankNames,
+  canSave as canSaveState,
   commentGroups,
   editorReducer,
   initialEditorState,
@@ -70,12 +73,15 @@ export function Editor({
   );
   const loadedVersion = useRef(versionId);
   const loadedRow = useRef(row);
-  const commentNodes = useRef(new Map<string, HTMLButtonElement>());
+  const router = useRouter();
+  /** Row buttons of every level, by node id, for scrolling a selection or a blank name into view. */
+  const [rowNodes] = useState(() => new Map<string, HTMLButtonElement>());
+  const nameInput = useRef<HTMLInputElement>(null);
   /** Stops a second Save before the reducer has moved to `saving`. */
   const saveLock = useRef(false);
   const dirty = isDirty(state);
   const savingOrAwaiting = isSavingOrAwaiting(state);
-  const canSave = dirty && !savingOrAwaiting;
+  const canSave = canSaveState(state);
   const canDiscard = dirty && !savingOrAwaiting;
   useReportUnsaved(dirty);
 
@@ -96,7 +102,12 @@ export function Editor({
     saveLock.current = true;
     const baseNumber = state.base.number;
     const working = state.tree;
+    const requested = editorReducer(state, { type: "saveRequested" });
     dispatch({ type: "saveRequested" });
+    if (requested.save.status !== "saving") {
+      saveLock.current = false;
+      return;
+    }
     try {
       const result = await saveTemplate(templateId, baseNumber, working);
       if (!result.ok) {
@@ -132,8 +143,31 @@ export function Editor({
     if (row === null || state.rowMiss !== null) return;
     const commentId = state.selection.commentId;
     if (!commentId) return;
-    commentNodes.current.get(commentId)?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [row, state.rowMiss, state.selection.commentId]);
+    rowNodes.get(commentId)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [row, rowNodes, state.rowMiss, state.selection.commentId]);
+
+  // A Comment's name is edited in the detail; a Section's or Item's row is the closest thing to a name field.
+  useEffect(() => {
+    const id = state.focusName;
+    if (!id) return;
+    const rowNode = rowNodes.get(id);
+    rowNode?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (id === state.selection.commentId) nameInput.current?.focus();
+    else rowNode?.focus();
+    dispatch({ type: "nameFocused" });
+  }, [rowNodes, state.focusName, state.selection.commentId]);
+
+  function runLoadLatest(latestNumber: number) {
+    dispatch({ type: "loadLatest", number: latestNumber });
+    router.refresh();
+  }
+
+  const markBlank = state.save.status === "invalid";
+  const blank = useMemo(
+    () => (markBlank ? new Set(blankNames(state.tree).map((ref) => ref.id)) : new Set<string>()),
+    [markBlank, state.tree],
+  );
+  const notice = saveNotice(state, blank.size);
 
   const { section, item, comment } = locate(state.tree, state.selection);
   const focusColumn = (column: Column) => dispatch({ type: "focus", column });
@@ -170,12 +204,25 @@ export function Editor({
         ) : null}
         {children}
       </header>
-      {state.save.status === "refused" ? (
+      {notice ? (
         <div className="flex shrink-0 items-center gap-3 border-b border-black/[0.05] px-4 py-2 dark:border-white/[0.06]">
-          <p className="min-w-0 flex-1">{saveErrorMessage(state.save.error)}</p>
-          <button type="button" className={buttonClass} onClick={() => dispatch({ type: "dismissError" })}>
-            Dismiss
-          </button>
+          <p role="alert" className="min-w-0 flex-1">
+            {notice.message}
+          </p>
+          {notice.action === "load-latest" ? (
+            <button
+              type="button"
+              className={buttonClass}
+              onClick={() => runLoadLatest(notice.latestNumber)}
+            >
+              Load latest
+            </button>
+          ) : null}
+          {notice.action === "dismiss" ? (
+            <button type="button" className={buttonClass} onClick={() => dispatch({ type: "dismissError" })}>
+              Dismiss
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -194,9 +241,10 @@ export function Editor({
                   <RowButton
                     selected={id === state.selection.sectionId}
                     title={candidate.name}
+                    buttonRef={rowRef(rowNodes, id)}
                     onClick={() => dispatch({ type: "select", ref: { level: "section", id } })}
                   >
-                    <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
+                    <RowName name={candidate.name} blank={blank.has(id)} />
                   </RowButton>
                 </li>
               );
@@ -218,9 +266,10 @@ export function Editor({
                   <RowButton
                     selected={id === state.selection.itemId}
                     title={candidate.name}
+                    buttonRef={rowRef(rowNodes, id)}
                     onClick={() => dispatch({ type: "select", ref: { level: "item", id } })}
                   >
-                    <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
+                    <RowName name={candidate.name} blank={blank.has(id)} />
                     <span
                       className="shrink-0 tabular-nums text-neutral-400"
                       aria-label={`${candidate.comments.length} Comments`}
@@ -253,15 +302,12 @@ export function Editor({
                             selected={id === state.selection.commentId}
                             title={candidate.name}
                             sourceRow={candidate.sourceRow ?? undefined}
-                            buttonRef={(node) => {
-                              if (node) commentNodes.current.set(id, node);
-                              else commentNodes.current.delete(id);
-                            }}
+                            buttonRef={rowRef(rowNodes, id)}
                             onClick={() => dispatch({ type: "select", ref: { level: "comment", id } })}
                           >
                             <CommentTypeDot commentType={candidate.commentType} />
                             <AnswerTypeGlyph answerType={candidate.answerType} />
-                            <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
+                            <RowName name={candidate.name} blank={blank.has(id)} />
                           </RowButton>
                         </li>
                       );
@@ -280,6 +326,8 @@ export function Editor({
             item={item}
             comment={comment}
             nameLocked={savingOrAwaiting}
+            nameBlank={comment?.id ? blank.has(comment.id) : false}
+            nameRef={nameInput}
             onName={(name) => {
               if (!comment?.id) return;
               dispatch({ type: "setComment", id: comment.id, patch: { name } });
@@ -299,6 +347,8 @@ function CommentPane({
   item,
   comment,
   nameLocked,
+  nameBlank,
+  nameRef,
   onName,
 }: {
   rowMiss: number | null;
@@ -308,6 +358,8 @@ function CommentPane({
   item: Item | null;
   comment: Comment | null;
   nameLocked: boolean;
+  nameBlank: boolean;
+  nameRef: Ref<HTMLInputElement>;
   onName: (name: string) => void;
 }) {
   if (rowMiss !== null) {
@@ -322,6 +374,8 @@ function CommentPane({
       itemName={item.name}
       comment={comment}
       nameLocked={nameLocked}
+      nameBlank={nameBlank}
+      nameRef={nameRef}
       onName={onName}
     />
   );
@@ -334,6 +388,8 @@ function CommentDetail({
   itemName,
   comment,
   nameLocked,
+  nameBlank,
+  nameRef,
   onName,
 }: {
   templateId: string;
@@ -342,6 +398,8 @@ function CommentDetail({
   itemName: string;
   comment: Comment;
   nameLocked: boolean;
+  nameBlank: boolean;
+  nameRef: Ref<HTMLInputElement>;
   onName: (name: string) => void;
 }) {
   return (
@@ -361,13 +419,18 @@ function CommentDetail({
           <p className="max-w-56 text-right text-neutral-400">{ADDED_IN_THE_EDITOR}</p>
         )}
       </div>
-      <input
-        aria-label="Name"
-        value={comment.name}
-        readOnly={nameLocked}
-        onChange={(event) => onName(event.currentTarget.value)}
-        className="w-full rounded-md border border-transparent bg-transparent px-1 text-[15px] font-medium text-neutral-900 outline-none hover:border-black/10 focus:border-black/20 dark:text-white dark:hover:border-white/15 dark:focus:border-white/25"
-      />
+      <div>
+        <input
+          ref={nameRef}
+          aria-label="Name"
+          aria-invalid={nameBlank || undefined}
+          value={comment.name}
+          readOnly={nameLocked}
+          onChange={(event) => onName(event.currentTarget.value)}
+          className="w-full rounded-md border border-transparent bg-transparent px-1 text-[15px] font-medium text-neutral-900 outline-none hover:border-black/10 focus:border-black/20 aria-invalid:border-red-500/60 dark:text-white dark:hover:border-white/15 dark:focus:border-white/25"
+        />
+        {nameBlank ? <p className="px-1 text-red-600 dark:text-red-400">{BLANK_NAME}</p> : null}
+      </div>
       <div className="grid grid-cols-4 gap-3">
         <Field label="Type" value={TYPE_LABEL[comment.commentType]} />
         <Field label="Answer" value={ANSWER_LABEL[comment.answerType]} />
@@ -520,6 +583,40 @@ function RowButton({
       {children}
     </button>
   );
+}
+
+const BLANK_NAME = "Name is empty.";
+
+/** A row's name, or the blank-name error in its place once a Save has been refused for it. */
+function RowName({ name, blank }: { name: string; blank: boolean }) {
+  if (blank) return <span className="min-w-0 flex-1 truncate text-red-600 dark:text-red-400">{BLANK_NAME}</span>;
+  return <span className="min-w-0 flex-1 truncate">{name}</span>;
+}
+
+function rowRef(nodes: Map<string, HTMLButtonElement>, id: string): (node: HTMLButtonElement | null) => void {
+  return (node) => {
+    if (node) nodes.set(id, node);
+    else nodes.delete(id);
+  };
+}
+
+type SaveNotice = { message: string } & (
+  | { action: "load-latest"; latestNumber: number }
+  | { action: "dismiss" }
+  | { action: null }
+);
+
+/** The bar under the header: a refused Save's message with what to do next, or the blank-name count. */
+function saveNotice(state: EditorState, blankCount: number): SaveNotice | null {
+  if (state.save.status === "invalid") {
+    if (blankCount === 0) return null;
+    return { message: saveErrorMessage({ kind: "names-blank", count: blankCount }), action: null };
+  }
+  if (state.save.status !== "refused") return null;
+  const error = state.save.error;
+  const message = saveErrorMessage(error);
+  if (error.kind === "stale-base") return { message, action: "load-latest", latestNumber: error.latestNumber };
+  return { message, action: "dismiss" };
 }
 
 function saveIndicator(state: EditorState): string | null {

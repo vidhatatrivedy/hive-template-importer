@@ -20,9 +20,11 @@ export type EditorBase = {
   tree: EditableTree;
 };
 
-/** Where a Save is. `invalid` and `confirm` arrive with later tickets. */
+/** Where a Save is. `confirm` arrives with a later ticket. */
 export type SaveState =
   | { status: "idle" }
+  /** A Save was attempted with blank names. The markers come from `blankNames`, so they clear as names are filled. */
+  | { status: "invalid" }
   | { status: "saving" }
   | { status: "awaiting"; number: number }
   | { status: "refused"; error: SaveError };
@@ -37,8 +39,13 @@ export type EditorState = {
   focus: Column;
   /** Set when `?row=` names no Comment. Cleared by the next selection. */
   rowMiss: number | null;
+  /** The node whose name field takes focus: the first blank name after a refused Save. Cleared by `nameFocused`. */
+  focusName: string | null;
   save: SaveState;
-  /** A Version that arrived while a Save was in flight. Adopted when that Save succeeds, or on Discard. */
+  /**
+   * A Version that arrived while there were unsaved edits or a Save was in flight. Never replaces the edits:
+   * adopted when that Save succeeds, on Load latest, or on Discard.
+   */
   held: EditorBase | null;
 };
 
@@ -55,6 +62,8 @@ export type EditorAction =
   | { type: "saveSucceeded"; number: number }
   | { type: "saveFailed"; error: SaveError }
   | { type: "dismissError" }
+  | { type: "loadLatest"; number: number }
+  | { type: "nameFocused" }
   | { type: "discard" };
 
 const COMMENT_GROUPS = [
@@ -92,6 +101,7 @@ export function initialEditorState(
     selection: emptySelection(),
     focus: "sections",
     rowMiss: null,
+    focusName: null,
     save: { status: "idle" },
     held: null,
   };
@@ -106,6 +116,41 @@ export function isDirty(state: EditorState): boolean {
 
 export function isSavingOrAwaiting(state: EditorState): boolean {
   return state.save.status === "saving" || state.save.status === "awaiting";
+}
+
+/** Refusals another Save cannot fix: the base is stale, the Template is gone, or the tree names foreign rows. */
+const BLOCKING_REFUSALS: ReadonlySet<SaveError["kind"]> = new Set([
+  "stale-base",
+  "template-not-found",
+  "foreign-source-row",
+]);
+
+/** Save is available in edit mode with unsaved edits, nothing in flight, and no refusal that blocks it. */
+export function canSave(state: EditorState): boolean {
+  if (state.mode === "read-only" || isSavingOrAwaiting(state) || !isDirty(state)) return false;
+  return state.save.status !== "refused" || !BLOCKING_REFUSALS.has(state.save.error.kind);
+}
+
+/** Every node whose name is empty after trimming, in display order (Comments by type group). */
+export function blankNames(tree: EditableTree): NodeRef[] {
+  const blank: NodeRef[] = [];
+  for (const section of tree.sections) {
+    if (section.id && isBlank(section.name)) blank.push({ level: "section", id: section.id });
+    for (const item of section.items) {
+      if (item.id && isBlank(item.name)) blank.push({ level: "item", id: item.id });
+      for (const group of commentGroups(item.comments)) {
+        for (const comment of group.comments) {
+          if (comment.id && isBlank(comment.name)) blank.push({ level: "comment", id: comment.id });
+        }
+      }
+    }
+  }
+  return blank;
+}
+
+/** `trim` covers U+00A0, as `prepareSave` does. */
+function isBlank(name: string): boolean {
+  return name.trim() === "";
 }
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -128,6 +173,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return saveFailed(state, action.error);
     case "dismissError":
       return dismissError(state);
+    case "loadLatest":
+      return loadLatest(state, action.number);
+    case "nameFocused":
+      return state.focusName === null ? state : { ...state, focusName: null };
     case "discard":
       return discard(state);
     default: {
@@ -138,12 +187,21 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 }
 
 function requestSave(state: EditorState): EditorState {
-  if (state.mode === "read-only") return state;
-  if (isSavingOrAwaiting(state)) return state;
-  if (!isDirty(state)) return state;
-  // Blank names and text cuts stay on this path until later tickets add `invalid` and `confirm`.
+  if (!canSave(state)) return state;
+  const first = blankNames(state.tree)[0];
+  if (first) {
+    const selected = select(state, first);
+    return { ...selected, focus: columnOf(first.level), focusName: first.id, save: { status: "invalid" } };
+  }
+  // Text cuts stay on this path until a later ticket adds `confirm`.
   prepareSave(state.tree);
   return { ...state, save: { status: "saving" } };
+}
+
+function columnOf(level: NodeRef["level"]): Column {
+  if (level === "section") return "sections";
+  if (level === "item") return "items";
+  return "comments";
 }
 
 function saveSucceeded(state: EditorState, number: number): EditorState {
@@ -156,7 +214,18 @@ function saveSucceeded(state: EditorState, number: number): EditorState {
 
 function saveFailed(state: EditorState, error: SaveError): EditorState {
   if (state.save.status !== "saving") return state;
-  return { ...state, save: { status: "refused", error }, held: null };
+  return { ...state, save: { status: "refused", error } };
+}
+
+/**
+ * Drops the edits and waits for Version `number` from the page. A Version already held is that one
+ * or newer, and the page won't send it again, so it's adopted now.
+ */
+function loadLatest(state: EditorState, number: number): EditorState {
+  if (state.mode === "read-only" || isSavingOrAwaiting(state)) return state;
+  const cleared = { ...state, rowMiss: null, focusName: null };
+  if (state.held && state.held.number >= number) return replaceVersion(cleared, state.held, { status: "idle" });
+  return replaceVersion(cleared, state.base, { status: "awaiting", number });
 }
 
 function dismissError(state: EditorState): EditorState {
@@ -171,7 +240,7 @@ function dismissError(state: EditorState): EditorState {
 function discard(state: EditorState): EditorState {
   if (state.mode === "read-only") return state;
   const nextBase = state.held ?? state.base;
-  return { ...replaceVersion(state, nextBase, { status: "idle" }), rowMiss: null };
+  return { ...replaceVersion(state, nextBase, { status: "idle" }), rowMiss: null, focusName: null };
 }
 
 function setComment(state: EditorState, id: string, patch: CommentPatch): EditorState {
@@ -280,7 +349,9 @@ function adoptVersion(state: EditorState, next: EditorBase): EditorState {
       if (next.number < state.save.number) return state;
       return commitVersion(state, next, { status: "idle" });
     case "idle":
+    case "invalid":
     case "refused":
+      if (isDirty(state)) return { ...state, held: copyBase(next) };
       return commitVersion(state, next, state.save);
     default: {
       const unreachable: never = state.save;

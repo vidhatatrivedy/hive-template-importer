@@ -3,7 +3,10 @@ import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
 import type { EditableTree } from "@/core/import/schemas";
+import type { SaveError } from "@/core/import/editor-messages";
 import {
+  blankNames,
+  canSave,
   editorReducer,
   initialEditorState,
   isDirty,
@@ -410,6 +413,182 @@ describe("editorReducer", () => {
     expect(again.focus).toBe(picked.focus);
   });
 });
+
+describe("editorReducer: Save refusals", () => {
+  it("refuses a Save with blank names, selects the first and focuses its column, and clears each marker as it is named", () => {
+    const opened = open();
+    const attendance = requireCommentId(opened);
+    const brand = commentIdAt(tree, 149);
+    const blanked = editorReducer(
+      editorReducer(opened, { type: "setComment", id: brand, patch: { name: " \u00a0" } }),
+      { type: "setComment", id: attendance, patch: { name: "" } },
+    );
+    const elsewhere = editorReducer(blanked, {
+      type: "select",
+      ref: { level: "section", id: idOf(tree, "Cooling") },
+    });
+
+    const invalid = editorReducer(elsewhere, { type: "saveRequested" });
+
+    expect(invalid.save).toEqual({ status: "invalid" });
+    expect(invalid.selection.commentId).toBe(attendance);
+    expect(located(invalid).section?.name).toBe("Inspection Details");
+    expect(invalid.focus).toBe("comments");
+    expect(invalid.focusName).toBe(attendance);
+    expect(blankNames(invalid.tree)).toEqual([
+      { level: "comment", id: attendance },
+      { level: "comment", id: brand },
+    ]);
+    expect(canSave(invalid)).toBe(true);
+
+    const oneNamed = editorReducer(invalid, { type: "setComment", id: attendance, patch: { name: "Present" } });
+    expect(blankNames(oneNamed.tree)).toEqual([{ level: "comment", id: brand }]);
+
+    const allNamed = editorReducer(oneNamed, { type: "setComment", id: brand, patch: { name: "Make" } });
+    expect(blankNames(allNamed.tree)).toEqual([]);
+    expect(editorReducer(allNamed, { type: "saveRequested" }).save).toEqual({ status: "saving" });
+  });
+
+  it("selects a blank Item before the blank Comments under it and focuses the Items column", () => {
+    const itemId = idOf(tree, "Cooling", "Cooling Equipment");
+    const unnamed: EditableTree = {
+      sections: tree.sections.map((section) => ({
+        ...section,
+        items: section.items.map((item) => (item.id === itemId ? { ...item, name: "" } : item)),
+      })),
+    };
+    const opened = initialEditorState({ versionId: "version-1", number: 1, tree: unnamed, row: null });
+    const brand = commentIdAt(unnamed, 149);
+    const edited = editorReducer(opened, { type: "setComment", id: brand, patch: { name: "" } });
+
+    const invalid = editorReducer(edited, { type: "saveRequested" });
+
+    expect(invalid.save).toEqual({ status: "invalid" });
+    expect(invalid.selection.sectionId).toBe(idOf(tree, "Cooling"));
+    expect(invalid.selection.itemId).toBe(itemId);
+    expect(invalid.focus).toBe("items");
+    expect(invalid.focusName).toBe(itemId);
+    expect(blankNames(invalid.tree)).toEqual([
+      { level: "item", id: itemId },
+      { level: "comment", id: brand },
+    ]);
+  });
+
+  it("holds a newer Version that arrives while there are unsaved edits, and Discard adopts it", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, { type: "setComment", id: commentId, patch: { name: "Attendance note" } });
+
+    const arrived = editorReducer(edited, {
+      type: "serverVersion",
+      versionId: "version-2",
+      number: 2,
+      tree: retag(tree),
+    });
+
+    expect(located(arrived).comment?.name).toBe("Attendance note");
+    expect(located(arrived).comment?.id).toBe(commentId);
+    expect(arrived.base).toMatchObject({ versionId: "version-1", number: 1 });
+    expect(arrived.held).toMatchObject({ versionId: "version-2", number: 2 });
+    expect(isDirty(arrived)).toBe(true);
+
+    const discarded = editorReducer(arrived, { type: "discard" });
+    expect(discarded.base).toMatchObject({ versionId: "version-2", number: 2 });
+    expect(located(discarded).comment?.id).toBe(`next-${commentId}`);
+    expect(discarded.held).toBeNull();
+    expect(isDirty(discarded)).toBe(false);
+  });
+
+  it("keeps the edits on a stale-base refusal, and Load latest drops them and adopts that Version or a newer one", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, { type: "setComment", id: commentId, patch: { name: "Attendance note" } });
+    const refused = editorReducer(editorReducer(edited, { type: "saveRequested" }), {
+      type: "saveFailed",
+      error: { kind: "stale-base", latestNumber: 3 },
+    });
+
+    expect(refused.save).toEqual({ status: "refused", error: { kind: "stale-base", latestNumber: 3 } });
+    expect(located(refused).comment?.name).toBe("Attendance note");
+    expect(isDirty(refused)).toBe(true);
+    expect(canSave(refused)).toBe(false);
+
+    const loading = editorReducer(refused, { type: "loadLatest", number: 3 });
+    expect(loading.save).toEqual({ status: "awaiting", number: 3 });
+    expect(located(loading).comment?.name).toBe("In Attendance");
+    expect(isDirty(loading)).toBe(false);
+
+    const older = editorReducer(loading, { type: "serverVersion", versionId: "version-2", number: 2, tree: retag(tree) });
+    expect(older.base).toMatchObject({ number: 1 });
+    expect(older.save).toEqual({ status: "awaiting", number: 3 });
+
+    const latest = editorReducer(loading, {
+      type: "serverVersion",
+      versionId: "version-4",
+      number: 4,
+      tree: retag(renameComment(tree, commentId, "Present")),
+    });
+    expect(latest.base).toMatchObject({ versionId: "version-4", number: 4 });
+    expect(latest.save).toEqual({ status: "idle" });
+    expect(located(latest).comment?.name).toBe("Present");
+    expect(located(latest).comment?.id).toBe(`next-${commentId}`);
+  });
+
+  it("Load latest adopts a Version already held, since the page will not send it again", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, { type: "setComment", id: commentId, patch: { name: "Attendance note" } });
+    const held = editorReducer(edited, {
+      type: "serverVersion",
+      versionId: "version-2",
+      number: 2,
+      tree: retag(renameComment(tree, commentId, "Present")),
+    });
+    const refused = editorReducer(editorReducer(held, { type: "saveRequested" }), {
+      type: "saveFailed",
+      error: { kind: "stale-base", latestNumber: 2 },
+    });
+    expect(refused.held).toMatchObject({ versionId: "version-2" });
+
+    const loaded = editorReducer(refused, { type: "loadLatest", number: 2 });
+    expect(loaded.base).toMatchObject({ versionId: "version-2", number: 2 });
+    expect(loaded.save).toEqual({ status: "idle" });
+    expect(loaded.held).toBeNull();
+    expect(located(loaded).comment?.name).toBe("Present");
+  });
+
+  it("keeps Save available after names-blank and save-failed, and not after a refusal Save cannot fix", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, { type: "setComment", id: commentId, patch: { name: "Attendance note" } });
+    const saving = editorReducer(edited, { type: "saveRequested" });
+    const refusedWith = (error: SaveError) => editorReducer(saving, { type: "saveFailed", error });
+
+    expect(canSave(refusedWith({ kind: "save-failed" }))).toBe(true);
+    expect(canSave(refusedWith({ kind: "names-blank", count: 1 }))).toBe(true);
+    expect(canSave(refusedWith({ kind: "template-not-found" }))).toBe(false);
+    expect(canSave(refusedWith({ kind: "foreign-source-row", rowNumbers: [9] }))).toBe(false);
+
+    const gone = refusedWith({ kind: "template-not-found" });
+    expect(editorReducer(gone, { type: "saveRequested" })).toBe(gone);
+    expect(located(gone).comment?.name).toBe("Attendance note");
+    const dismissed = editorReducer(refusedWith({ kind: "foreign-source-row", rowNumbers: [9] }), {
+      type: "dismissError",
+    });
+    expect(dismissed.save).toEqual({ status: "idle" });
+    expect(canSave(dismissed)).toBe(true);
+  });
+});
+
+function commentIdAt(source: EditableTree, sourceRow: number): string {
+  for (const section of source.sections) {
+    for (const item of section.items) {
+      const comment = item.comments.find((candidate) => candidate.sourceRow === sourceRow);
+      if (comment?.id) return comment.id;
+    }
+  }
+  throw new Error(`No Comment at row ${sourceRow}`);
+}
 
 function requireCommentId(state: EditorState): string {
   const commentId = state.selection.commentId;
