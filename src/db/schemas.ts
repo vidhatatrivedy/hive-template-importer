@@ -44,6 +44,26 @@ const versionSummarySchema = z.object({
   counts: countsSchema,
 });
 
+const templateSummaryImportRunSchema = z.object({
+  id: z.uuid(),
+  filename: z.string(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  importedAt: timestamp,
+});
+
+export const templateSummarySchema = z.object({
+  id: z.uuid(),
+  name: z.string().min(1),
+  creation: z.enum(versionOneOrigins),
+  copiedFromName: z.string().min(1).nullable(),
+  importRun: templateSummaryImportRunSchema.nullable(),
+  latest: latestVersionSchema,
+});
+
+export const templateSummaryListSchema = z.array(templateSummarySchema);
+
+export type TemplateSummary = z.infer<typeof templateSummarySchema>;
+
 export const templateDetailSchema = z.object({
   id: z.uuid(),
   name: z.string().min(1),
@@ -80,6 +100,11 @@ export const duplicateTemplateResultSchema = z.object({
   versionId: z.uuid(),
 });
 
+export const createBlankTemplateResultSchema = z.object({
+  templateId: z.uuid(),
+  versionId: z.uuid(),
+});
+
 export const saveVersionResultSchema = z.object({
   versionId: z.uuid(),
   number: z.number().int().positive(),
@@ -93,5 +118,6 @@ export const restoreVersionResultSchema = z.object({
 export type ImportTemplateResult = z.infer<typeof importTemplateResultSchema>;
 export type DeleteTemplateResult = z.infer<typeof deleteTemplateResultSchema>;
 export type DuplicateTemplateResult = z.infer<typeof duplicateTemplateResultSchema>;
+export type CreateBlankTemplateResult = z.infer<typeof createBlankTemplateResultSchema>;
 export type SaveVersionResult = z.infer<typeof saveVersionResultSchema>;
 export type RestoreVersionResult = z.infer<typeof restoreVersionResultSchema>;

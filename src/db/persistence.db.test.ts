@@ -148,6 +148,9 @@ describe("persistence tracer", () => {
       { fn: "duplicate_template", args: { template_id: UNKNOWN_ID } },
       { fn: "save_version", args: { template_id: UNKNOWN_ID, base_number: 1, tree: { sections: [] } } },
       { fn: "restore_version", args: { version_id: UNKNOWN_ID, base_number: 1 } },
+      { fn: "list_templates", args: {} },
+      { fn: "create_blank_template", args: { name: "Anon" } },
+      { fn: "rename_template", args: { template_id: UNKNOWN_ID, name: "Anon" } },
     ];
     for (const call of calls) {
       const { data, error } = await anon.rpc(call.fn, call.args);
@@ -397,6 +400,194 @@ describe("restore version", () => {
   });
 });
 
+describe("template list, blank and rename", () => {
+  it("lists Templates by the latest Save, and a Rename does not move one", async () => {
+    const older = await db.createBlankTemplate("Older");
+    const newer = await db.createBlankTemplate("Newer");
+    try {
+      const saved = await db.saveVersion(older.templateId, 1, { sections: [] });
+      expect(saved.ok).toBe(true);
+
+      const afterSave = await db.listTemplates();
+      expect(indexOfId(afterSave, older.templateId)).toBeLessThan(indexOfId(afterSave, newer.templateId));
+      const olderBeforeRename = afterSave.find((template) => template.id === older.templateId);
+      if (!olderBeforeRename) throw new Error("Blank Template was not listed");
+
+      const renamed = await db.renameTemplate(older.templateId, "Older, renamed");
+      expect(renamed).toEqual({ ok: true, value: undefined });
+
+      const afterRename = await db.listTemplates();
+      const olderAfterRename = afterRename.find((template) => template.id === older.templateId);
+      expect(olderAfterRename?.name).toBe("Older, renamed");
+      expect(olderAfterRename?.latest.savedAt).toBe(olderBeforeRename.latest.savedAt);
+      expect(indexOfId(afterRename, older.templateId)).toBeLessThan(indexOfId(afterRename, newer.templateId));
+
+      const newerSaved = await db.saveVersion(newer.templateId, 1, { sections: [] });
+      expect(newerSaved.ok).toBe(true);
+      const afterNewerSave = await db.listTemplates();
+      expect(indexOfId(afterNewerSave, newer.templateId)).toBeLessThan(
+        indexOfId(afterNewerSave, older.templateId),
+      );
+    } finally {
+      await db.deleteTemplate(older.templateId);
+      await db.deleteTemplate(newer.templateId);
+    }
+  });
+
+  it("reports creation, the copied-from name and the Import run hash for an import, a Blank and a Copy", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    const blank = await db.createBlankTemplate("Built by hand");
+    let copyId: string | undefined;
+    try {
+      const duplicated = await db.duplicateTemplate(imported.templateId);
+      expect(duplicated.ok).toBe(true);
+      if (!duplicated.ok) return;
+      copyId = duplicated.value.templateId;
+
+      const listed = await db.listTemplates();
+      expect(listed.find((template) => template.id === imported.templateId)).toMatchObject({
+        name: draft.suggestedName,
+        creation: "import",
+        copiedFromName: null,
+        importRun: {
+          id: imported.importRunId,
+          filename: draft.run.filename,
+          sha256: draft.run.sha256,
+        },
+      });
+      expect(listed.find((template) => template.id === blank.templateId)).toMatchObject({
+        name: "Built by hand",
+        creation: "blank",
+        copiedFromName: null,
+        importRun: null,
+      });
+      expect(listed.find((template) => template.id === copyId)).toMatchObject({
+        name: `${draft.suggestedName} (copy)`,
+        creation: "copy",
+        copiedFromName: draft.suggestedName,
+        importRun: { id: imported.importRunId, sha256: draft.run.sha256 },
+      });
+
+      const sameFile = listed.filter(
+        (template) => template.importRun?.sha256 === draft.run.sha256 && template.creation === "import",
+      );
+      expect(sameFile.map((template) => template.id)).toContain(imported.templateId);
+      expect(sameFile.map((template) => template.id)).not.toContain(copyId);
+
+      expect(await db.deleteTemplate(imported.templateId)).toEqual({
+        ok: true,
+        value: { importRunDeleted: false },
+      });
+      const afterSourceDeleted = await db.listTemplates();
+      expect(afterSourceDeleted.find((template) => template.id === imported.templateId)).toBeUndefined();
+      expect(afterSourceDeleted.find((template) => template.id === copyId)).toMatchObject({
+        creation: "copy",
+        copiedFromName: draft.suggestedName,
+        importRun: { sha256: draft.run.sha256 },
+      });
+    } finally {
+      if (copyId) await db.deleteTemplate(copyId);
+      await db.deleteTemplate(imported.templateId);
+      await db.deleteTemplate(blank.templateId);
+    }
+  });
+
+  it("stores a Blank Template as an empty Version 1 and deletes no Import run", async () => {
+    const blank = await db.createBlankTemplate("  Padded name  ");
+    try {
+      expect(await db.getVersionTree(blank.versionId)).toEqual({ sections: [] });
+      const detail = await db.getTemplate(blank.templateId);
+      expect(detail).toMatchObject({
+        name: "  Padded name  ",
+        creation: "blank",
+        copiedFrom: null,
+        importRun: null,
+        latest: { id: blank.versionId, number: 1 },
+      });
+      expect(detail?.versions).toEqual([
+        expect.objectContaining({
+          number: 1,
+          origin: "blank",
+          counts: { sections: 0, items: 0, comments: 0 },
+        }),
+      ]);
+
+      const renamed = await db.renameTemplate(blank.templateId, "  Still padded  ");
+      expect(renamed.ok).toBe(true);
+      expect((await db.getTemplate(blank.templateId))?.name).toBe("  Still padded  ");
+    } finally {
+      expect(await db.deleteTemplate(blank.templateId)).toEqual({
+        ok: true,
+        value: { importRunDeleted: false },
+      });
+      expect(await db.getTemplate(blank.templateId)).toBeNull();
+    }
+  });
+
+  it("refuses a Source row on a Blank Template", async () => {
+    const blank = await db.createBlankTemplate("No file");
+    try {
+      const saved = await db.saveVersion(blank.templateId, 1, {
+        sections: [
+          {
+            name: "Section",
+            items: [
+              {
+                name: "Item",
+                comments: [
+                  {
+                    name: "Comment",
+                    textHtml: "",
+                    commentType: "info",
+                    category: null,
+                    recommendation: null,
+                    answerType: "text",
+                    defaultBoolean: null,
+                    defaultText: null,
+                    choiceOptions: [],
+                    unitOptions: [],
+                    sourceRow: 4,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      expect(saved).toEqual({
+        ok: false,
+        error: { kind: "foreign-source-row", rowNumbers: [4] },
+      });
+      expect((await db.getTemplate(blank.templateId))?.versions.map((version) => version.number)).toEqual([1]);
+    } finally {
+      await db.deleteTemplate(blank.templateId);
+    }
+  });
+
+  it("refuses to Rename an unknown Template", async () => {
+    expect(await db.renameTemplate(UNKNOWN_ID, "Missing")).toEqual({
+      ok: false,
+      error: { kind: "template-not-found" },
+    });
+  });
+
+  it("refuses a blank or space-only name and leaves the Template unchanged", async () => {
+    const before = (await db.listTemplates()).map((template) => template.id);
+    await expect(db.createBlankTemplate("")).rejects.toMatchObject({ code: "23514" });
+    await expect(db.createBlankTemplate("   ")).rejects.toMatchObject({ code: "23514" });
+    expect((await db.listTemplates()).map((template) => template.id)).toEqual(before);
+
+    const blank = await db.createBlankTemplate("Kept");
+    try {
+      await expect(db.renameTemplate(blank.templateId, "")).rejects.toMatchObject({ code: "23514" });
+      await expect(db.renameTemplate(blank.templateId, " ")).rejects.toMatchObject({ code: "23514" });
+      expect((await db.getTemplate(blank.templateId))?.name).toBe("Kept");
+    } finally {
+      await db.deleteTemplate(blank.templateId);
+    }
+  });
+});
+
 describe("duplicate template", () => {
   it("refuses to Duplicate an unknown Template", async () => {
     expect(await db.duplicateTemplate(UNKNOWN_ID)).toEqual({
@@ -579,6 +770,12 @@ describe("duplicate template", () => {
     }
   });
 });
+
+function indexOfId(templates: { id: string }[], id: string): number {
+  const index = templates.findIndex((template) => template.id === id);
+  if (index < 0) throw new Error(`Template ${id} was not listed`);
+  return index;
+}
 
 function seesNothing(data: unknown, error: { message: string } | null): boolean {
   if (error) return true;

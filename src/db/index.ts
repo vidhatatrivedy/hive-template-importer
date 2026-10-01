@@ -10,12 +10,15 @@ import {
   type ImportIssue,
 } from "@/core/import/schemas";
 import {
+  createBlankTemplateResultSchema,
   deleteTemplateResultSchema,
   duplicateTemplateResultSchema,
   importTemplateResultSchema,
   restoreVersionResultSchema,
   saveVersionResultSchema,
   templateDetailSchema,
+  templateSummaryListSchema,
+  type CreateBlankTemplateResult,
   type DbRefusal,
   type DeleteTemplateResult,
   type DuplicateTemplateResult,
@@ -24,9 +27,11 @@ import {
   type Result,
   type SaveVersionResult,
   type TemplateDetail,
+  type TemplateSummary,
 } from "@/db/schemas";
 
 export type {
+  CreateBlankTemplateResult,
   DbRefusal,
   DeleteTemplateResult,
   DuplicateTemplateResult,
@@ -35,9 +40,10 @@ export type {
   Result,
   SaveVersionResult,
   TemplateDetail,
+  TemplateSummary,
   VersionOrigin,
 } from "@/db/schemas";
-export { templateDetailSchema, versionOrigins } from "@/db/schemas";
+export { templateDetailSchema, templateSummarySchema, versionOrigins } from "@/db/schemas";
 
 /** PT* SQLSTATEs the write functions raise. Mapped from the JSON detail, never from the message. */
 const TEMPLATE_NOT_FOUND = "PT404";
@@ -50,14 +56,17 @@ const VERSION_NUMBER_COLUMNS = "(template_id, number)";
 
 export interface Db {
   importTemplate(draft: ImportDraft, name: string): Promise<ImportTemplateResult>;
+  createBlankTemplate(name: string): Promise<CreateBlankTemplateResult>;
   deleteTemplate(templateId: string): Promise<Result<DeleteTemplateResult>>;
   duplicateTemplate(templateId: string): Promise<Result<DuplicateTemplateResult>>;
+  renameTemplate(templateId: string, name: string): Promise<Result<void>>;
   saveVersion(
     templateId: string,
     baseNumber: number,
     tree: EditableTree,
   ): Promise<Result<SaveVersionResult>>;
   restoreVersion(versionId: string, baseNumber: number): Promise<Result<RestoreVersionResult>>;
+  listTemplates(): Promise<TemplateSummary[]>;
   getTemplate(templateId: string): Promise<TemplateDetail | null>;
   getVersionTree(versionId: string): Promise<EditableTree | null>;
   getImportEvidence(importRunId: string): Promise<ImportEvidence | null>;
@@ -69,10 +78,13 @@ export function createDb(env: { url: string; serviceRoleKey: string }): Db {
   });
   return {
     importTemplate: (draft, name) => importTemplate(client, draft, name),
+    createBlankTemplate: (name) => createBlankTemplate(client, name),
     deleteTemplate: (templateId) => deleteTemplate(client, templateId),
     duplicateTemplate: (templateId) => duplicateTemplate(client, templateId),
+    renameTemplate: (templateId, name) => renameTemplate(client, templateId, name),
     saveVersion: (templateId, baseNumber, tree) => saveVersion(client, templateId, baseNumber, tree),
     restoreVersion: (versionId, baseNumber) => restoreVersion(client, versionId, baseNumber),
+    listTemplates: () => listTemplates(client),
     getTemplate: (templateId) =>
       readOne(client, "get_template", { template_id: templateId }, templateDetailSchema),
     getVersionTree: (versionId) =>
@@ -80,6 +92,33 @@ export function createDb(env: { url: string; serviceRoleKey: string }): Db {
     getImportEvidence: (importRunId) =>
       readOne(client, "get_import_evidence", { import_run_id: importRunId }, importEvidenceSchema),
   };
+}
+
+async function createBlankTemplate(
+  client: SupabaseClient,
+  name: string,
+): Promise<CreateBlankTemplateResult> {
+  const data = await call(client, "create_blank_template", { name });
+  return createBlankTemplateResultSchema.parse(data);
+}
+
+async function renameTemplate(
+  client: SupabaseClient,
+  templateId: string,
+  name: string,
+): Promise<Result<void>> {
+  const { error } = await client.rpc("rename_template", { template_id: templateId, name });
+  if (error) {
+    const refusal = refusalFrom(error);
+    if (refusal) return { ok: false, error: refusal };
+    throw error;
+  }
+  return { ok: true, value: undefined };
+}
+
+async function listTemplates(client: SupabaseClient): Promise<TemplateSummary[]> {
+  const data = await call(client, "list_templates", {});
+  return templateSummaryListSchema.parse(data);
 }
 
 async function importTemplate(client: SupabaseClient, draft: ImportDraft, name: string) {
