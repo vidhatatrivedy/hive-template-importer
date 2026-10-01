@@ -45,6 +45,7 @@ Pick the highest-priority open issue that is not blocked: its `openBlockers` is 
 
 - Work on **one issue per iteration**. Do not attempt multiple issues in a single iteration.
 - Never close an issue. The loop closes it after review.
+- You may start a background process to check your work (e.g. `npm run dev`, then `curl` a page and read the output). Stop it as soon as you have what you need, and before committing check that nothing you started is still running: the iteration only ends when every process you started has exited. Prefer one-shot commands (`npm test`, not watch mode).
 - Do not leave commented-out code or TODO comments in committed code.
 - If you are blocked (missing context, failing tests you cannot fix, external dependency), leave a comment on the issue and move on — do not close it.
 

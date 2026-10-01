@@ -7,8 +7,9 @@
 //   Then this script closes the issue. Agents never close issues, so a closed
 //   issue always means implemented and reviewed.
 // Both phases share one Docker sandbox. The loop stops early when an implement
-// phase produces no commits (backlog empty or everything blocked), or when a
-// review fails; the issue then stays open with a comment saying why.
+// phase produces no commits (backlog empty or everything blocked), or when an
+// implement or review phase fails; the issue then stays open with a comment
+// saying why.
 // Iterations chain: each branch forks from the previous iteration's branch, so
 // a ticket sees the code of the tickets closed before it. The first forks from
 // the host's current HEAD. Nothing is merged to main; merge the last branch
@@ -46,6 +47,19 @@ function issueFromCommits(commits: readonly { sha: string }[]): number | undefin
     if (match) return Number(match[1]);
   }
   return undefined;
+}
+
+/** Commits on `branch` since `base`, oldest first; none if the branch doesn't exist. */
+function branchCommits(base: string, branch: string): { sha: string }[] {
+  try {
+    const out = execFileSync("git", ["rev-list", "--reverse", `${base}..${branch}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.split("\n").filter(Boolean).map((sha) => ({ sha }));
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -136,14 +150,29 @@ for (let iteration = 1; iteration <= config.iterations; iteration++) {
     copyToWorktree,
   });
 
+  const base = previousBranch ?? startCommit;
   try {
-    const implement = await sandbox.run({
-      name: `implementer:${config.implementer.provider}`,
-      maxIterations: 1,
-      agent: implementer,
-      promptFile: "./.sandcastle/implement-prompt.md",
-      idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
-    });
+    let implement: Awaited<ReturnType<typeof sandbox.run>>;
+    try {
+      implement = await sandbox.run({
+        name: `implementer:${config.implementer.provider}`,
+        maxIterations: 1,
+        agent: implementer,
+        promptFile: "./.sandcastle/implement-prompt.md",
+        idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
+      });
+    } catch (error) {
+      console.error(`\nImplementation failed: ${errorMessage(error)}`);
+      // The agent may have committed before failing (e.g. it hung after its last step).
+      const commits = branchCommits(base, branch);
+      const issue = issueFromCommits(commits);
+      if (issue !== undefined) {
+        gh(["issue", "comment", String(issue), "--body",
+          `Committed on \`${branch}\` (${commits.map(({ sha }) => sha.slice(0, 7)).join(", ")}), but the implement phase didn't finish (${errorMessage(error)}). Not reviewed. Left open: cherry-pick these commits rather than redoing the work.`]);
+      }
+      console.log(`Stopping. Last reviewed branch: ${previousBranch ?? "none"}`);
+      break;
+    }
 
     if (!implement.commits.length) {
       console.log("Implementation agent made no commits. Stopping.");
@@ -151,7 +180,6 @@ for (let iteration = 1; iteration <= config.iterations; iteration++) {
     }
     console.log(`\nImplementation complete on ${branch} (${implement.commits.length} commits)`);
     const issue = issueFromCommits(implement.commits);
-    const base = previousBranch ?? startCommit;
     // Later iterations fork from here whether or not the review succeeds.
     previousBranch = branch;
 
