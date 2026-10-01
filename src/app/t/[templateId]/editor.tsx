@@ -99,15 +99,12 @@ export function Editor({
 
   async function runSave() {
     if (saveLock.current || !canSave) return;
+    dispatch({ type: "saveRequested" });
+    // Blank names stop the Save at `invalid`; nothing goes to the server.
+    if (blankNames(state.tree).length > 0) return;
     saveLock.current = true;
     const baseNumber = state.base.number;
     const working = state.tree;
-    const requested = editorReducer(state, { type: "saveRequested" });
-    dispatch({ type: "saveRequested" });
-    if (requested.save.status !== "saving") {
-      saveLock.current = false;
-      return;
-    }
     try {
       const result = await saveTemplate(templateId, baseNumber, working);
       if (!result.ok) {
