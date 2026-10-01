@@ -97,6 +97,10 @@ export function isDirty(state: EditorState): boolean {
   return !sameTree(state.tree, state.base.tree);
 }
 
+export function isSavingOrAwaiting(state: EditorState): boolean {
+  return state.save.status === "saving" || state.save.status === "awaiting";
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "serverVersion":
@@ -125,7 +129,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 }
 
 function requestSave(state: EditorState): EditorState {
-  if (state.save.status === "saving" || state.save.status === "awaiting") return state;
+  if (isSavingOrAwaiting(state)) return state;
   if (!isDirty(state)) return state;
   // Blank names and text cuts stay on this path until later tickets add `invalid` and `confirm`.
   prepareSave(state.tree);
@@ -135,7 +139,8 @@ function requestSave(state: EditorState): EditorState {
 function saveSucceeded(state: EditorState, number: number): EditorState {
   if (state.save.status !== "saving") return state;
   const awaiting: EditorState = { ...state, save: { status: "awaiting", number } };
-  if (state.held && state.held.number >= number) return commitVersion(awaiting, state.held, { status: "idle" });
+  const held = state.held;
+  if (held && held.number >= number) return commitVersion(awaiting, held, { status: "idle" });
   return awaiting;
 }
 
@@ -178,7 +183,8 @@ function applyCommentPatch(comment: Comment, patch: CommentPatch): Comment {
   const next = { ...comment };
   for (const key of Object.keys(patch) as (keyof CommentPatch)[]) {
     const value = patch[key];
-    if (value !== undefined) Object.assign(next, { [key]: value });
+    if (value === undefined) continue;
+    Object.assign(next, { [key]: value });
   }
   return next;
 }
@@ -246,24 +252,38 @@ function selectFirst(state: EditorState): EditorState {
 }
 
 function adoptVersion(state: EditorState, next: EditorBase): EditorState {
-  if (state.save.status === "saving") {
-    return { ...state, held: { versionId: next.versionId, number: next.number, tree: next.tree } };
+  switch (state.save.status) {
+    case "saving":
+      return { ...state, held: copyBase(next) };
+    case "awaiting":
+      if (next.number < state.save.number) return state;
+      return commitVersion(state, next, { status: "idle" });
+    case "idle":
+    case "refused":
+      return commitVersion(state, next, state.save);
+    default: {
+      const unreachable: never = state.save;
+      throw new Error(`Unknown save status: ${String(unreachable)}`);
+    }
   }
-  if (state.save.status === "awaiting" && next.number < state.save.number) return state;
-  const save = state.save.status === "awaiting" ? { status: "idle" as const } : state.save;
-  return commitVersion(state, next, save);
 }
 
 function commitVersion(state: EditorState, next: EditorBase, save: SaveState): EditorState {
   const path = indexPath(state.tree, state.selection);
+  const base = copyBase(next);
   return {
     ...state,
-    base: { versionId: next.versionId, number: next.number, tree: next.tree },
-    tree: next.tree,
-    selection: path ? selectionAt(next.tree, path) : emptySelection(),
+    base,
+    tree: base.tree,
+    selection: path ? selectionAt(base.tree, path) : emptySelection(),
     save,
     held: null,
   };
+}
+
+/** Drops action fields such as `type` so a held or adopted Version is only its identity and tree. */
+function copyBase(next: EditorBase): EditorBase {
+  return { versionId: next.versionId, number: next.number, tree: next.tree };
 }
 
 function select(state: EditorState, ref: NodeRef): EditorState {

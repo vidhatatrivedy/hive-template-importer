@@ -10,6 +10,7 @@ import {
   editorReducer,
   initialEditorState,
   isDirty,
+  isSavingOrAwaiting,
   locate,
   type Column,
   type EditorState,
@@ -70,8 +71,8 @@ export function Editor({
   const loadedVersion = useRef(versionId);
   const loadedRow = useRef(row);
   const commentNodes = useRef(new Map<string, HTMLButtonElement>());
+  /** Stops a second Save before the reducer has moved to `saving`. */
   const saveLock = useRef(false);
-  const runSaveRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (versionId === loadedVersion.current) return;
@@ -80,9 +81,7 @@ export function Editor({
   }, [versionId, versionNumber, tree]);
 
   async function runSave() {
-    if (saveLock.current || !isDirty(state) || state.save.status === "saving" || state.save.status === "awaiting") {
-      return;
-    }
+    if (saveLock.current || !isDirty(state) || isSavingOrAwaiting(state)) return;
     saveLock.current = true;
     const baseNumber = state.base.number;
     const working = state.tree;
@@ -101,19 +100,16 @@ export function Editor({
     }
   }
 
-  useEffect(() => {
-    runSaveRef.current = () => void runSave();
-  });
-
+  // No dependency list: each render closes over the latest Save, so Ctrl/Cmd+S cannot go stale.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
       event.preventDefault();
-      runSaveRef.current();
+      void runSave();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  });
 
   useEffect(() => {
     if (row === loadedRow.current) return;
@@ -131,8 +127,8 @@ export function Editor({
   const { section, item, comment } = locate(state.tree, state.selection);
   const focusColumn = (column: Column) => dispatch({ type: "focus", column });
   const indicator = saveIndicator(state);
-  const canSave = isDirty(state) && state.save.status !== "saving" && state.save.status !== "awaiting";
-  const nameLocked = state.save.status === "saving" || state.save.status === "awaiting";
+  const savingOrAwaiting = isSavingOrAwaiting(state);
+  const canSave = isDirty(state) && !savingOrAwaiting;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -269,7 +265,7 @@ export function Editor({
             section={section}
             item={item}
             comment={comment}
-            nameLocked={nameLocked}
+            nameLocked={savingOrAwaiting}
             onName={(name) => {
               if (!comment?.id) return;
               dispatch({ type: "setComment", id: comment.id, patch: { name } });
@@ -513,7 +509,7 @@ function RowButton({
 }
 
 function saveIndicator(state: EditorState): string | null {
-  if (state.save.status === "saving" || state.save.status === "awaiting") return "Saving…";
+  if (isSavingOrAwaiting(state)) return "Saving…";
   if (isDirty(state)) return "Unsaved changes";
   return null;
 }

@@ -135,8 +135,7 @@ describe("editorReducer", () => {
 
   it("picking a Comment focuses Comments and keeps that Comment", () => {
     const opened = open();
-    const commentId = opened.selection.commentId;
-    if (!commentId) throw new Error("expected a Comment");
+    const commentId = requireCommentId(opened);
     const next = editorReducer(opened, { type: "select", ref: { level: "comment", id: commentId } });
 
     expect(next.focus).toBe("comments");
@@ -178,8 +177,7 @@ describe("editorReducer", () => {
 
   it("is clean on load, dirty after a Comment is renamed, and clean again when the old name is typed back", () => {
     const opened = open();
-    const commentId = opened.selection.commentId;
-    if (!commentId) throw new Error("expected a Comment");
+    const commentId = requireCommentId(opened);
 
     expect(isDirty(opened)).toBe(false);
     expect(located(opened).comment?.name).toBe("In Attendance");
@@ -209,9 +207,9 @@ describe("editorReducer", () => {
   });
 
   it("locks edits while Save is in flight, then waits for the new Version", () => {
-    const commentId = open().selection.commentId;
-    if (!commentId) throw new Error("expected a Comment");
-    const edited = editorReducer(open(), {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, {
       type: "setComment",
       id: commentId,
       patch: { name: "Attendance note" },
@@ -247,9 +245,9 @@ describe("editorReducer", () => {
   });
 
   it("adopts the saved Version, or any newer one, and keeps the same Comment selected", () => {
-    const commentId = open().selection.commentId;
-    if (!commentId) throw new Error("expected a Comment");
-    const awaiting = awaitingSave(commentId, "Attendance note");
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const awaiting = awaitingSave(opened, commentId, "Attendance note");
     const saved = editorReducer(awaiting, {
       type: "serverVersion",
       versionId: "version-2",
@@ -277,9 +275,9 @@ describe("editorReducer", () => {
   });
 
   it("ignores an older Version while waiting for the one just saved", () => {
-    const commentId = open().selection.commentId;
-    if (!commentId) throw new Error("expected a Comment");
-    const awaiting = awaitingSave(commentId, "Attendance note");
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const awaiting = awaitingSave(opened, commentId, "Attendance note");
     const ignored = editorReducer(awaiting, {
       type: "serverVersion",
       versionId: "version-1",
@@ -293,9 +291,9 @@ describe("editorReducer", () => {
   });
 
   it("keeps the renamed Comment when Save fails, and Dismiss clears the error", () => {
-    const commentId = open().selection.commentId;
-    if (!commentId) throw new Error("expected a Comment");
-    const edited = editorReducer(open(), {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, {
       type: "setComment",
       id: commentId,
       patch: { name: "Attendance note" },
@@ -332,8 +330,14 @@ describe("editorReducer", () => {
   });
 });
 
-function awaitingSave(commentId: string, name: string): EditorState {
-  const edited = editorReducer(open(), { type: "setComment", id: commentId, patch: { name } });
+function requireCommentId(state: EditorState): string {
+  const commentId = state.selection.commentId;
+  if (!commentId) throw new Error("expected a Comment");
+  return commentId;
+}
+
+function awaitingSave(opened: EditorState, commentId: string, name: string): EditorState {
+  const edited = editorReducer(opened, { type: "setComment", id: commentId, patch: { name } });
   const saving = editorReducer(edited, { type: "saveRequested" });
   return editorReducer(saving, { type: "saveSucceeded", number: 2 });
 }
@@ -362,9 +366,9 @@ describe("editorReducer on Ben", () => {
 
   it("a name edit leaves every other Section as the same object, and the Template is dirty", () => {
     const opened = initialEditorState({ versionId: "ben-1", number: 1, tree: ben, row: null });
-    const commentId = opened.selection.commentId;
+    const commentId = requireCommentId(opened);
     const sectionIndex = ben.sections.findIndex((section) => section.id === opened.selection.sectionId);
-    if (!commentId || sectionIndex < 0) throw new Error("expected a Comment");
+    if (sectionIndex < 0) throw new Error("expected a Section");
 
     const edited = editorReducer(opened, {
       type: "setComment",
