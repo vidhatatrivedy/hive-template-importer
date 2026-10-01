@@ -4,15 +4,14 @@ import {
   lifecycleActions,
   lifecycleErrorKinds,
   lifecycleErrorMessage,
-  type LifecycleAction,
 } from "@/core/import/lifecycle-messages";
 
 describe("lifecycle messages", () => {
   it("renders a non-empty message for every error kind of every action", () => {
     expect(lifecycleActions).toEqual(["blank", "rename", "duplicate", "delete"]);
     for (const action of lifecycleActions) {
-      for (const kind of lifecycleErrorKinds[action] as readonly string[]) {
-        const message = lifecycleErrorMessage(action as LifecycleAction, { kind } as never);
+      for (const kind of lifecycleErrorKinds[action]) {
+        const message = lifecycleErrorMessage(action, { kind } as never);
         expect(message.trim().length, `${action} ${kind}`).toBeGreaterThan(0);
       }
     }

@@ -52,7 +52,8 @@ export function lifecyclePrompt(
         };
       }
       if (ctx.dirty && isOpen) return { kind: "duplicate-unsaved", name: target.name, latestNumber: target.latestNumber };
-      return ctx.dirty ? { kind: "discard" } : { kind: "none" };
+      if (ctx.dirty) return { kind: "discard" };
+      return { kind: "none" };
     case "delete":
       if (target === null) throw new Error("Delete needs a target");
       return {
