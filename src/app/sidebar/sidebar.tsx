@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
-import { parseOpenTemplate, sidebarLine } from "@/app/sidebar-view";
+import { parseOpenTemplate, sidebarLine } from "@/app/sidebar/sidebar-view";
 import { templateHref } from "@/app/template-view";
 import { GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass, glassClass, labelClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
@@ -108,7 +108,7 @@ function useNow(): number | null {
 
 const CLOCK_TICK_MS = 60_000;
 const clockListeners = new Set<() => void>();
-let clockNow = 0;
+let clockNow: number | null = null;
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 
 function subscribeToClock(listener: () => void): () => void {
@@ -124,11 +124,11 @@ function subscribeToClock(listener: () => void): () => void {
     if (clockListeners.size > 0 || clockTimer === undefined) return;
     clearInterval(clockTimer);
     clockTimer = undefined;
-    clockNow = 0;
+    clockNow = null;
   };
 }
 
 function readClock(): number {
-  if (clockNow === 0) clockNow = Date.now();
+  clockNow ??= Date.now();
   return clockNow;
 }

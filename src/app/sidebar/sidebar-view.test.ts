@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseOpenTemplate, relativeTime, sidebarLine } from "@/app/sidebar-view";
+import { parseOpenTemplate, relativeTime, sidebarLine } from "@/app/sidebar/sidebar-view";
 import { formatDate } from "@/app/ui/format-date";
 import type { TemplateSummary } from "@/db/schemas";
 
