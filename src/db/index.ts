@@ -11,12 +11,14 @@ import {
 } from "@/core/import/schemas";
 import {
   deleteTemplateResultSchema,
+  duplicateTemplateResultSchema,
   importTemplateResultSchema,
   restoreVersionResultSchema,
   saveVersionResultSchema,
   templateDetailSchema,
   type DbRefusal,
   type DeleteTemplateResult,
+  type DuplicateTemplateResult,
   type ImportTemplateResult,
   type RestoreVersionResult,
   type Result,
@@ -27,6 +29,7 @@ import {
 export type {
   DbRefusal,
   DeleteTemplateResult,
+  DuplicateTemplateResult,
   ImportTemplateResult,
   RestoreVersionResult,
   Result,
@@ -48,6 +51,7 @@ const VERSION_NUMBER_COLUMNS = "(template_id, number)";
 export interface Db {
   importTemplate(draft: ImportDraft, name: string): Promise<ImportTemplateResult>;
   deleteTemplate(templateId: string): Promise<Result<DeleteTemplateResult>>;
+  duplicateTemplate(templateId: string): Promise<Result<DuplicateTemplateResult>>;
   saveVersion(
     templateId: string,
     baseNumber: number,
@@ -66,6 +70,7 @@ export function createDb(env: { url: string; serviceRoleKey: string }): Db {
   return {
     importTemplate: (draft, name) => importTemplate(client, draft, name),
     deleteTemplate: (templateId) => deleteTemplate(client, templateId),
+    duplicateTemplate: (templateId) => duplicateTemplate(client, templateId),
     saveVersion: (templateId, baseNumber, tree) => saveVersion(client, templateId, baseNumber, tree),
     restoreVersion: (versionId, baseNumber) => restoreVersion(client, versionId, baseNumber),
     getTemplate: (templateId) =>
@@ -90,6 +95,19 @@ async function importTemplate(client: SupabaseClient, draft: ImportDraft, name: 
     },
   });
   return importTemplateResultSchema.parse(data);
+}
+
+async function duplicateTemplate(
+  client: SupabaseClient,
+  templateId: string,
+): Promise<Result<DuplicateTemplateResult>> {
+  const { data, error } = await client.rpc("duplicate_template", { template_id: templateId });
+  if (error) {
+    const refusal = refusalFrom(error);
+    if (refusal) return { ok: false, error: refusal };
+    throw error;
+  }
+  return { ok: true, value: duplicateTemplateResultSchema.parse(data) };
 }
 
 async function deleteTemplate(

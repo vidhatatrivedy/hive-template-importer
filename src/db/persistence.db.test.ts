@@ -145,6 +145,7 @@ describe("persistence tracer", () => {
       { fn: "get_version_tree", args: { version_id: UNKNOWN_ID } },
       { fn: "get_import_evidence", args: { import_run_id: UNKNOWN_ID } },
       { fn: "delete_template", args: { template_id: UNKNOWN_ID } },
+      { fn: "duplicate_template", args: { template_id: UNKNOWN_ID } },
       { fn: "save_version", args: { template_id: UNKNOWN_ID, base_number: 1, tree: { sections: [] } } },
       { fn: "restore_version", args: { version_id: UNKNOWN_ID, base_number: 1 } },
     ];
@@ -393,6 +394,189 @@ describe("restore version", () => {
   it("refuses a Restore of an unknown Version", async () => {
     const restored = await db.restoreVersion(UNKNOWN_ID, 1);
     expect(restored).toEqual({ ok: false, error: { kind: "template-not-found" } });
+  });
+});
+
+describe("duplicate template", () => {
+  it("refuses to Duplicate an unknown Template", async () => {
+    expect(await db.duplicateTemplate(UNKNOWN_ID)).toEqual({
+      ok: false,
+      error: { kind: "template-not-found" },
+    });
+  });
+
+  it("copies the source's latest Version and stays independent after Saves and deletion", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    let copyId: string | undefined;
+    try {
+      const version1 = await db.getVersionTree(imported.versionId);
+      if (!version1) throw new Error("Version 1 was not stored");
+      const sourceEdits = applySaveEdits(version1);
+      const saved = await db.saveVersion(imported.templateId, 1, sourceEdits.tree);
+      expect(saved).toEqual({ ok: true, value: expect.objectContaining({ number: 2 }) });
+      if (!saved.ok) return;
+
+      const latest = await db.getVersionTree(saved.value.versionId);
+      if (!latest) throw new Error("Source latest Version was not stored");
+
+      const duplicated = await db.duplicateTemplate(imported.templateId);
+      expect(duplicated.ok).toBe(true);
+      if (!duplicated.ok) return;
+      copyId = duplicated.value.templateId;
+
+      const copyTree = await db.getVersionTree(duplicated.value.versionId);
+      if (!copyTree) throw new Error("Copy was not stored");
+      expect(withoutIds(copyTree)).toEqual(withoutIds(latest));
+      expect(withoutIds(copyTree)).not.toEqual(withoutIds(version1));
+      const sourceIds = new Set(collectIds(latest));
+      expect(collectIds(copyTree).some((id) => sourceIds.has(id))).toBe(false);
+
+      const copy = await db.getTemplate(copyId);
+      expect(copy).toMatchObject({
+        name: `${draft.suggestedName} (copy)`,
+        creation: "copy",
+        copiedFrom: {
+          templateId: imported.templateId,
+          templateName: draft.suggestedName,
+          versionNumber: 2,
+        },
+        importRun: { id: imported.importRunId },
+      });
+      expect(copy?.versions).toEqual([
+        expect.objectContaining({
+          id: duplicated.value.versionId,
+          number: 1,
+          origin: "copy",
+          restoredFromNumber: null,
+          counts: countEditableTree(latest),
+        }),
+      ]);
+
+      const copyEdits = applySaveEdits(copyTree);
+      const copySaved = await db.saveVersion(copyId, 1, copyEdits.tree);
+      expect(copySaved).toEqual({ ok: true, value: expect.objectContaining({ number: 2 }) });
+      if (!copySaved.ok) return;
+
+      const sourceAfterCopySave = await db.getVersionTree(saved.value.versionId);
+      if (!sourceAfterCopySave) throw new Error("Source latest Version was not readable");
+      expect(withoutIds(sourceAfterCopySave)).toEqual(withoutIds(latest));
+
+      const sourceAgain = applySaveEdits(latest);
+      const section = sourceAgain.tree.sections[0];
+      if (!section) throw new Error("Fixture has no Section");
+      section.name = `${section.name}\u00A0source`;
+      const sourceSaved = await db.saveVersion(imported.templateId, 2, sourceAgain.tree);
+      expect(sourceSaved).toEqual({ ok: true, value: expect.objectContaining({ number: 3 }) });
+      if (!sourceSaved.ok) return;
+
+      const copyVersion1 = await db.getVersionTree(duplicated.value.versionId);
+      const copyVersion2 = await db.getVersionTree(copySaved.value.versionId);
+      if (!copyVersion1 || !copyVersion2) throw new Error("Copy Versions were not readable");
+      expect(withoutIds(copyVersion1)).toEqual(withoutIds(latest));
+      expect(withoutIds(copyVersion2)).toEqual(withoutIds(copyEdits.tree));
+
+      const deleted = await db.deleteTemplate(imported.templateId);
+      expect(deleted).toEqual({ ok: true, value: { importRunDeleted: false } });
+      const copyAfterDelete = await db.getTemplate(copyId);
+      expect(copyAfterDelete?.copiedFrom).toEqual({
+        templateId: null,
+        templateName: draft.suggestedName,
+        versionNumber: 2,
+      });
+      const treeAfter = await db.getVersionTree(duplicated.value.versionId);
+      if (!treeAfter) throw new Error("Copy tree was not readable after the source was deleted");
+      expect(withoutIds(treeAfter)).toEqual(withoutIds(latest));
+      expect(await db.getImportEvidence(imported.importRunId)).toEqual({
+        run: draft.run,
+        sourceRows: draft.sourceRows,
+        issues: draft.issues,
+      });
+    } finally {
+      if (copyId) await db.deleteTemplate(copyId);
+      await db.deleteTemplate(imported.templateId);
+    }
+  });
+
+  it("deletes the Import run only after the last Copy is gone", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    let copyId: string | undefined;
+    try {
+      const duplicated = await db.duplicateTemplate(imported.templateId);
+      expect(duplicated.ok).toBe(true);
+      if (!duplicated.ok) return;
+      copyId = duplicated.value.templateId;
+
+      const deletedSource = await db.deleteTemplate(imported.templateId);
+      expect(deletedSource).toEqual({ ok: true, value: { importRunDeleted: false } });
+      expect(await db.getImportEvidence(imported.importRunId)).toEqual({
+        run: draft.run,
+        sourceRows: draft.sourceRows,
+        issues: draft.issues,
+      });
+
+      const deletedCopy = await db.deleteTemplate(copyId);
+      expect(deletedCopy).toEqual({ ok: true, value: { importRunDeleted: true } });
+      expect(await db.getImportEvidence(imported.importRunId)).toBeNull();
+    } finally {
+      if (copyId) await db.deleteTemplate(copyId);
+      await db.deleteTemplate(imported.templateId);
+    }
+  });
+
+  it("a Copy of a Copy inherits the same Import run", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    let firstId: string | undefined;
+    let secondId: string | undefined;
+    try {
+      const first = await db.duplicateTemplate(imported.templateId);
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      firstId = first.value.templateId;
+
+      const second = await db.duplicateTemplate(firstId);
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      secondId = second.value.templateId;
+
+      const detail = await db.getTemplate(second.value.templateId);
+      expect(detail).toMatchObject({
+        name: `${draft.suggestedName} (copy) (copy)`,
+        creation: "copy",
+        importRun: { id: imported.importRunId },
+        copiedFrom: {
+          templateId: first.value.templateId,
+          templateName: `${draft.suggestedName} (copy)`,
+          versionNumber: 1,
+        },
+      });
+
+      expect(await db.deleteTemplate(imported.templateId)).toEqual({
+        ok: true,
+        value: { importRunDeleted: false },
+      });
+      expect(await db.deleteTemplate(first.value.templateId)).toEqual({
+        ok: true,
+        value: { importRunDeleted: false },
+      });
+      const surviving = await db.getTemplate(second.value.templateId);
+      expect(surviving?.importRun?.id).toBe(imported.importRunId);
+      expect(surviving?.copiedFrom).toEqual({
+        templateId: null,
+        templateName: `${draft.suggestedName} (copy)`,
+        versionNumber: 1,
+      });
+      expect(await db.getImportEvidence(imported.importRunId)).not.toBeNull();
+
+      expect(await db.deleteTemplate(second.value.templateId)).toEqual({
+        ok: true,
+        value: { importRunDeleted: true },
+      });
+      expect(await db.getImportEvidence(imported.importRunId)).toBeNull();
+    } finally {
+      if (secondId) await db.deleteTemplate(secondId);
+      if (firstId) await db.deleteTemplate(firstId);
+      await db.deleteTemplate(imported.templateId);
+    }
   });
 });
 
