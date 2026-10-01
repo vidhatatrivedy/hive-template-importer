@@ -12,6 +12,7 @@ import {
   type ReconciliationRowView,
   type ReconciliationSectionView,
 } from "@/app/trust-sections";
+import { reportLabels, type CopiedFrom, type ReportLabels } from "@/app/report-base";
 import { sourceRowView } from "@/app/source-row-view";
 import { trustSummaryView } from "@/app/trust-summary";
 import { GuardedLink } from "@/app/unsaved-guard";
@@ -29,20 +30,23 @@ export function TrustReportSheet({
   view,
   latestNumber,
   loaded,
+  copiedFrom,
   hrefVersion,
 }: {
   templateId: string;
   view: TemplateView;
   latestNumber: number;
   loaded: LoadedTrustReport;
+  copiedFrom: CopiedFrom | null;
   /** Set on an old Version, so row links stay on `/v/<n>`. Null is the latest Version. */
   hrefVersion: number | null;
 }) {
   const hrefOptions = { version: hrefVersion };
   const closeHref = templateHref(templateId, withTrustPane(view, false), hrefOptions);
+  const unverifiable = loaded.base.kind === "unverifiable";
 
   if (view.row !== null) {
-    const rowView = sourceRowView(loaded.report, loaded.evidence, loaded.tree, view.row);
+    const rowView = sourceRowView(loaded.report, loaded.evidence, loaded.tree, view.row, { unverifiable });
     return (
       <TrustSheet
         label={rowView.kind === "row" ? rowView.title : "Source row"}
@@ -64,7 +68,8 @@ export function TrustReportSheet({
   const rowHref = (row: number) =>
     templateHref(templateId, { ...withTrustPane(view, true), row }, hrefOptions);
   const { summary } = loaded.report;
-  const summaryView = trustSummaryView(loaded.report, latestNumber);
+  const summaryView = trustSummaryView(loaded.report, latestNumber, loaded.base.kind);
+  const labels = reportLabels(loaded.base, latestNumber, copiedFrom);
   const { reconciliation, externalAssets, keptButNotUsed, missingFromExport } = trustSectionsView(loaded.report);
 
   return (
@@ -73,7 +78,7 @@ export function TrustReportSheet({
       closeHref={closeHref}
       heading={<h2 className="font-medium text-neutral-900 dark:text-white">Import Trust Report</h2>}
     >
-      {summaryView.versionLabel ? <p className="text-neutral-500">{summaryView.versionLabel}</p> : null}
+      <ReportBanner labels={labels} />
 
       <section className="flex flex-col gap-2">
         <h3 className={labelClass}>Summary</h3>
@@ -133,11 +138,21 @@ export function TrustReportSheet({
             </ul>
           </div>
         ) : (
-          <p className={verdictClass}>✓ {summaryView.verdict}</p>
+          <p className={verdictClass}>
+            {summaryView.marksVerdict ? "✓ " : null}
+            {summaryView.verdict}
+          </p>
         )}
       </section>
 
-      <Reconciliation sections={reconciliation} />
+      {labels.unverifiable ? (
+        <section className="flex flex-col gap-1">
+          <h3 className={labelClass}>Reconciliation by Section</h3>
+          <p>{labels.unverifiable}</p>
+        </section>
+      ) : (
+        <Reconciliation sections={reconciliation} />
+      )}
       <ImportIssues
         key={templateId}
         severities={issueSeverities}
@@ -148,6 +163,29 @@ export function TrustReportSheet({
       <KeptButNotUsed kept={keptButNotUsed} />
       <MissingFromExport missing={missingFromExport} />
     </TrustSheet>
+  );
+}
+
+function ReportBanner({ labels }: { labels: ReportLabels }) {
+  if (!labels.movedOn && !labels.readOnly && !labels.unverifiable && !labels.copiedFrom) return null;
+  return (
+    <div className="flex flex-col gap-1 text-neutral-500">
+      {labels.movedOn ? <p>{labels.movedOn}</p> : null}
+      {labels.readOnly ? (
+        <p>
+          {labels.readOnly.before}
+          <GuardedLink
+            href={templateHref(labels.readOnly.templateId, { panes: new Set(), row: null })}
+            className="underline underline-offset-2"
+          >
+            {labels.readOnly.templateName}
+          </GuardedLink>
+          {labels.readOnly.after}
+        </p>
+      ) : null}
+      {labels.unverifiable ? <p>{labels.unverifiable}</p> : null}
+      {labels.copiedFrom ? <p>{labels.copiedFrom}</p> : null}
+    </div>
   );
 }
 

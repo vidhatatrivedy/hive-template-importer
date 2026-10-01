@@ -29,6 +29,7 @@ describe("sourceRowView", () => {
       exact: "Stored exactly as in the file.",
       textNote: "No changes to the text.",
       storedHtml: "Fine",
+      storedLabel: "Stored",
     });
     if (view.kind !== "row") return;
     expect(view.segments).toEqual([{ kind: "kept", text: "Fine" }]);
@@ -98,6 +99,12 @@ describe("sourceRowView", () => {
       stored: "Hi",
       explanation: "Tag removed",
     });
+  });
+
+  it("labels the stored side as this Copy's Version 1 when the import cannot be re-verified", () => {
+    const { report, evidence, tree } = sample();
+    const view = sourceRowView(report, evidence, tree, 2, { unverifiable: true });
+    expect(view).toMatchObject({ kind: "row", storedLabel: "in this Copy's Version 1" });
   });
 
   it("calls a difference with no issue or rule Unexplained", () => {

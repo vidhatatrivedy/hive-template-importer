@@ -1,4 +1,5 @@
 import type { TrustReport } from "@/core/import/trust-report";
+import { NOT_REVERIFIED, type ReportBase } from "@/app/report-base";
 
 /** The Trust Report Summary's lines that need wording, from the report as it comes. */
 export type TrustSummaryView = {
@@ -6,29 +7,38 @@ export type TrustSummaryView = {
   fileSize: string;
   rowFlow: string;
   verdict: string;
+  /** A ✓ in front of a full verdict. Off for a failure and for an unverifiable Copy. */
+  marksVerdict: boolean;
   /** Set when a row failed. `sourceRows` holds null for a stored Comment that has no Source row. */
   failure: { message: string; sourceRows: (number | null)[] } | null;
 };
 
-export function trustSummaryView(report: TrustReport, latestNumber: number): TrustSummaryView {
+export function trustSummaryView(
+  report: TrustReport,
+  latestNumber: number,
+  baseKind: ReportBase["kind"] = "own-import",
+): TrustSummaryView {
   const { summary } = report;
   const { verified, total } = summary.verdict;
-  const failed = report.rows.filter((row) => row.status === "✗");
+  const unverifiable = baseKind === "unverifiable";
+  const failed = unverifiable ? [] : report.rows.filter((row) => row.status === "✗");
+  const failure =
+    !unverifiable && verified < total
+      ? {
+          message: `✗ ${total - verified} of ${total} rows don't match what was stored. This is a bug in the importer.`,
+          sourceRows: failed.map((row) => row.sourceRow),
+        }
+      : null;
   return {
     versionLabel:
-      latestNumber > 1
+      baseKind === "own-import" && latestNumber > 1
         ? `Describes Version 1, as imported. This Template is now at Version ${latestNumber}.`
         : null,
     fileSize: formatFileSize(summary.byteSize),
     rowFlow: `${summary.rowsRead} rows read → ${summary.blankRows} blank rows → ${summary.commentsStored} Comments stored`,
-    verdict: `${verified} / ${total} rows verified`,
-    failure:
-      verified < total
-        ? {
-            message: `✗ ${total - verified} of ${total} rows don't match what was stored. This is a bug in the importer.`,
-            sourceRows: failed.map((row) => row.sourceRow),
-          }
-        : null,
+    verdict: unverifiable ? NOT_REVERIFIED : `${verified} / ${total} rows verified`,
+    marksVerdict: !unverifiable && failure === null,
+    failure,
   };
 }
 

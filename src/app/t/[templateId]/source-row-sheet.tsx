@@ -54,7 +54,7 @@ export function SourceRowBody({ view }: { view: SourceRowView }) {
           ))}
         </p>
         {view.textNote ? <p>{view.textNote}</p> : null}
-        <p className="text-neutral-500">Stored</p>
+        <p className="text-neutral-500">{view.storedLabel}</p>
         <CommentHtml html={view.storedHtml} sourceRow={view.row} />
       </section>
 

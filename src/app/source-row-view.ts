@@ -3,6 +3,7 @@ import type { Cell, Difference, DifferenceExplanation } from "@/core/import/reco
 import type { EditableTree, ImportEvidence } from "@/core/import/schemas";
 import type { TrustReport } from "@/core/import/trust-report";
 import { cutSegments, type CutSpan, type Segment } from "@/app/cut-segments";
+import { STORED_IN_THIS_COPY } from "@/app/report-base";
 
 export { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 
@@ -40,6 +41,8 @@ export type SourceRowPresent = {
   /** Set when the raw Comment Text has no cuts. */
   textNote: string | null;
   storedHtml: string;
+  /** "Stored", or this Copy's Version 1 when the import cannot be re-verified. */
+  storedLabel: string;
   cells: SourceRowCell[];
 };
 
@@ -54,6 +57,7 @@ export function sourceRowView(
   evidence: ImportEvidence,
   tree: EditableTree,
   row: number,
+  options?: { unverifiable?: boolean },
 ): SourceRowView {
   const source = evidence.sourceRows.find((candidate) => candidate.rowNumber === row);
   if (!source) return { kind: "missing", message: `Row ${row} isn't a Source row of this import.` };
@@ -75,6 +79,7 @@ export function sourceRowView(
     segments,
     textNote: textChanged ? null : "No changes to the text.",
     storedHtml: located.storedHtml,
+    storedLabel: options?.unverifiable ? STORED_IN_THIS_COPY : "Stored",
     cells: evidence.run.headers.map((header, index) => ({
       header,
       value: cellString(source.cells[index] ?? null),

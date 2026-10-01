@@ -11,12 +11,13 @@ import {
   type TemplateSearchParams,
   type TemplateView,
 } from "@/app/template-view";
+import { copyHeaderLine } from "@/app/report-base";
 import { versionLabel } from "@/app/version-label";
 import { GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass, glassClass } from "@/app/ui/classes";
 import { readOnlyFields } from "@/core/import/read-only-fields";
 import { Editor } from "./editor";
-import { getCachedImportEvidence, loadTrustReport } from "./load-trust-report";
+import { getCachedImportEvidence, loadReportBase, loadTrustReport } from "./load-trust-report";
 import { TrustReportSheet } from "./trust-report-sheet";
 import { VersionBanner } from "./version-banner";
 import { formatVersionCounts, VersionsSheet } from "./versions-sheet";
@@ -61,14 +62,16 @@ export async function TemplateScreen({
   const readOnly = requestedVersion !== null;
   const hrefVersion = readOnly ? viewed.number : null;
   const counts = formatVersionCounts(viewed.counts);
-  const hasReport = template.creation === "import";
+  const base = await loadReportBase(db, template);
+  const hasReport = base.kind !== "none";
   const trustOpen = hasReport && view.panes.has("trust");
   const versionsOpen = view.panes.has("versions");
+  const copyLine = copyHeaderLine(template.copiedFrom);
   // Start evidence before the Trust Report so both share one cached read, and the report's tree fetch overlaps it.
   const evidencePromise = template.importRun
     ? getCachedImportEvidence(db, template.importRun.id)
     : Promise.resolve(null);
-  const trust = trustOpen ? await loadTrustReport(db, template) : null;
+  const trust = trustOpen ? await loadTrustReport(db, template, base) : null;
   const evidence = await evidencePromise;
   if (trustOpen && !trust) notFound();
 
@@ -103,6 +106,11 @@ export async function TemplateScreen({
           }
         >
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {copyLine ? (
+              <p className="max-w-56 truncate text-neutral-500" title={copyLine}>
+                {copyLine}
+              </p>
+            ) : null}
             {template.importRun ? (
               <p className="max-w-56 truncate text-neutral-400">{template.importRun.filename}</p>
             ) : null}
@@ -139,6 +147,7 @@ export async function TemplateScreen({
               view={view}
               latestNumber={latest.number}
               loaded={trust}
+              copiedFrom={template.copiedFrom}
               hrefVersion={hrefVersion}
             />
           ) : null}

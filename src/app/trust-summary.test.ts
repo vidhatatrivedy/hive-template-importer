@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
 import type { EditableTree, ImportDraft } from "@/core/import/schemas";
 import { buildTrustReport } from "@/core/import/trust-report";
+import { NOT_REVERIFIED } from "@/app/report-base";
 import { formatFileSize, trustSummaryView } from "@/app/trust-summary";
 
 const FIXTURE_DIR = path.resolve(__dirname, "../../fixtures/spectora");
@@ -18,6 +19,7 @@ describe("trustSummaryView", () => {
     expect(view.rowFlow).toBe("392 rows read → 0 blank rows → 392 Comments stored");
     expect(view.verdict).toBe("392 / 392 rows verified");
     expect(view.failure).toBeNull();
+    expect(view.marksVerdict).toBe(true);
     expect(view.fileSize).toBe("54.3 KB");
     expect(view.versionLabel).toBeNull();
   });
@@ -46,6 +48,17 @@ describe("trustSummaryView", () => {
       message: "✗ 2 of 392 rows don't match what was stored. This is a bug in the importer.",
       sourceRows: [first.sourceRow, second.sourceRow],
     });
+    expect(view.marksVerdict).toBe(false);
+  });
+
+  it("says Not re-verified, with no failure list, once the imported Template is gone", async () => {
+    const draft = await draftOf(RESIDENTIAL);
+    const view = trustSummaryView(buildTrustReport(draft, draft.tree), 4, "unverifiable");
+
+    expect(view.verdict).toBe(NOT_REVERIFIED);
+    expect(view.failure).toBeNull();
+    expect(view.marksVerdict).toBe(false);
+    expect(view.versionLabel).toBeNull();
   });
 });
 
