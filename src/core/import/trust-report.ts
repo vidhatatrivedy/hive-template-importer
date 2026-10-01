@@ -26,8 +26,8 @@ export type ReportLocation = {
   comment: string;
 };
 
-/** A Section or Item in the report. `sourceRows` is how many distinct Source rows its Comments point at. */
-export type ReconciliationItem = {
+/** Shared shape for a Section and for an Item. `sourceRows` is how many distinct Source rows its Comments point at. */
+export type ReconciliationNode = {
   name: string;
   split: boolean;
   sourceRows: number;
@@ -36,9 +36,9 @@ export type ReconciliationItem = {
   status: ReportStatus;
 };
 
-export type ReconciliationSection = ReconciliationItem & {
+export type ReconciliationSection = ReconciliationNode & {
   itemCount: number;
-  items: ReconciliationItem[];
+  items: ReconciliationNode[];
 };
 
 export type TrustIssue = {
@@ -196,9 +196,14 @@ function sectionsOf(evidence: ImportEvidence, tree: EditableTree, result: Reconc
     );
     const comments = section.items.flatMap((item) => item.comments);
     const node = reconciliationNode(section.name, comments, evidence.issues, rowsBySource, "section");
-    const failed = section.items.length === 0 || items.some((item) => item.status === "✗");
-    return { ...node, itemCount: section.items.length, items, status: failed ? "✗" : "✓" };
+    return { ...node, itemCount: section.items.length, items, status: sectionStatus(items) };
   });
+}
+
+/** An empty Section fails, and so does a Section that contains a failing Item. */
+function sectionStatus(items: readonly ReconciliationNode[]): ReportStatus {
+  if (items.length === 0 || items.some((item) => item.status === "✗")) return "✗";
+  return "✓";
 }
 
 function reconciliationNode(
@@ -207,7 +212,7 @@ function reconciliationNode(
   issues: readonly ImportIssue[],
   rowsBySource: ReadonlyMap<number, ReconcileRow>,
   level: "section" | "item",
-): ReconciliationItem {
+): ReconciliationNode {
   const sourceRows = uniqueSourceRows(comments);
   const sourceSet = new Set(sourceRows);
   return {
@@ -290,23 +295,21 @@ function locationsOf(tree: EditableTree): Map<number, ReportLocation> {
 }
 
 function externalAssetsOf(tree: EditableTree): ExternalAssetHost[] {
-  const hosts: ExternalAssetHost[] = [];
   const byHost = new Map<string, ExternalAssetHost>();
   for (const section of tree.sections) {
     for (const item of section.items) {
       for (const comment of item.comments) {
-        for (const asset of assetsIn(comment.textHtml)) addAsset(hosts, byHost, asset, comment.sourceRow);
+        for (const asset of assetsIn(comment.textHtml)) addAsset(byHost, asset, comment.sourceRow);
       }
     }
   }
-  for (const host of hosts) {
+  for (const host of byHost.values()) {
     for (const url of host.urls) url.sourceRows.sort((left, right) => left - right);
   }
-  return hosts;
+  return [...byHost.values()];
 }
 
 function addAsset(
-  hosts: ExternalAssetHost[],
   byHost: Map<string, ExternalAssetHost>,
   asset: { host: string; url: string },
   sourceRow: number | null,
@@ -315,7 +318,6 @@ function addAsset(
   if (!host) {
     host = { host: asset.host, urls: [] };
     byHost.set(asset.host, host);
-    hosts.push(host);
   }
   let url = host.urls.find((entry) => entry.url === asset.url);
   if (!url) {
@@ -362,30 +364,33 @@ function keptButNotUsed(evidence: ImportEvidence): KeptColumn[] {
   for (const raw of RAW_ONLY_COLUMNS) {
     const index = findHeader(evidence.run.headers, raw.header);
     if (index < 0) continue;
-    columns.push({ column: raw.column, nonDefaultRows: nonDefaultRows(evidence, [index], raw.header) });
+    const isDefault = raw.header === "Uses" ? isUsesDefault : isBlank;
+    columns.push({ column: raw.column, nonDefaultRows: nonDefaultRows(evidence, [index], isDefault) });
   }
   const photoIndexes = DEFAULT_PHOTO_HEADERS.map((header) => findHeader(evidence.run.headers, header)).filter(
     (index) => index >= 0,
   );
   if (photoIndexes.length > 0) {
-    columns.push({ column: "Default photos", nonDefaultRows: nonDefaultRows(evidence, photoIndexes, "Default photos") });
+    columns.push({ column: "Default photos", nonDefaultRows: nonDefaultRows(evidence, photoIndexes, isBlank) });
   }
   return columns;
 }
 
-function nonDefaultRows(evidence: ImportEvidence, indexes: readonly number[], header: string): number {
+function nonDefaultRows(
+  evidence: ImportEvidence,
+  indexes: readonly number[],
+  isDefault: (value: Cell) => boolean,
+): number {
   let count = 0;
   for (const row of evidence.sourceRows) {
-    const content = indexes.some((index) => !isDefaultCell(header, row.cells[index] ?? null));
-    if (content) count += 1;
+    if (indexes.some((index) => !isDefault(row.cells[index] ?? null))) count += 1;
   }
   return count;
 }
 
-/** An empty cell is the default. Uses is also default at 0, including the string `"0"`. */
-function isDefaultCell(header: string, value: Cell): boolean {
-  if (header === "Uses") return isBlank(value) || value === 0 || value === "0";
-  return isBlank(value);
+/** Uses is default when the cell is empty, and at 0, including the string `"0"`. */
+function isUsesDefault(value: Cell): boolean {
+  return isBlank(value) || value === 0 || value === "0";
 }
 
 function isBlank(value: Cell): boolean {
