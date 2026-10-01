@@ -32,7 +32,6 @@ const DISCARD_CHOICE: ConfirmChoice = {
 type PendingChoice = ConfirmChoice & { resolve: (accepted: boolean) => void };
 
 type GuardApi = {
-  clear: () => void;
   confirmDiscard: () => Promise<boolean>;
   confirmChoice: (choice: ConfirmChoice) => Promise<boolean>;
 };
@@ -58,10 +57,6 @@ export function confirmDiscard(): Promise<boolean> {
 /** The same dialog as Discard, with the caller's own text. Resolves false when no provider is mounted. */
 export function confirmChoice(choice: ConfirmChoice): Promise<boolean> {
   return mountedGuard?.confirmChoice(choice) ?? Promise.resolve(false);
-}
-
-function clearUnsaved(): void {
-  mountedGuard?.clear();
 }
 
 export function UnsavedGuardProvider({ children }: { children: ReactNode }) {
@@ -96,7 +91,6 @@ export function UnsavedGuardProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const api: GuardApi = {
-      clear: () => report(false),
       confirmDiscard: () => (unsavedRef.current ? ask(DISCARD_CHOICE) : Promise.resolve(true)),
       confirmChoice: ask,
     };
@@ -104,7 +98,7 @@ export function UnsavedGuardProvider({ children }: { children: ReactNode }) {
     return () => {
       if (mountedGuard === api) mountedGuard = null;
     };
-  }, [ask, report]);
+  }, [ask]);
 
   useEffect(() => {
     if (!unsaved) return;
@@ -153,13 +147,18 @@ export function useReportUnsaved(unsaved: boolean) {
   }, [report, unsaved]);
 }
 
+/** Whether the open Template has unsaved edits, for prompts that decide before asking. */
+export function useUnsaved(): boolean {
+  return useGuard().unsaved;
+}
+
 type GuardedLinkProps = Omit<ComponentProps<typeof Link>, "href"> & { href: string };
 
 /**
  * A link that asks before leaving the Template with unsaved edits.
  * Same-pathname links (pane toggles, Source row links, `?row=`) are never guarded.
- * On confirm, the flag is cleared and the navigation continues, so a failed leave can be guarded again
- * only after the editor reports dirty once more.
+ * On confirm the navigation continues and the flag is left alone: it clears only when the editor unmounts,
+ * so a navigation that doesn't leave keeps the edits guarded.
  */
 export function GuardedLink({ href, onNavigate, ...props }: GuardedLinkProps) {
   const guard = useGuard();
@@ -175,9 +174,7 @@ export function GuardedLink({ href, onNavigate, ...props }: GuardedLinkProps) {
         if (!guard.unsaved || samePathname(href, pathname)) return;
         event.preventDefault();
         void confirmDiscard().then((accepted) => {
-          if (!accepted) return;
-          clearUnsaved();
-          router.push(href);
+          if (accepted) router.push(href);
         });
       }}
     />

@@ -9,6 +9,8 @@ export { prepareSave, summariseCuts } from "./prepare-save";
 export type { BlankName, PrepareSaveResult, TextChange } from "./prepare-save";
 export { restoreErrorKinds, restoreErrorMessage, saveErrorKinds, saveErrorMessage } from "./editor-messages";
 export type { RestoreError, RestoreErrorKind, SaveError, SaveErrorKind } from "./editor-messages";
+export { lifecycleActions, lifecycleErrorKinds, lifecycleErrorMessage } from "./lifecycle-messages";
+export type { LifecycleAction, LifecycleError, LifecycleErrorKind } from "./lifecycle-messages";
 export type { Rejection, RejectionKind } from "./rejections";
 export { reconcile, toExportRows } from "./reconcile";
 export type { Cell, Difference, DifferenceExplanation, ExportRow, ReconcileResult, ReconcileRow } from "./reconcile";

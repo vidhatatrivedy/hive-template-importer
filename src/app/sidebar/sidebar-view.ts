@@ -17,6 +17,54 @@ export function parseOpenTemplate(pathname: string): OpenTemplate {
   return null;
 }
 
+/** The Template an action targets, from a sidebar row or the header. `latestNumber` is how many Versions it has. */
+export type ActionTarget = { id: string; name: string; latestNumber: number };
+
+export type LifecycleContext = { open: OpenTemplate; dirty: boolean };
+
+/** Which confirm, if any, an action shows before it runs. */
+export type Prompt =
+  | { kind: "none" }
+  | { kind: "discard" }
+  | { kind: "duplicate-unsaved"; name: string; latestNumber: number }
+  | { kind: "duplicate-viewing"; name: string; viewing: number; latestNumber: number }
+  | { kind: "delete"; name: string; versions: number; losesEdits: boolean; leaves: boolean };
+
+/** Rename and links never prompt here: Rename leaves the edits alone, and links use the guard. */
+export function lifecyclePrompt(
+  action: "blank" | "duplicate" | "delete",
+  target: ActionTarget | null,
+  ctx: LifecycleContext,
+): Prompt {
+  const open = ctx.open;
+  const isOpen = target !== null && open !== null && open.templateId === target.id;
+  switch (action) {
+    case "blank":
+      return ctx.dirty ? { kind: "discard" } : { kind: "none" };
+    case "duplicate":
+      if (target === null) throw new Error("Duplicate needs a target");
+      if (isOpen && open.viewingVersion !== null) {
+        return {
+          kind: "duplicate-viewing",
+          name: target.name,
+          viewing: open.viewingVersion,
+          latestNumber: target.latestNumber,
+        };
+      }
+      if (ctx.dirty && isOpen) return { kind: "duplicate-unsaved", name: target.name, latestNumber: target.latestNumber };
+      return ctx.dirty ? { kind: "discard" } : { kind: "none" };
+    case "delete":
+      if (target === null) throw new Error("Delete needs a target");
+      return {
+        kind: "delete",
+        name: target.name,
+        versions: target.latestNumber,
+        losesEdits: ctx.dirty && isOpen,
+        leaves: isOpen,
+      };
+  }
+}
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;

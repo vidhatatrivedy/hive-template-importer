@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseOpenTemplate, relativeTime, sidebarLine } from "@/app/sidebar/sidebar-view";
+import {
+  lifecyclePrompt,
+  parseOpenTemplate,
+  relativeTime,
+  sidebarLine,
+  type ActionTarget,
+  type OpenTemplate,
+} from "@/app/sidebar/sidebar-view";
 import { formatDate } from "@/app/ui/format-date";
 import type { TemplateSummary } from "@/db/schemas";
 
@@ -96,5 +103,69 @@ describe("parseOpenTemplate", () => {
 
   it("decodes the id the way templateHref encodes it", () => {
     expect(parseOpenTemplate("/t/a%20b")).toEqual({ templateId: "a b", viewingVersion: null });
+  });
+});
+
+describe("lifecyclePrompt", () => {
+  const target: ActionTarget = { id: templateId, name: "InterNACHI Residential", latestNumber: 4 };
+  const other: ActionTarget = { id: "0d9f8e7c-1111-4222-8333-444455556666", name: "Radon", latestNumber: 1 };
+  const editing: OpenTemplate = { templateId, viewingVersion: null };
+  const viewing: OpenTemplate = { templateId, viewingVersion: 3 };
+
+  it("Blank asks to discard only when there are unsaved edits", () => {
+    expect(lifecyclePrompt("blank", null, { open: editing, dirty: false })).toEqual({ kind: "none" });
+    expect(lifecyclePrompt("blank", null, { open: editing, dirty: true })).toEqual({ kind: "discard" });
+    expect(lifecyclePrompt("blank", null, { open: null, dirty: false })).toEqual({ kind: "none" });
+  });
+
+  it("Duplicate of the open Template runs clean and warns when dirty", () => {
+    expect(lifecyclePrompt("duplicate", target, { open: editing, dirty: false })).toEqual({ kind: "none" });
+    expect(lifecyclePrompt("duplicate", target, { open: editing, dirty: true })).toEqual({
+      kind: "duplicate-unsaved",
+      name: "InterNACHI Residential",
+      latestNumber: 4,
+    });
+  });
+
+  it("Duplicate from the read-only view says the Copy is made from the latest Version", () => {
+    expect(lifecyclePrompt("duplicate", target, { open: viewing, dirty: false })).toEqual({
+      kind: "duplicate-viewing",
+      name: "InterNACHI Residential",
+      viewing: 3,
+      latestNumber: 4,
+    });
+  });
+
+  it("Duplicate of another Template runs clean and asks to discard when dirty", () => {
+    expect(lifecyclePrompt("duplicate", other, { open: editing, dirty: false })).toEqual({ kind: "none" });
+    expect(lifecyclePrompt("duplicate", other, { open: editing, dirty: true })).toEqual({ kind: "discard" });
+    expect(lifecyclePrompt("duplicate", other, { open: null, dirty: false })).toEqual({ kind: "none" });
+  });
+
+  it("Delete of the open Template leaves, and loses edits only when dirty", () => {
+    expect(lifecyclePrompt("delete", target, { open: editing, dirty: false })).toEqual({
+      kind: "delete",
+      name: "InterNACHI Residential",
+      versions: 4,
+      losesEdits: false,
+      leaves: true,
+    });
+    expect(lifecyclePrompt("delete", target, { open: editing, dirty: true })).toEqual({
+      kind: "delete",
+      name: "InterNACHI Residential",
+      versions: 4,
+      losesEdits: true,
+      leaves: true,
+    });
+  });
+
+  it("Delete of another Template while dirty stays and keeps the edits", () => {
+    expect(lifecyclePrompt("delete", other, { open: editing, dirty: true })).toEqual({
+      kind: "delete",
+      name: "Radon",
+      versions: 1,
+      losesEdits: false,
+      leaves: false,
+    });
   });
 });
