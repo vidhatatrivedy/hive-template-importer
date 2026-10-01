@@ -223,7 +223,7 @@ function fieldDifferences(
 }
 
 function compareCell(column: string, raw: Cell, stored: Cell, issues: readonly ImportIssue[]): Difference | null {
-  if (sameHeader(column, COMMENT_TEXT)) return commentTextDifference(column, raw, stored, issues);
+  if (matchesExpectedHeader(column, COMMENT_TEXT)) return commentTextDifference(column, raw, stored, issues);
   if (matchesAny(column, NAME_COLUMNS)) return nameDifference(column, raw, stored, issues);
   return equalityDifference(column, raw, stored);
 }
@@ -254,7 +254,7 @@ function nameDifference(column: string, raw: Cell, stored: Cell, issues: readonl
   const storedAsBlank = stored === null && trimmed === "";
   if ((storedText === trimmed || storedAsBlank) && trimmed !== decoded) {
     const explained = issues.some(
-      (issue) => issue.kind === "whitespace-trimmed" && sameHeader(fieldOf(issue.detail) ?? "", column),
+      (issue) => issue.kind === "whitespace-trimmed" && matchesExpectedHeader(column, fieldOf(issue.detail) ?? ""),
     );
     return { column, raw, stored, explanation: explained ? { issues: ["whitespace-trimmed"] } : null };
   }
@@ -387,15 +387,21 @@ function cellAt(row: SourceRow, index: number): Cell {
 }
 
 function columnIndex(headers: readonly string[], header: string): number {
-  return headers.findIndex((cell) => sameHeader(cell, header));
+  return headers.findIndex((cell) => matchesExpectedHeader(cell, header));
 }
 
 function matchesAny(header: string, expected: readonly string[]): boolean {
-  return expected.some((candidate) => sameHeader(header, candidate));
+  return expected.some((candidate) => matchesExpectedHeader(header, candidate));
 }
 
-function sameHeader(left: string, right: string): boolean {
-  return left.trim().toLowerCase() === right.trim().toLowerCase();
+/** A file header matches Spectora's verbatim header, or that header without its parenthetical hint. */
+function matchesExpectedHeader(fileHeader: string, expected: string): boolean {
+  const file = fileHeader.trim().toLowerCase();
+  return file === expected.trim().toLowerCase() || file === withoutHint(expected);
+}
+
+function withoutHint(header: string): string {
+  return header.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
 function copyCells(cells: readonly Cell[], width: number): Cell[] {

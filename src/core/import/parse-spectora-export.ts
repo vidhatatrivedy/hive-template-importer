@@ -52,7 +52,8 @@ type ColumnIndexes = Record<keyof typeof COLUMNS, number>;
 
 /**
  * Turns a Spectora HTML Text export into an Import draft.
- * Header matching in this tracer is a trimmed, lowercased equality with Spectora's verbatim header.
+ * A column matches when its header, trimmed and lowercased, equals Spectora's verbatim header
+ * or that header without its parenthetical hint. The first match wins.
  */
 export async function parseSpectoraExport(bytes: Uint8Array, filename: string): Promise<ParseResult> {
   if (bytes.byteLength > MAX_UPLOAD_BYTES) {
@@ -74,14 +75,15 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     return { ok: false, rejection: { kind: "no-data-rows" } };
   }
   const headers = headerRow.map(headerText);
-  const missing = missingRequired(headers);
+  const matched = matchHeaders(sheet.data, headers);
+  const missing = missingRequired(matched);
   if (missing.length > 0) return { ok: false, rejection: { kind: "missing-columns", missing } };
-  if (isPlainTextExport(sheet.data, headers)) {
+  if (isPlainTextExport(sheet.data, matched.indexes, headers.length)) {
     return { ok: false, rejection: { kind: "plain-text-export" } };
   }
-  const indexes = columnIndexes(headers);
+  const indexes = matched.indexes;
   const sourceRows: ImportDraft["sourceRows"] = [];
-  const issues: ImportDraft["issues"] = [];
+  const issues: ImportDraft["issues"] = fileShapeIssues(matched, sheets.map((entry) => entry.sheet));
   const sections: Section[] = [];
   let currentSection: Section | undefined;
   let currentItem: Item | undefined;
@@ -98,13 +100,15 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     const rowNumber = index + 1;
     sourceRows.push({ rowNumber, cells });
     for (const column of DECODED_COLUMNS) {
-      if (decodeCell(cells[indexes[column]]).decoded) valuesDecoded += 1;
+      const columnIndex = indexes[column];
+      if (columnIndex < 0) continue;
+      if (decodeCell(cellAt(cells, columnIndex)).decoded) valuesDecoded += 1;
     }
 
-    const sectionName = trimmedName(cells[indexes.sectionName], COLUMNS.sectionName, rowNumber, issues);
-    const itemName = trimmedName(cells[indexes.itemName], COLUMNS.itemName, rowNumber, issues);
-    const commentName = trimmedName(cells[indexes.commentName], COLUMNS.commentName, rowNumber, issues);
-    const text = sanitiseCommentHtml(commentText(cells[indexes.commentText]));
+    const sectionName = trimmedName(cellAt(cells, indexes.sectionName), COLUMNS.sectionName, rowNumber, issues);
+    const itemName = trimmedName(cellAt(cells, indexes.itemName), COLUMNS.itemName, rowNumber, issues);
+    const commentName = trimmedName(cellAt(cells, indexes.commentName), COLUMNS.commentName, rowNumber, issues);
+    const text = sanitiseCommentHtml(commentText(cellAt(cells, indexes.commentText)));
     issues.push(...issuesFromCuts(text.cuts, rowNumber));
     const comment = buildComment(cells, indexes, rowNumber, commentName, text.html);
 
@@ -148,10 +152,13 @@ const ENTITY_AT_START = /^&(?:#[xX][0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]*);/;
  * No Comment Text cell contains a tag, and a bare `&` (not the start of an entity)
  * appears in a name or Comment Text. Columns are found by header.
  */
-function isPlainTextExport(data: readonly (readonly unknown[] | undefined)[], headers: readonly string[]): boolean {
-  const width = headers.length;
-  const commentTextIndex = headerIndex(headers, COLUMNS.commentText);
-  const nameAndTextIndexes = NAME_AND_TEXT.map((column) => headerIndex(headers, COLUMNS[column]));
+function isPlainTextExport(
+  data: readonly (readonly unknown[] | undefined)[],
+  indexes: ColumnIndexes,
+  width: number,
+): boolean {
+  const commentTextIndex = indexes.commentText;
+  const nameAndTextIndexes = NAME_AND_TEXT.map((column) => indexes[column]);
   let bareAmpersand = false;
   for (let index = 1; index < data.length; index++) {
     const cells = alignedCells(data[index], width);
@@ -189,46 +196,165 @@ function isXlsxZip(bytes: Uint8Array): boolean {
   return bytes.byteLength >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
 }
 
-function columnIndexes(headers: string[]): ColumnIndexes {
+/** Verbatim Spectora header, in file order. Optional columns missing from an export are flagged. */
+const EXPECTED_HEADERS = [
+  "Section Name",
+  "Item Name",
+  "Comment Name",
+  "Comment Text",
+  "Comment Type (info, limit, defect)",
+  "Category (-1: Low, 0: Med, 1: High)",
+  "Multiple Choice Options (comma-separated)",
+  "Unit Type Options (numeric answers only, comma-separated)",
+  "Recommendation (from list)",
+  "Order (w/i item)",
+  "Answer Type (boolean, checkbox, date, number, range, text)",
+  "Default Value",
+  'Default Value 2 (for "range" types)',
+  'Default Unit Type (for "number" and "range" types)',
+  "Default Location",
+  "Default Estimate Min",
+  "Default Estimate Max",
+  "Locked",
+  "Simple Format",
+  "Disable Photos",
+  "Uses",
+  "Default Photo 1",
+  "Default Photo 1 Caption",
+  "Default Photo 2",
+  "Default Photo 2 Caption",
+  "Default Photo 3",
+  "Default Photo 3 Caption",
+  "Default Photo 4",
+  "Default Photo 4 Caption",
+  "Default Photo 5",
+  "Default Photo 5 Caption",
+  "Default Photo 6",
+  "Default Photo 6 Caption",
+  "Default Photo 7",
+  "Default Photo 7 Caption",
+  "Default Photo 8",
+  "Default Photo 8 Caption",
+  "Default Photo 9",
+  "Default Photo 9 Caption",
+  "Default Photo 10",
+  "Default Photo 10 Caption",
+  "Last Modified",
+] as const;
+
+const REQUIRED_HEADER_SET = new Set<string>(REQUIRED_COLUMNS.map((column) => column.header));
+
+type HeaderMatch = {
+  indexes: ColumnIndexes;
+  found: Set<string>;
+  unknown: { header: string; column: number }[];
+};
+
+function matchHeaders(data: readonly (readonly unknown[] | undefined)[], headers: readonly string[]): HeaderMatch {
+  const found = new Set<string>();
+  const indexByExpected = new Map<string, number>();
+  const unknown: HeaderMatch["unknown"] = [];
+
+  for (let index = 0; index < headers.length; index += 1) {
+    const header = headers[index] ?? "";
+    const expected = EXPECTED_HEADERS.find(
+      (candidate) => !found.has(candidate) && matchesExpectedHeader(header, candidate),
+    );
+    if (expected) {
+      found.add(expected);
+      indexByExpected.set(expected, index);
+      continue;
+    }
+    if (isBlankHeader(header) && !columnHasContent(data, index, headers.length)) continue;
+    unknown.push({ header, column: index + 1 });
+  }
+
   const indexes = {} as ColumnIndexes;
   for (const [key, header] of Object.entries(COLUMNS) as [keyof typeof COLUMNS, string][]) {
-    indexes[key] = headerIndex(headers, header);
+    indexes[key] = indexByExpected.get(header) ?? -1;
   }
-  return indexes;
+  return { indexes, found, unknown };
 }
 
-function missingRequired(headers: readonly string[]): string[] {
-  return REQUIRED_COLUMNS.filter((column) => findHeader(headers, column.header) < 0).map((column) => column.short);
+function missingRequired(matched: HeaderMatch): string[] {
+  return REQUIRED_COLUMNS.filter((column) => !matched.found.has(column.header)).map((column) => column.short);
 }
 
-function headerIndex(headers: readonly string[], header: string): number {
-  const index = findHeader(headers, header);
-  if (index < 0) throw new Error(`Missing column: ${header}`);
-  return index;
+function fileShapeIssues(matched: HeaderMatch, sheetNames: readonly string[]): ImportIssue[] {
+  const issues: ImportIssue[] = [];
+  for (const header of EXPECTED_HEADERS) {
+    if (REQUIRED_HEADER_SET.has(header) || matched.found.has(header)) continue;
+    issues.push({
+      kind: "expected-column-missing",
+      sourceRow: null,
+      detail: { column: columnLabel(header) },
+      cuts: [],
+    });
+  }
+  for (const column of matched.unknown) {
+    issues.push({ kind: "unknown-column", sourceRow: null, detail: column, cuts: [] });
+  }
+  if (sheetNames.length > 1) {
+    issues.push({
+      kind: "extra-sheet",
+      sourceRow: null,
+      detail: { sheets: sheetNames.slice(1) },
+      cuts: [],
+    });
+  }
+  return issues;
 }
 
-function findHeader(headers: readonly string[], header: string): number {
-  const want = header.trim().toLowerCase();
-  return headers.findIndex((cell) => cell.trim().toLowerCase() === want);
+function columnHasContent(
+  data: readonly (readonly unknown[] | undefined)[],
+  column: number,
+  width: number,
+): boolean {
+  for (let index = 1; index < data.length; index += 1) {
+    if (!isBlankCell(alignedCells(data[index], width)[column] ?? null)) return true;
+  }
+  return false;
+}
+
+function matchesExpectedHeader(fileHeader: string, expected: string): boolean {
+  const file = fileHeader.trim().toLowerCase();
+  return file === expected.trim().toLowerCase() || file === withoutHint(expected);
+}
+
+function withoutHint(header: string): string {
+  return header.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+function isBlankHeader(header: string): boolean {
+  return header.trim() === "";
+}
+
+function columnLabel(header: string): string {
+  return header.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
 function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, name: string, textHtml: string): Comment {
-  const commentType = matchAllowedValue(cells[indexes.commentType], COMMENT_TYPES, "info");
-  const answerType = matchAllowedValue(cells[indexes.answerType], ANSWER_TYPES, "boolean");
-  const defaults = defaultsOf(answerType, cells[indexes.defaultValue]);
+  const commentType = matchAllowedValue(cellAt(cells, indexes.commentType), COMMENT_TYPES, "info");
+  const answerType = matchAllowedValue(cellAt(cells, indexes.answerType), ANSWER_TYPES, "boolean");
+  const defaults = defaultsOf(answerType, cellAt(cells, indexes.defaultValue));
   return {
     sourceRow: rowNumber,
     name,
     textHtml,
     commentType,
-    category: categoryOf(cells[indexes.category]),
-    recommendation: recommendationOf(cells[indexes.recommendation]),
+    category: categoryOf(cellAt(cells, indexes.category)),
+    recommendation: recommendationOf(cellAt(cells, indexes.recommendation)),
     answerType,
     defaultBoolean: defaults.defaultBoolean,
     defaultText: defaults.defaultText,
-    choiceOptions: optionsOf(cells[indexes.choiceOptions]),
-    unitOptions: optionsOf(cells[indexes.unitOptions]),
+    choiceOptions: optionsOf(cellAt(cells, indexes.choiceOptions)),
+    unitOptions: optionsOf(cellAt(cells, indexes.unitOptions)),
   };
+}
+
+function cellAt(cells: Cell[], index: number): Cell {
+  if (index < 0 || index >= cells.length) return null;
+  return cells[index] ?? null;
 }
 
 function trimmedName(value: Cell, field: string, rowNumber: number, issues: ImportDraft["issues"]): string {

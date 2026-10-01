@@ -5,6 +5,7 @@ import writeXlsxFile from "write-excel-file/node";
 import { catalogue, renderIssueMessage, type IssueKind } from "@/core/import/catalogue";
 import { MAX_UPLOAD_BYTES, rejectionMessage } from "@/core/import/rejections";
 import { parseSpectoraExport, type ParseResult } from "@/core/import/parse-spectora-export";
+import { reconcile, toExportRows } from "@/core/import/reconcile";
 import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import {
   countEditableTree,
@@ -616,6 +617,233 @@ describe("parseSpectoraExport", () => {
     );
   });
 
+  it("imports reordered columns by header", async () => {
+    const headers = [...HEADERS].reverse();
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(headers, [rowFor(headers, { "comment name": "Cracking", "comment type": "defect", "answer type": "checkbox" })]),
+        "reordered.xls",
+      ),
+    );
+
+    expect(draft.tree.sections[0]?.items[0]?.comments[0]).toMatchObject({
+      name: "Cracking",
+      commentType: "defect",
+      answerType: "checkbox",
+    });
+    expect(fileShapeIssues(draft)).toEqual([]);
+    expectRoundTrip(draft);
+  });
+
+  it("imports headers in odd case and with padding", async () => {
+    const headers = HEADERS.map((header) => `  ${header.toUpperCase()}  `);
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(headers, [rowFor(headers, { "recommendation": "pro &amp; crew", "comment type": "defect" })]),
+        "odd-case.xls",
+      ),
+    );
+
+    const comment = draft.tree.sections[0]?.items[0]?.comments[0];
+    expect(comment).toMatchObject({ commentType: "defect", recommendation: "pro & crew" });
+    expect(fileShapeIssues(draft)).toEqual([]);
+    const recommendation = draft.run.headers.findIndex((header) => headerKey(header) === "recommendation");
+    expect(toExportRows(draft.tree, draft)[0]?.cells[recommendation]).toBe("pro & crew");
+    expectRoundTrip(draft);
+  });
+
+  it("imports short headers without the parenthetical hint", async () => {
+    const headers = HEADERS.map(withoutHint);
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(headers, [
+          rowFor(headers, {
+            "comment type": "defect",
+            "answer type": "text",
+            recommendation: "pro &amp; crew",
+            category: 1,
+          }),
+        ]),
+        "short-headers.xls",
+      ),
+    );
+
+    expect(draft.tree.sections[0]?.items[0]?.comments[0]).toMatchObject({
+      commentType: "defect",
+      answerType: "text",
+      recommendation: "pro & crew",
+      category: 1,
+    });
+    expect(fileShapeIssues(draft)).toEqual([]);
+    const recommendation = headers.indexOf("Recommendation");
+    expect(toExportRows(draft.tree, draft)[0]?.cells[recommendation]).toBe("pro & crew");
+    expectRoundTrip(draft);
+  });
+
+  it("keeps an unknown extra column in the Source row and flags it", async () => {
+    const headers = [...HEADERS, "Inspector Notes", "Site Code"];
+    const row = rowFor(headers, { "Inspector Notes": "kept raw", "Site Code": "north" });
+    const draft = expectDraft(await parseSpectoraExport(await workbook(headers, [row]), "extra-column.xls"));
+
+    expect(draft.issues.filter((issue) => issue.kind === "unknown-column")).toEqual([
+      {
+        kind: "unknown-column",
+        sourceRow: null,
+        detail: { header: "Inspector Notes", column: HEADERS.length + 1 },
+        cuts: [],
+      },
+      {
+        kind: "unknown-column",
+        sourceRow: null,
+        detail: { header: "Site Code", column: HEADERS.length + 2 },
+        cuts: [],
+      },
+    ]);
+    expect(draft.sourceRows[0]?.cells.slice(-2)).toEqual(["kept raw", "north"]);
+    expect(draft.tree.sections[0]?.items[0]?.name).toBe("Covering");
+    expectRoundTrip(draft);
+  });
+
+  it("flags a blank header over values and ignores a blank header over an empty column", async () => {
+    const headers = [...HEADERS];
+    headers.splice(1, 0, "", "");
+    const row = rowFor(headers);
+    row[1] = "secret";
+    const draft = expectDraft(await parseSpectoraExport(await workbook(headers, [row]), "blank-header.xls"));
+
+    expect(draft.run.headers[1]).toBe("");
+    expect(draft.run.headers[2]).toBe("");
+    expect(draft.sourceRows[0]?.cells[1]).toBe("secret");
+    expect(draft.issues.filter((issue) => issue.kind === "unknown-column")).toEqual([
+      { kind: "unknown-column", sourceRow: null, detail: { header: "", column: 2 }, cuts: [] },
+    ]);
+    expect(draft.tree.sections[0]?.items[0]?.name).toBe("Covering");
+    expectRoundTrip(draft);
+  });
+
+  it("uses the first column when a header is duplicated", async () => {
+    const headers = [...HEADERS];
+    headers.splice(2, 0, "Item Name");
+    const row = rowFor(headers);
+    row[2] = "Not the item";
+    const draft = expectDraft(await parseSpectoraExport(await workbook(headers, [row]), "duplicate-header.xls"));
+
+    expect(draft.tree.sections[0]?.items[0]?.name).toBe("Covering");
+    expect(draft.sourceRows[0]?.cells[2]).toBe("Not the item");
+    expect(draft.issues.filter((issue) => issue.kind === "unknown-column")).toEqual([
+      { kind: "unknown-column", sourceRow: null, detail: { header: "Item Name", column: 3 }, cuts: [] },
+    ]);
+    expect(draft.issues.filter((issue) => issue.kind === "expected-column-missing")).toEqual([]);
+    expectRoundTrip(draft);
+  });
+
+  it("imports a missing optional column as empty and flags it", async () => {
+    const headers = HEADERS.filter((header) => header !== "Category (-1: Low, 0: Med, 1: High)");
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(headers, [
+          rowFor(headers, { "comment type": "defect", "answer type": "checkbox", "multiple choice options": "wood, metal" }),
+        ]),
+        "missing-category.xls",
+      ),
+    );
+
+    expect(draft.tree.sections[0]?.items[0]?.comments[0]).toMatchObject({
+      commentType: "defect",
+      category: null,
+      answerType: "checkbox",
+      choiceOptions: ["wood", "metal"],
+    });
+    expect(draft.issues.filter((issue) => issue.kind === "expected-column-missing")).toEqual([
+      { kind: "expected-column-missing", sourceRow: null, detail: { column: "Category" }, cuts: [] },
+    ]);
+    expectRoundTrip(draft);
+  });
+
+  it("flags sheets after the first and does not import them", async () => {
+    const bytes = await writeXlsxFile([
+      { data: [HEADERS, rowFor(HEADERS, { "comment name": "On the first sheet" })], sheet: "Sheet1" },
+      { data: [HEADERS, rowFor(HEADERS, { "comment name": "On the notes sheet" })], sheet: "Notes" },
+      { data: [["left behind"]], sheet: "Photos" },
+    ]).toBuffer();
+    const draft = expectDraft(await parseSpectoraExport(bytes, "extra-sheet.xls"));
+
+    expect(draft.run.sheetName).toBe("Sheet1");
+    expect(draft.tree.sections[0]?.items[0]?.comments.map((comment) => comment.name)).toEqual(["On the first sheet"]);
+    expect(draft.issues.filter((issue) => issue.kind === "extra-sheet")).toEqual([
+      { kind: "extra-sheet", sourceRow: null, detail: { sheets: ["Notes", "Photos"] }, cuts: [] },
+    ]);
+    expectRoundTrip(draft);
+  });
+
+  it("skips blank rows, counts them, and keeps the sheet's row numbers", async () => {
+    const blank = HEADERS.map(() => "");
+    const padding = HEADERS.map(() => "\u00A0");
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "comment name": "First" }),
+          blank,
+          padding,
+          rowFor(HEADERS, { "comment name": "Second" }),
+        ]),
+        "blank-rows.xls",
+      ),
+    );
+
+    expect(draft.run.rowsRead).toBe(4);
+    expect(draft.run.blankRows).toBe(2);
+    expect(draft.sourceRows.map((row) => row.rowNumber)).toEqual([2, 5]);
+    expect(draft.tree.sections[0]?.items[0]?.comments.map((comment) => comment.name)).toEqual(["First", "Second"]);
+    expect(fileShapeIssues(draft)).toEqual([]);
+    expectRoundTrip(draft);
+  });
+
+  it("describes the file-shape issue kinds", () => {
+    expect(catalogueEntry("expected-column-missing")).toMatchObject({
+      level: "file",
+      severity: "warning",
+      class: "Missing from export",
+      title: "Expected column missing",
+    });
+    expect(renderIssueMessage("expected-column-missing", { column: "Category" })).toBe(
+      "Category wasn't in this export, so it was left empty.",
+    );
+
+    expect(catalogueEntry("unknown-column")).toMatchObject({
+      level: "file",
+      severity: "notice",
+      class: "Unsupported",
+      title: "Unknown column",
+    });
+    expect(renderIssueMessage("unknown-column", { header: "Inspector Notes", column: 43 })).toBe(
+      'Column 43 ("Inspector Notes") wasn\'t used. Its cells were kept in the Source row.',
+    );
+    expect(renderIssueMessage("unknown-column", { header: "", column: 2 })).toBe(
+      "Column 2 has no header. Its cells were kept in the Source row.",
+    );
+
+    expect(catalogueEntry("extra-sheet")).toMatchObject({
+      level: "file",
+      severity: "warning",
+      class: "Unsupported",
+      title: "Extra sheet",
+    });
+    expect(renderIssueMessage("extra-sheet", { sheets: ["Notes"] })).toBe(
+      'The sheet "Notes" wasn\'t read. Only the first sheet was imported.',
+    );
+    expect(renderIssueMessage("extra-sheet", { sheets: ["Notes", "Photos"] })).toBe(
+      'The sheets "Notes" and "Photos" weren\'t read. Only the first sheet was imported.',
+    );
+  });
+
+  it("does not flag the shape of a real Spectora export", async () => {
+    for (const fixture of HTML_FIXTURES) {
+      const draft = await draftOf(fixture.file);
+      expect(fileShapeIssues(draft), fixture.file).toEqual([]);
+    }
+  });
+
   it("keeps an Item name that recurs under different Sections as separate Items", async () => {
     const draft = await draftOf("Room-by-Room Residential Template-2026-09-30.xls");
     const master = draft.tree.sections.find((section) => section.name === "Master Bedroom");
@@ -705,6 +933,55 @@ async function workbookWithCommentText(texts: readonly string[]): Promise<Uint8A
     }),
   ];
   return writeXlsxFile(rows).toBuffer();
+}
+
+const DEFAULT_CELLS: Record<string, string> = {
+  "section name": "Roof",
+  "item name": "Covering",
+  "comment name": "Shingles",
+  "comment text": "<p>Checked</p>",
+  "comment type": "info",
+  "answer type": "boolean",
+};
+
+function headerKey(header: string): string {
+  return header.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+function withoutHint(header: string): string {
+  return header.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+function rowFor(
+  headers: readonly string[],
+  overrides: Record<string, string | number | null> = {},
+): (string | number | null)[] {
+  return headers.map((header) => {
+    if (Object.prototype.hasOwnProperty.call(overrides, header)) return overrides[header] ?? null;
+    const key = headerKey(header);
+    if (Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key] ?? null;
+    return DEFAULT_CELLS[key] ?? "";
+  });
+}
+
+async function workbook(headers: readonly string[], rows: (string | number | null)[][]): Promise<Uint8Array> {
+  return writeXlsxFile([[...headers], ...rows]).toBuffer();
+}
+
+const FILE_SHAPE_KINDS = new Set<IssueKind>(["expected-column-missing", "unknown-column", "extra-sheet"]);
+
+function fileShapeIssues(draft: ImportDraft) {
+  return draft.issues.filter((issue) => FILE_SHAPE_KINDS.has(issue.kind));
+}
+
+function expectRoundTrip(draft: ImportDraft): void {
+  const parsed = importDraftSchema.safeParse(draft);
+  expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues)).toBe(true);
+  const exported = toExportRows(draft.tree, draft);
+  expect(exported.map((row) => row.sourceRow)).toEqual(draft.sourceRows.map((row) => row.rowNumber));
+  const result = reconcile(draft, draft.tree);
+  expect(result.unexplained).toBe(0);
+  expect(result.verified).toBe(result.total);
 }
 
 function commentFields(comment: Comment) {

@@ -25,6 +25,47 @@ function defineIssue<const K extends string, Detail>(entry: CatalogueEntry<Detai
   return entry;
 }
 
+const expectedColumnMissing = defineIssue({
+  kind: "expected-column-missing",
+  level: "file",
+  severity: "warning",
+  class: "Missing from export",
+  title: "Expected column missing",
+  detail: z.object({ column: z.string().min(1) }),
+  message: (detail: { column: string }) => `${detail.column} wasn't in this export, so it was left empty.`,
+});
+
+const unknownColumn = defineIssue({
+  kind: "unknown-column",
+  level: "file",
+  severity: "notice",
+  class: "Unsupported",
+  title: "Unknown column",
+  detail: z.object({ header: z.string(), column: z.number().int().positive() }),
+  message: (detail: { header: string; column: number }) =>
+    detail.header.trim() === ""
+      ? `Column ${detail.column} has no header. Its cells were kept in the Source row.`
+      : `Column ${detail.column} ("${detail.header}") wasn't used. Its cells were kept in the Source row.`,
+});
+
+const extraSheet = defineIssue({
+  kind: "extra-sheet",
+  level: "file",
+  severity: "warning",
+  class: "Unsupported",
+  title: "Extra sheet",
+  detail: z.object({ sheets: z.array(z.string().min(1)).min(1) }),
+  message: (detail: { sheets: string[] }) => {
+    const quoted = detail.sheets.map((sheet) => `"${sheet}"`);
+    if (quoted.length === 1) return `The sheet ${quoted[0]} wasn't read. Only the first sheet was imported.`;
+    const list =
+      quoted.length === 2
+        ? `${quoted[0]} and ${quoted[1]}`
+        : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+    return `The sheets ${list} weren't read. Only the first sheet was imported.`;
+  },
+});
+
 const whitespaceTrimmed = defineIssue({
   kind: "whitespace-trimmed",
   level: "row",
@@ -142,6 +183,9 @@ const unsafeStyleRemoved = defineIssue({
 });
 
 export const catalogue = [
+  expectedColumnMissing,
+  unknownColumn,
+  extraSheet,
   whitespaceTrimmed,
   editorLeftovers,
   attributeRemoved,
@@ -156,6 +200,9 @@ export const catalogue = [
 ] as const;
 
 export const issueKinds = [
+  expectedColumnMissing.kind,
+  unknownColumn.kind,
+  extraSheet.kind,
   whitespaceTrimmed.kind,
   editorLeftovers.kind,
   attributeRemoved.kind,
