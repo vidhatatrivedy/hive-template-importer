@@ -1,5 +1,6 @@
 # Migrations only. `npm run db:push` and `npm run db:reset` target SUPABASE_DB_URL.
-# There is no local stack.
+# There is no local stack. `db:push` passes `--skip-vault` because this file has no
+# vault secrets, and updating them needs a linked project.
 project_id = "hive-template-importer"
 
 [db.seed]

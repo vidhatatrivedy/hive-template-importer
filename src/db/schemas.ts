@@ -1,7 +1,10 @@
 import { z } from "zod";
 
+/** Origins allowed on Version 1. Compared with `versions_number_origin_check`. */
+const versionOneOrigins = ["import", "blank", "copy"] as const;
+
 /** How a Version came to exist. Compared with the database check of the same name. */
-export const versionOrigins = ["import", "blank", "copy", "save", "restore"] as const;
+export const versionOrigins = [...versionOneOrigins, "save", "restore"] as const;
 export type VersionOrigin = (typeof versionOrigins)[number];
 
 const timestamp = z.string().min(1);
@@ -20,34 +23,36 @@ const importRunSchema = z.object({
   byteSize: z.number().int().nonnegative(),
 });
 
+const copiedFromSchema = z.object({
+  templateId: z.uuid().nullable(),
+  templateName: z.string().min(1),
+  versionNumber: z.number().int().positive(),
+});
+
+const latestVersionSchema = z.object({
+  id: z.uuid(),
+  number: z.number().int().positive(),
+  savedAt: timestamp,
+});
+
+const versionSummarySchema = z.object({
+  id: z.uuid(),
+  number: z.number().int().positive(),
+  savedAt: timestamp,
+  origin: z.enum(versionOrigins),
+  restoredFromNumber: z.number().int().positive().nullable(),
+  counts: countsSchema,
+});
+
 export const templateDetailSchema = z.object({
   id: z.uuid(),
   name: z.string().min(1),
   createdAt: timestamp,
-  creation: z.enum(["import", "blank", "copy"]),
-  copiedFrom: z
-    .object({
-      templateId: z.uuid().nullable(),
-      templateName: z.string().min(1),
-      versionNumber: z.number().int().positive(),
-    })
-    .nullable(),
+  creation: z.enum(versionOneOrigins),
+  copiedFrom: copiedFromSchema.nullable(),
   importRun: importRunSchema.nullable(),
-  latest: z.object({
-    id: z.uuid(),
-    number: z.number().int().positive(),
-    savedAt: timestamp,
-  }),
-  versions: z.array(
-    z.object({
-      id: z.uuid(),
-      number: z.number().int().positive(),
-      savedAt: timestamp,
-      origin: z.enum(versionOrigins),
-      restoredFromNumber: z.number().int().positive().nullable(),
-      counts: countsSchema,
-    }),
-  ),
+  latest: latestVersionSchema,
+  versions: z.array(versionSummarySchema),
 });
 
 export type TemplateDetail = z.infer<typeof templateDetailSchema>;
@@ -69,3 +74,6 @@ export const importTemplateResultSchema = z.object({
 export const deleteTemplateResultSchema = z.object({
   importRunDeleted: z.boolean(),
 });
+
+export type ImportTemplateResult = z.infer<typeof importTemplateResultSchema>;
+export type DeleteTemplateResult = z.infer<typeof deleteTemplateResultSchema>;

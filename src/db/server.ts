@@ -4,7 +4,7 @@ import { createDb, type Db } from "@/db";
 
 let db: Db | undefined;
 
-/** Server accessor. Credentials stay here; Client Components cannot import this module. */
+/** Builds one client from `SUPABASE_URL` and `SUPABASE_SECRET_KEY`, then reuses it. */
 export function getDb(): Db {
   if (db) return db;
   const url = process.env.SUPABASE_URL;

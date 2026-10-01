@@ -242,27 +242,21 @@ begin
 
   if exists (
     select 1
-    from jsonb_array_elements(payload -> 'tree' -> 'sections') as section
-    cross join lateral jsonb_array_elements(section -> 'items') as item
-    cross join lateral jsonb_array_elements(item -> 'comments') as comment
-    where jsonb_typeof(comment -> 'sourceRow') = 'number'
+    from (
+      select comment as payload_row
+      from jsonb_array_elements(payload -> 'tree' -> 'sections') as section
+      cross join lateral jsonb_array_elements(section -> 'items') as item
+      cross join lateral jsonb_array_elements(item -> 'comments') as comment
+      union all
+      select issue
+      from jsonb_array_elements(payload -> 'evidence' -> 'issues') as issue
+    ) as referenced(payload_row)
+    where jsonb_typeof(referenced.payload_row -> 'sourceRow') = 'number'
       and not exists (
-        select 1 from public.source_rows as sr
+        select 1
+        from public.source_rows as sr
         where sr.import_run_id = v_run_id
-          and sr.row_number = (comment ->> 'sourceRow')::integer
-      )
-  ) then
-    raise exception 'sourceRow is not in this Import run' using errcode = 'P0001';
-  end if;
-
-  if exists (
-    select 1
-    from jsonb_array_elements(payload -> 'evidence' -> 'issues') as issue
-    where jsonb_typeof(issue -> 'sourceRow') = 'number'
-      and not exists (
-        select 1 from public.source_rows as sr
-        where sr.import_run_id = v_run_id
-          and sr.row_number = (issue ->> 'sourceRow')::integer
+          and sr.row_number = (referenced.payload_row ->> 'sourceRow')::integer
       )
   ) then
     raise exception 'sourceRow is not in this Import run' using errcode = 'P0001';

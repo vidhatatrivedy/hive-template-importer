@@ -214,10 +214,14 @@ export const issueKinds = [
 ] as const;
 export type IssueKind = (typeof issueKinds)[number];
 
-export function renderIssueMessage(kind: IssueKind, detail: unknown): string {
+export function catalogueEntry(kind: string): (typeof catalogue)[number] {
   const entry = catalogue.find((candidate) => candidate.kind === kind);
   if (!entry) throw new Error(`Unknown Import issue kind: ${kind}`);
-  return messageOf(entry, detail);
+  return entry;
+}
+
+export function renderIssueMessage(kind: IssueKind, detail: unknown): string {
+  return messageOf(catalogueEntry(kind), detail);
 }
 
 /**

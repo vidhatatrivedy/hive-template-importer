@@ -12,6 +12,7 @@ import { getDb } from "@/db/server";
 const FIXTURE = "InterNACHI Residential -2026-09-30.xls";
 const FIXTURE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../fixtures/spectora");
 const UNKNOWN_ID = "00000000-0000-4000-8000-000000000001";
+/** Tables the migration grants only to `service_role`. */
 const TABLES = [
   "templates",
   "versions",
@@ -132,7 +133,7 @@ describe("persistence tracer", () => {
 
     for (const table of TABLES) {
       const { data, error } = await anon.from(table).select("*").limit(1);
-      expect(isNothing(data, error), table).toBe(true);
+      expect(seesNothing(data, error), table).toBe(true);
     }
 
     const calls = [
@@ -144,15 +145,21 @@ describe("persistence tracer", () => {
     ];
     for (const call of calls) {
       const { data, error } = await anon.rpc(call.fn, call.args);
-      expect(isNothing(data, error), call.fn).toBe(true);
+      expect(seesNothing(data, error), call.fn).toBe(true);
     }
   });
 });
 
-function isNothing(data: unknown, error: { message: string } | null): boolean {
+function seesNothing(data: unknown, error: { message: string } | null): boolean {
   if (error) return true;
   if (data == null) return true;
   return Array.isArray(data) && data.length === 0;
+}
+
+function omitId<T extends { id?: string }>(value: T): Omit<T, "id"> {
+  const copy = { ...value };
+  delete copy.id;
+  return copy;
 }
 
 function withoutIds(tree: EditableTree): EditableTree {
@@ -161,11 +168,7 @@ function withoutIds(tree: EditableTree): EditableTree {
       name: section.name,
       items: section.items.map((item) => ({
         name: item.name,
-        comments: item.comments.map((comment) => {
-          const rest = { ...comment };
-          delete rest.id;
-          return rest;
-        }),
+        comments: item.comments.map(omitId),
       })),
     })),
   };
