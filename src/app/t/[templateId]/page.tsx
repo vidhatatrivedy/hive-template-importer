@@ -7,8 +7,9 @@ import { parseTemplateView, templateHref, withTrustPane, type TemplateView } fro
 import { GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass, glassClass } from "@/app/ui/classes";
 import type { TemplateDetail } from "@/db/schemas";
+import { readOnlyFields } from "@/core/import/read-only-fields";
 import { Editor } from "./editor";
-import { loadTrustReport } from "./load-trust-report";
+import { getCachedImportEvidence, loadTrustReport } from "./load-trust-report";
 import { TrustReportSheet } from "./trust-report-sheet";
 
 export default async function TemplatePage({ params, searchParams }: PageProps<"/t/[templateId]">) {
@@ -28,7 +29,11 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const counts = formatCounts(latest.counts);
   const hasReport = template.creation === "import";
   const trustOpen = hasReport && view.panes.has("trust");
+  const evidencePromise = template.importRun
+    ? getCachedImportEvidence(db, template.importRun.id)
+    : Promise.resolve(null);
   const trust = trustOpen ? await loadTrustReport(db, template) : null;
+  const evidence = await evidencePromise;
   if (trustOpen && !trust) notFound();
 
   return (
@@ -43,6 +48,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
           row={view.row}
           versionsOpen={view.panes.has("versions")}
           counts={counts}
+          readOnlyFields={evidence ? readOnlyFields(evidence) : {}}
         >
           {template.importRun ? (
             <p className="ml-auto max-w-[40%] truncate text-neutral-400">{template.importRun.filename}</p>

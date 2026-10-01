@@ -1,7 +1,13 @@
 import "server-only";
+import { cache } from "react";
 import { buildTrustReport, type TrustReport } from "@/core/import/trust-report";
 import type { EditableTree, ImportEvidence } from "@/core/import/schemas";
 import type { Db, TemplateDetail } from "@/db";
+
+/** One evidence read per request, shared by the editor's read-only fields and the Trust Report. */
+export const getCachedImportEvidence = cache((db: Db, importRunId: string) =>
+  db.getImportEvidence(importRunId),
+);
 
 export type LoadedTrustReport = {
   report: TrustReport;
@@ -22,7 +28,7 @@ export async function loadTrustReport(db: Db, detail: TemplateDetail): Promise<L
   if (!version1) return null;
   const [tree, evidence] = await Promise.all([
     db.getVersionTree(version1.id),
-    db.getImportEvidence(detail.importRun.id),
+    getCachedImportEvidence(db, detail.importRun.id),
   ]);
   if (!tree || !evidence) return null;
   return {
