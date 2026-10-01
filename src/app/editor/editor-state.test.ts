@@ -29,8 +29,8 @@ beforeAll(async () => {
   tree = withIds(result.draft.tree);
 });
 
-function open(row: number | null = null): EditorState {
-  return initialEditorState({ versionId: "version-1", number: 1, tree, row });
+function open(row: number | null = null, mode: "edit" | "read-only" = "edit"): EditorState {
+  return initialEditorState({ versionId: "version-1", number: 1, tree, row, mode });
 }
 
 describe("editorReducer", () => {
@@ -311,6 +311,86 @@ describe("editorReducer", () => {
     expect(dismissed.save).toEqual({ status: "idle" });
     expect(located(dismissed).comment?.name).toBe("Attendance note");
     expect(isDirty(dismissed)).toBe(true);
+  });
+
+  it("Discard returns to the saved Version, keeps the selected Comment by its place, and clears the Save error", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, {
+      type: "setComment",
+      id: commentId,
+      patch: { name: "Attendance note" },
+    });
+    const picked = editorReducer(edited, {
+      type: "select",
+      ref: { level: "section", id: idOf(tree, "Cooling") },
+    });
+    const refused = editorReducer(editorReducer(picked, { type: "saveRequested" }), {
+      type: "saveFailed",
+      error: { kind: "save-failed" },
+    });
+    const missed = editorReducer(refused, { type: "selectRow", row: 99999 });
+
+    const discarded = editorReducer(missed, { type: "discard" });
+    const { section, item, comment } = located(discarded);
+    const attendance = discarded.tree.sections
+      .flatMap((candidate) => candidate.items)
+      .flatMap((candidate) => candidate.comments)
+      .find((candidate) => candidate.sourceRow === 2);
+
+    expect(attendance?.name).toBe("In Attendance");
+    expect(section?.name).toBe("Cooling");
+    expect(item?.name).toBe("Cooling Equipment");
+    expect(comment?.name).toBe("Brand");
+    expect(comment?.sourceRow).toBe(149);
+    expect(comment?.id).toBe(picked.selection.commentId);
+    expect(discarded.focus).toBe(picked.focus);
+    expect(discarded.save).toEqual({ status: "idle" });
+    expect(discarded.rowMiss).toBeNull();
+    expect(discarded.held).toBeNull();
+    expect(isDirty(discarded)).toBe(false);
+  });
+
+  it("Discard adopts a Version that arrived while Save was in flight and keeps the Comment by its place", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, {
+      type: "setComment",
+      id: commentId,
+      patch: { name: "Attendance note" },
+    });
+    const saving = editorReducer(edited, { type: "saveRequested" });
+    const arrived = editorReducer(saving, {
+      type: "serverVersion",
+      versionId: "version-2",
+      number: 2,
+      tree: retag(tree),
+    });
+
+    const discarded = editorReducer(arrived, { type: "discard" });
+    const { section, item, comment } = located(discarded);
+
+    expect(located(arrived).comment?.name).toBe("Attendance note");
+    expect(section?.name).toBe("Inspection Details");
+    expect(item?.name).toBe("General");
+    expect(comment?.name).toBe("In Attendance");
+    expect(comment?.id).toBe(`next-${commentId}`);
+    expect(discarded.base).toMatchObject({ versionId: "version-2", number: 2 });
+    expect(discarded.held).toBeNull();
+    expect(discarded.save).toEqual({ status: "idle" });
+    expect(isDirty(discarded)).toBe(false);
+  });
+
+  it("Discard does nothing while viewing a read-only Version", () => {
+    const viewing = open(null, "read-only");
+    const commentId = requireCommentId(viewing);
+
+    expect(editorReducer(viewing, { type: "discard" })).toBe(viewing);
+    expect(
+      editorReducer(viewing, { type: "setComment", id: commentId, patch: { name: "Changed" } }),
+    ).toBe(viewing);
+    expect(editorReducer(viewing, { type: "saveRequested" })).toBe(viewing);
+    expect(viewing.base).toEqual({ versionId: "version-1", number: 1, tree });
   });
 
   it("keeps the inspector's selection when the same Version is read again", () => {

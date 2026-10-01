@@ -27,7 +27,10 @@ export type SaveState =
   | { status: "awaiting"; number: number }
   | { status: "refused"; error: SaveError };
 
+export type EditorMode = "edit" | "read-only";
+
 export type EditorState = {
+  mode: EditorMode;
   base: EditorBase;
   tree: EditableTree;
   selection: EditorSelection;
@@ -35,7 +38,7 @@ export type EditorState = {
   /** Set when `?row=` names no Comment. Cleared by the next selection. */
   rowMiss: number | null;
   save: SaveState;
-  /** A Version that arrived while a Save was in flight. Adopted when that Save succeeds. */
+  /** A Version that arrived while a Save was in flight. Adopted when that Save succeeds, or on Discard. */
   held: EditorBase | null;
 };
 
@@ -51,7 +54,8 @@ export type EditorAction =
   | { type: "saveRequested" }
   | { type: "saveSucceeded"; number: number }
   | { type: "saveFailed"; error: SaveError }
-  | { type: "dismissError" };
+  | { type: "dismissError" }
+  | { type: "discard" };
 
 const COMMENT_GROUPS = [
   { type: "info", label: "Informational" },
@@ -77,9 +81,12 @@ export function locate(
   return { section, item, comment };
 }
 
-export function initialEditorState(input: EditorBase & { row: number | null }): EditorState {
-  const { row, ...base } = input;
+export function initialEditorState(
+  input: EditorBase & { row: number | null; mode?: EditorMode },
+): EditorState {
+  const { row, mode = "edit", ...base } = input;
   const state: EditorState = {
+    mode,
     base,
     tree: base.tree,
     selection: emptySelection(),
@@ -121,6 +128,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return saveFailed(state, action.error);
     case "dismissError":
       return dismissError(state);
+    case "discard":
+      return discard(state);
     default: {
       const unreachable: never = action;
       throw new Error(`Unknown editor action: ${String(unreachable)}`);
@@ -129,6 +138,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 }
 
 function requestSave(state: EditorState): EditorState {
+  if (state.mode === "read-only") return state;
   if (isSavingOrAwaiting(state)) return state;
   if (!isDirty(state)) return state;
   // Blank names and text cuts stay on this path until later tickets add `invalid` and `confirm`.
@@ -154,7 +164,27 @@ function dismissError(state: EditorState): EditorState {
   return { ...state, save: { status: "idle" } };
 }
 
+/**
+ * Back to the saved Version, or to a Version that arrived while Save was in flight.
+ * The selection stays the node at the same place in the tree.
+ */
+function discard(state: EditorState): EditorState {
+  if (state.mode === "read-only") return state;
+  const nextBase = state.held ?? state.base;
+  const path = indexPath(state.tree, state.selection);
+  return {
+    ...state,
+    base: nextBase,
+    tree: nextBase.tree,
+    selection: path ? selectionAt(nextBase.tree, path) : emptySelection(),
+    rowMiss: null,
+    save: { status: "idle" },
+    held: null,
+  };
+}
+
 function setComment(state: EditorState, id: string, patch: CommentPatch): EditorState {
+  if (state.mode === "read-only") return state;
   if (state.save.status === "saving") return state;
   for (let sectionIndex = 0; sectionIndex < state.tree.sections.length; sectionIndex++) {
     const section = state.tree.sections[sectionIndex];

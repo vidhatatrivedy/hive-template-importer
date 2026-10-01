@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { z } from "zod";
 import { getDb } from "@/db/server";
 import { parseTemplateView, templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
+import { GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass, glassClass } from "@/app/ui/classes";
 import type { TemplateDetail } from "@/db/schemas";
 import { Editor } from "./editor";
@@ -48,13 +48,13 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
             <p className="ml-auto max-w-[40%] truncate text-neutral-400">{template.importRun.filename}</p>
           ) : null}
           {hasReport ? (
-            <Link
+            <GuardedLink
               href={templateHref(template.id, withTrustPane(view, !trustOpen))}
               aria-current={trustOpen ? "true" : undefined}
               className={`${buttonClass} shrink-0 ${trustOpen ? "bg-black/[0.06] dark:bg-white/[0.1]" : ""}`}
             >
               Trust Report
-            </Link>
+            </GuardedLink>
           ) : null}
         </Editor>
         <PaneHost view={view}>

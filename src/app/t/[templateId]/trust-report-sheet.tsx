@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { issueClasses, issueSeverities } from "@/core/import/catalogue";
 import { templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
@@ -15,6 +14,7 @@ import {
 } from "@/app/trust-sections";
 import { sourceRowView } from "@/app/source-row-view";
 import { trustSummaryView } from "@/app/trust-summary";
+import { GuardedLink } from "@/app/unsaved-guard";
 import { glassSheetClass, labelClass, severityClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
 import { ImportIssues } from "./import-issues";
@@ -44,12 +44,12 @@ export function TrustReportSheet({
         label={rowView.kind === "row" ? rowView.title : "Source row"}
         closeHref={closeHref}
         heading={
-          <Link
+          <GuardedLink
             href={templateHref(templateId, { panes: view.panes, row: null })}
             className="underline underline-offset-2"
           >
             ← Trust Report
-          </Link>
+          </GuardedLink>
         }
       >
         <SourceRowBody view={rowView} />
@@ -119,9 +119,9 @@ export function TrustReportSheet({
                   {row === null ? (
                     <span className="text-neutral-500">A stored Comment with no Source row</span>
                   ) : (
-                    <Link href={rowHref(row)} className="underline underline-offset-2">
+                    <GuardedLink href={rowHref(row)} className="underline underline-offset-2">
                       Source row {row}
-                    </Link>
+                    </GuardedLink>
                   )}
                 </li>
               ))}
@@ -173,13 +173,13 @@ function TrustSheet({
 
 function CloseTrustReport({ href }: { href: string }) {
   return (
-    <Link
+    <GuardedLink
       href={href}
       aria-label="Close the Trust Report"
       className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
     >
       ×
-    </Link>
+    </GuardedLink>
   );
 }
 
@@ -266,9 +266,9 @@ function SourceRowLinks({ rows, rowHref }: { rows: number[]; rowHref: SourceRowH
       {rows.map((row, index) => (
         <span key={row}>
           {index > 0 ? ", " : null}
-          <Link href={rowHref(row)} className="underline underline-offset-2">
+          <GuardedLink href={rowHref(row)} className="underline underline-offset-2">
             Source row {row}
-          </Link>
+          </GuardedLink>
         </span>
       ))}
     </p>

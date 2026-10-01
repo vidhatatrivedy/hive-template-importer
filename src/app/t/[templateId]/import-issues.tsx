@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import type { IssueClass, IssueSeverity } from "@/core/import/catalogue";
 import { filterIssueGroups, type LinkedImportIssueGroup } from "@/app/trust-issues";
+import { GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass, labelClass, severityClass } from "@/app/ui/classes";
 
 /** Filter chips and expand state for the Import issues list. Issues in a closed group are not rendered. */
@@ -92,9 +92,9 @@ export function ImportIssues({
                       {issue.location ? <p>{issue.location}</p> : null}
                       {href !== null && sourceRow !== null ? (
                         <p>
-                          <Link href={href} className="underline underline-offset-2">
+                          <GuardedLink href={href} className="underline underline-offset-2">
                             Source row {sourceRow}
-                          </Link>
+                          </GuardedLink>
                         </p>
                       ) : null}
                       <p className={hasContext ? "text-neutral-500" : undefined}>{issue.message}</p>

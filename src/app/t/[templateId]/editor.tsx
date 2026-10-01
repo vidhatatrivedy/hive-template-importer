@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useReducer, useRef, type ReactNode, type Ref } from "react";
 import { saveErrorMessage } from "@/core/import/editor-messages";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
@@ -16,6 +15,7 @@ import {
   type EditorState,
 } from "@/app/editor/editor-state";
 import { templateHref } from "@/app/template-view";
+import { confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, labelClass, primaryButtonClass } from "@/app/ui/classes";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
@@ -73,12 +73,20 @@ export function Editor({
   const commentNodes = useRef(new Map<string, HTMLButtonElement>());
   /** Stops a second Save before the reducer has moved to `saving`. */
   const saveLock = useRef(false);
+  const dirty = isDirty(state);
+  useReportUnsaved(dirty);
 
   useEffect(() => {
     if (versionId === loadedVersion.current) return;
     loadedVersion.current = versionId;
     dispatch({ type: "serverVersion", versionId, number: versionNumber, tree });
   }, [versionId, versionNumber, tree]);
+
+  async function runDiscard() {
+    if (!isDirty(state) || isSavingOrAwaiting(state)) return;
+    if (!(await confirmDiscard())) return;
+    dispatch({ type: "discard" });
+  }
 
   async function runSave() {
     if (saveLock.current || !isDirty(state) || isSavingOrAwaiting(state)) return;
@@ -128,7 +136,8 @@ export function Editor({
   const focusColumn = (column: Column) => dispatch({ type: "focus", column });
   const indicator = saveIndicator(state);
   const savingOrAwaiting = isSavingOrAwaiting(state);
-  const canSave = isDirty(state) && !savingOrAwaiting;
+  const canSave = dirty && !savingOrAwaiting;
+  const canDiscard = dirty && !savingOrAwaiting;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -154,6 +163,11 @@ export function Editor({
         >
           Save
         </button>
+        {canDiscard ? (
+          <button type="button" className={`${buttonClass} shrink-0`} onClick={() => void runDiscard()}>
+            Discard
+          </button>
+        ) : null}
         {children}
       </header>
       {state.save.status === "refused" ? (
@@ -337,12 +351,12 @@ function CommentDetail({
           {sectionName} / {itemName}
         </p>
         {comment.sourceRow !== null ? (
-          <Link
+          <GuardedLink
             href={commentSourceHref(templateId, versionsOpen, comment.sourceRow)}
             className="shrink-0 underline underline-offset-2"
           >
             Source row {comment.sourceRow}
-          </Link>
+          </GuardedLink>
         ) : (
           <p className="max-w-56 text-right text-neutral-400">{ADDED_IN_THE_EDITOR}</p>
         )}
