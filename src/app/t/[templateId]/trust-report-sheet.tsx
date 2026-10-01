@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { issueClasses, issueSeverities, type IssueSeverity } from "@/core/import/catalogue";
 import { templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
+import { attachSourceRowLinks, importIssuesView } from "@/app/trust-issues";
 import {
   countPhrase,
   trustSectionsView,
@@ -14,6 +15,7 @@ import {
 import { trustSummaryView } from "@/app/trust-summary";
 import { glassSheetClass, labelClass, severityNoticeClass, severityWarningClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
+import { ImportIssues } from "./import-issues";
 import type { LoadedTrustReport } from "./load-trust-report";
 
 const severityClass: Record<IssueSeverity, string> = {
@@ -121,6 +123,12 @@ export function TrustReportSheet({
         </section>
 
         <Reconciliation sections={reconciliation} />
+        <ImportIssues
+          key={templateId}
+          severities={issueSeverities}
+          classes={issueClasses}
+          groups={attachSourceRowLinks(importIssuesView(loaded.report.issueGroups), rowHref)}
+        />
         <ExternalAssets assets={externalAssets} rowHref={rowHref} />
         <KeptButNotUsed kept={keptButNotUsed} />
         <MissingFromExport missing={missingFromExport} />
