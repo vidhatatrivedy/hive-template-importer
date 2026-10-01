@@ -81,6 +81,33 @@ function columnTitle(field: string): string {
   return field.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
+function untitledName(field: string): string {
+  if (field === "Section Name") return "Untitled Section";
+  if (field === "Item Name") return "Untitled Item";
+  if (field === "Comment Name") return "Untitled Comment";
+  return "Untitled";
+}
+
+function commentTypeLabel(commentType: "info" | "limit" | "defect"): string {
+  if (commentType === "info") return "Informational";
+  if (commentType === "limit") return "Limitation";
+  return "Deficiency";
+}
+
+function formatSpan(firstRow: number, lastRow: number): string {
+  return firstRow === lastRow ? `row ${firstRow}` : `rows ${firstRow}-${lastRow}`;
+}
+
+function formatRowList(rows: readonly number[]): string {
+  return `rows ${joinClauses(rows.map(String))}`;
+}
+
+function joinClauses(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
 const vocabularyNormalised = defineIssue({
   kind: "vocabulary-normalised",
   level: "row",
@@ -153,6 +180,19 @@ const categoryOrphan = defineIssue({
     `Category ${detail.category} was kept on an Informational or Limitation Comment.`,
 });
 
+const blankName = defineIssue({
+  kind: "blank-name",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Blank name",
+  detail: z.object({ field: z.string().min(1) }),
+  message: (detail: { field: string }) => {
+    const title = columnTitle(detail.field);
+    return `${title} was blank, so it was stored as ${untitledName(title)}.`;
+  },
+});
+
 const checkboxDefaultNotInOptions = defineIssue({
   kind: "checkbox-default-not-in-options",
   level: "row",
@@ -181,6 +221,54 @@ const optionsOrphan = defineIssue({
   title: "Choice options kept",
   detail: noDetail,
   message: () => "Choice options were kept on a Comment that isn't a checkbox.",
+});
+
+const rowRange = z.object({
+  firstRow: z.number().int().positive(),
+  lastRow: z.number().int().positive(),
+});
+
+const splitRun = defineIssue({
+  kind: "split-run",
+  level: "row",
+  severity: "warning",
+  class: "Check",
+  title: "Split run",
+  detail: z.object({
+    level: z.enum(["section", "item"]),
+    name: z.string().min(1),
+    firstRow: z.number().int().positive(),
+    lastRow: z.number().int().positive(),
+    earlierRuns: z.array(rowRange).min(1),
+  }),
+  message: (detail: {
+    level: "section" | "item";
+    name: string;
+    firstRow: number;
+    lastRow: number;
+    earlierRuns: { firstRow: number; lastRow: number }[];
+  }) => {
+    const level = detail.level === "section" ? "Section" : "Item";
+    const earlier = detail.earlierRuns.map((run) => formatSpan(run.firstRow, run.lastRow));
+    const earlierText =
+      earlier.length === 1 ? `An earlier run is ${earlier[0]}.` : `Earlier runs are ${joinClauses(earlier)}.`;
+    return `"${detail.name}" appears again as its own ${level} (${formatSpan(detail.firstRow, detail.lastRow)}). ${earlierText}`;
+  },
+});
+
+const duplicateComment = defineIssue({
+  kind: "duplicate-comment",
+  level: "row",
+  severity: "notice",
+  class: "Check",
+  title: "Duplicate comment",
+  detail: z.object({
+    name: z.string().min(1),
+    commentType: z.enum(["info", "limit", "defect"]),
+    rows: z.array(z.number().int().positive()).min(2),
+  }),
+  message: (detail: { name: string; commentType: "info" | "limit" | "defect"; rows: number[] }) =>
+    `"${detail.name}" (${commentTypeLabel(detail.commentType)}) is repeated on ${formatRowList(detail.rows)}. Each one was kept.`,
 });
 
 const editorLeftovers = defineIssue({
@@ -299,9 +387,12 @@ export const catalogue = [
   answerTypeFallback,
   categoryMissing,
   categoryOrphan,
+  blankName,
   checkboxDefaultNotInOptions,
   emptyOptionDropped,
   optionsOrphan,
+  splitRun,
+  duplicateComment,
   editorLeftovers,
   attributeRemoved,
   tagUnwrapped,
@@ -326,9 +417,12 @@ export const issueKinds = [
   answerTypeFallback.kind,
   categoryMissing.kind,
   categoryOrphan.kind,
+  blankName.kind,
   checkboxDefaultNotInOptions.kind,
   emptyOptionDropped.kind,
   optionsOrphan.kind,
+  splitRun.kind,
+  duplicateComment.kind,
   editorLeftovers.kind,
   attributeRemoved.kind,
   tagUnwrapped.kind,

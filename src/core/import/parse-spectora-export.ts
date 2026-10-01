@@ -127,6 +127,7 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     }
     currentItem.comments.push(comment);
   }
+  issues.push(...structureIssues(sections));
 
   const draft: ImportDraft = {
     run: {
@@ -410,13 +411,120 @@ function cellAt(cells: Cell[], index: number): Cell {
   return cells[index] ?? null;
 }
 
+const UNTITLED_NAME: Record<string, string> = {
+  [COLUMNS.sectionName]: "Untitled Section",
+  [COLUMNS.itemName]: "Untitled Item",
+  [COLUMNS.commentName]: "Untitled Comment",
+};
+
+/**
+ * Decode, then trim. A blank result is the Untitled fallback and `blank-name` only:
+ * that warning replaces a trim notice for the same cell. Grouping uses this fallback,
+ * so consecutive blank names stay one Section or Item.
+ */
 function trimmedName(value: Cell, field: string, rowNumber: number, issues: ImportDraft["issues"]): string {
   const decoded = decodeCell(value);
   const name = decoded.text.trim();
+  if (name === "") {
+    issues.push({ kind: "blank-name", sourceRow: rowNumber, detail: { field }, cuts: [] });
+    return UNTITLED_NAME[field] ?? "Untitled";
+  }
   if (name !== decoded.text) {
     issues.push({ kind: "whitespace-trimmed", sourceRow: rowNumber, detail: { field }, cuts: [] });
   }
   return name;
+}
+
+type NameRun = { name: string; firstRow: number; lastRow: number };
+
+/**
+ * A later Section run, or a later Item run inside one Section run, whose name matches
+ * an earlier run. Comments that share a normalised name and stored Comment type inside
+ * one Item run are duplicates: every one after the first is flagged, and none is removed.
+ * A repeated name in a different run is not a duplicate.
+ */
+function structureIssues(sections: readonly Section[]): ImportIssue[] {
+  const issues: ImportIssue[] = [];
+  const sectionRuns: NameRun[] = [];
+  for (const section of sections) {
+    const rows = section.items.flatMap((item) => rowNumbers(item.comments));
+    const run = nameRun(section.name, rows);
+    if (!run) continue;
+    const earlier = sectionRuns.filter((candidate) => candidate.name === run.name);
+    sectionRuns.push(run);
+    if (earlier.length > 0) issues.push(splitRunIssue("section", run, earlier));
+    issues.push(...itemStructureIssues(section));
+  }
+  return issues;
+}
+
+function itemStructureIssues(section: Section): ImportIssue[] {
+  const issues: ImportIssue[] = [];
+  const itemRuns: NameRun[] = [];
+  for (const item of section.items) {
+    const run = nameRun(item.name, rowNumbers(item.comments));
+    if (!run) continue;
+    const earlier = itemRuns.filter((candidate) => candidate.name === run.name);
+    itemRuns.push(run);
+    if (earlier.length > 0) issues.push(splitRunIssue("item", run, earlier));
+    issues.push(...duplicateIssues(item));
+  }
+  return issues;
+}
+
+function duplicateIssues(item: Item): ImportIssue[] {
+  const groups = new Map<string, { name: string; commentType: Comment["commentType"]; rows: number[] }>();
+  for (const comment of item.comments) {
+    if (comment.sourceRow === null) continue;
+    const key = `${comment.name}\0${comment.commentType}`;
+    const group = groups.get(key);
+    if (group) group.rows.push(comment.sourceRow);
+    else groups.set(key, { name: comment.name, commentType: comment.commentType, rows: [comment.sourceRow] });
+  }
+
+  const issues: ImportIssue[] = [];
+  for (const group of groups.values()) {
+    if (group.rows.length < 2) continue;
+    for (const sourceRow of group.rows.slice(1)) {
+      issues.push({
+        kind: "duplicate-comment",
+        sourceRow,
+        detail: { name: group.name, commentType: group.commentType, rows: [...group.rows] },
+        cuts: [],
+      });
+    }
+  }
+  return issues;
+}
+
+function splitRunIssue(level: "section" | "item", run: NameRun, earlier: readonly NameRun[]): ImportIssue {
+  return {
+    kind: "split-run",
+    sourceRow: run.firstRow,
+    detail: {
+      level,
+      name: run.name,
+      firstRow: run.firstRow,
+      lastRow: run.lastRow,
+      earlierRuns: earlier.map((candidate) => ({ firstRow: candidate.firstRow, lastRow: candidate.lastRow })),
+    },
+    cuts: [],
+  };
+}
+
+function nameRun(name: string, rows: readonly number[]): NameRun | null {
+  const firstRow = rows[0];
+  const lastRow = rows[rows.length - 1];
+  if (firstRow === undefined || lastRow === undefined) return null;
+  return { name, firstRow, lastRow };
+}
+
+function rowNumbers(comments: readonly Comment[]): number[] {
+  const rows: number[] = [];
+  for (const comment of comments) {
+    if (comment.sourceRow !== null) rows.push(comment.sourceRow);
+  }
+  return rows;
 }
 
 function commentText(value: Cell): string {

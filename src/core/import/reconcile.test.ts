@@ -263,7 +263,7 @@ describe("verify", () => {
     const row = summariseDraft(RESIDENTIAL, residential);
     expect(row.unexplained).toBe(0);
     expect(row.warnings).toBe(1);
-    expect(row.notices).toBe(11);
+    expect(row.notices).toBe(12);
     expect(formatVerifyTable([row])).toContain("explained");
     expect(formatVerifyTable([row])).toContain("unexplained");
     expect(formatVerifyTable([row])).toContain("warnings");

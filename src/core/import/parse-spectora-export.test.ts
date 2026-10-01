@@ -1229,6 +1229,371 @@ describe("parseSpectoraExport", () => {
     expect(bedroomDoors?.comments.length).toBeGreaterThan(0);
     expect(masterDoors?.comments[0]?.sourceRow).not.toBe(bedroomDoors?.comments[0]?.sourceRow);
   });
+
+  it("keeps Ben's duplicate Comments and flags every one after the first", async () => {
+    const draft = await draftOf("Ben Gromicko's Template for Home Inspections-2026-09-30.xls");
+    expect(commentOn(draft, 306)).toMatchObject({
+      name: "Missing GFCI in Unfinished Basement",
+      commentType: "defect",
+    });
+    expect(commentOn(draft, 308)).toMatchObject({
+      name: "Missing GFCI in Unfinished Basement",
+      commentType: "defect",
+    });
+
+    const flagged = draft.issues.filter(
+      (entry) => entry.kind === "duplicate-comment" && (entry.sourceRow === 306 || entry.sourceRow === 308),
+    );
+    expect(flagged).toEqual([
+      {
+        kind: "duplicate-comment",
+        sourceRow: 308,
+        detail: {
+          name: "Missing GFCI in Unfinished Basement",
+          commentType: "defect",
+          rows: [306, 308],
+        },
+        cuts: [],
+      },
+    ]);
+    expect(catalogueEntry("duplicate-comment")).toMatchObject({
+      level: "row",
+      severity: "notice",
+      class: "Check",
+      title: "Duplicate comment",
+    });
+    expect(
+      renderIssueMessage("duplicate-comment", {
+        name: "Missing GFCI in Unfinished Basement",
+        commentType: "defect",
+        rows: [306, 308],
+      }),
+    ).toBe(
+      '"Missing GFCI in Unfinished Basement" (Deficiency) is repeated on rows 306 and 308. Each one was kept.',
+    );
+    expect(
+      renderIssueMessage("duplicate-comment", {
+        name: "Crack",
+        commentType: "info",
+        rows: [2, 5, 6],
+      }),
+    ).toBe('"Crack" (Informational) is repeated on rows 2, 5 and 6. Each one was kept.');
+  });
+
+  it("imports every fixture with no split run", async () => {
+    for (const fixture of HTML_FIXTURES) {
+      const draft = await draftOf(fixture.file);
+      expect(
+        draft.issues.filter((entry) => entry.kind === "split-run"),
+        fixture.file,
+      ).toEqual([]);
+    }
+  });
+
+  it("imports a split Section run and a split Item run separately, and explains each only while its issue remains", async () => {
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Covering", "comment name": "Shingles", "comment type": "defect" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Covering", "comment name": "Shingles", "comment type": "info" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Covering", "comment name": "Shingles", "comment type": "defect" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Flashing", "comment name": "Drip edge", "comment type": "info" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Covering", "comment name": "Shingles", "comment type": "defect" }),
+          rowFor(HEADERS, { "section name": "Plumbing", "item name": "Supply", "comment name": "Pipe", "comment type": "info" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Gutters", "comment name": "Guards", "comment type": "info" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Gutters", "comment name": "Screens", "comment type": "info" }),
+          rowFor(HEADERS, { "section name": "Electrical", "item name": "Panel", "comment name": "Breaker", "comment type": "info" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Decking", "comment name": "Moss", "comment type": "info" }),
+        ]),
+        "splits.xls",
+      ),
+    );
+
+    expect(outline(draft)).toEqual([
+      {
+        name: "Roof",
+        items: [
+          {
+            name: "Covering",
+            comments: [
+              { row: 2, name: "Shingles", commentType: "defect" },
+              { row: 3, name: "Shingles", commentType: "info" },
+              { row: 4, name: "Shingles", commentType: "defect" },
+            ],
+          },
+          { name: "Flashing", comments: [{ row: 5, name: "Drip edge", commentType: "info" }] },
+          { name: "Covering", comments: [{ row: 6, name: "Shingles", commentType: "defect" }] },
+        ],
+      },
+      { name: "Plumbing", items: [{ name: "Supply", comments: [{ row: 7, name: "Pipe", commentType: "info" }] }] },
+      {
+        name: "Roof",
+        items: [
+          {
+            name: "Gutters",
+            comments: [
+              { row: 8, name: "Guards", commentType: "info" },
+              { row: 9, name: "Screens", commentType: "info" },
+            ],
+          },
+        ],
+      },
+      { name: "Electrical", items: [{ name: "Panel", comments: [{ row: 10, name: "Breaker", commentType: "info" }] }] },
+      { name: "Roof", items: [{ name: "Decking", comments: [{ row: 11, name: "Moss", commentType: "info" }] }] },
+    ]);
+
+    expect(draft.issues.filter((entry) => entry.kind === "split-run")).toEqual([
+      {
+        kind: "split-run",
+        sourceRow: 6,
+        detail: {
+          level: "item",
+          name: "Covering",
+          firstRow: 6,
+          lastRow: 6,
+          earlierRuns: [{ firstRow: 2, lastRow: 4 }],
+        },
+        cuts: [],
+      },
+      {
+        kind: "split-run",
+        sourceRow: 8,
+        detail: {
+          level: "section",
+          name: "Roof",
+          firstRow: 8,
+          lastRow: 9,
+          earlierRuns: [{ firstRow: 2, lastRow: 6 }],
+        },
+        cuts: [],
+      },
+      {
+        kind: "split-run",
+        sourceRow: 11,
+        detail: {
+          level: "section",
+          name: "Roof",
+          firstRow: 11,
+          lastRow: 11,
+          earlierRuns: [
+            { firstRow: 2, lastRow: 6 },
+            { firstRow: 8, lastRow: 9 },
+          ],
+        },
+        cuts: [],
+      },
+    ]);
+    expect(draft.issues.filter((entry) => entry.kind === "duplicate-comment")).toEqual([
+      {
+        kind: "duplicate-comment",
+        sourceRow: 4,
+        detail: { name: "Shingles", commentType: "defect", rows: [2, 4] },
+        cuts: [],
+      },
+    ]);
+    expect(catalogueEntry("split-run")).toMatchObject({
+      level: "row",
+      severity: "warning",
+      class: "Check",
+      title: "Split run",
+    });
+    expect(
+      renderIssueMessage("split-run", {
+        level: "item",
+        name: "Covering",
+        firstRow: 6,
+        lastRow: 6,
+        earlierRuns: [{ firstRow: 2, lastRow: 4 }],
+      }),
+    ).toBe('"Covering" appears again as its own Item (row 6). An earlier run is rows 2-4.');
+    expect(
+      renderIssueMessage("split-run", {
+        level: "section",
+        name: "Roof",
+        firstRow: 11,
+        lastRow: 11,
+        earlierRuns: [
+          { firstRow: 2, lastRow: 6 },
+          { firstRow: 8, lastRow: 9 },
+        ],
+      }),
+    ).toBe('"Roof" appears again as its own Section (row 11). Earlier runs are rows 2-6 and rows 8-9.');
+
+    expectRoundTrip(draft);
+    const explained = reconcile(draft, draft.tree);
+    expect(differencesOn(explained.rows, 6, "Split run")).toEqual([
+      { column: "Split run", raw: "item", stored: "Covering", explanation: { issues: ["split-run"] } },
+    ]);
+    expect(differencesOn(explained.rows, 11, "Split run")).toEqual([
+      { column: "Split run", raw: "section", stored: "Roof", explanation: { issues: ["split-run"] } },
+    ]);
+
+    for (const sourceRow of [6, 8, 11]) {
+      const stripped = withoutIssue(draft, sourceRow, "split-run");
+      const broken = reconcile(stripped, stripped.tree);
+      expect(broken.rows.find((row) => row.sourceRow === sourceRow)?.status, `row ${sourceRow}`).toBe("✗");
+      expect(differencesOn(broken.rows, sourceRow, "Split run"), `row ${sourceRow}`).toEqual([
+        {
+          column: "Split run",
+          raw: sourceRow === 6 ? "item" : "section",
+          stored: sourceRow === 6 ? "Covering" : "Roof",
+          explanation: null,
+        },
+      ]);
+    }
+  });
+
+  it("does not treat the same Item name under two Sections as a split run or a duplicate", async () => {
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "section name": "Master Bedroom", "item name": "Doors", "comment name": "Latch" }),
+          rowFor(HEADERS, { "section name": "Bedroom 2", "item name": "Doors", "comment name": "Latch" }),
+        ]),
+        "repeated-item.xls",
+      ),
+    );
+
+    expect(outline(draft)).toEqual([
+      { name: "Master Bedroom", items: [{ name: "Doors", comments: [{ row: 2, name: "Latch", commentType: "info" }] }] },
+      { name: "Bedroom 2", items: [{ name: "Doors", comments: [{ row: 3, name: "Latch", commentType: "info" }] }] },
+    ]);
+    expect(draft.issues.filter((entry) => entry.kind === "split-run" || entry.kind === "duplicate-comment")).toEqual([]);
+    expectRoundTrip(draft);
+  });
+
+  it("stores a blank name as Untitled, groups consecutive blanks, and explains that only with blank-name", async () => {
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "section name": null, "item name": null, "comment name": null }),
+          rowFor(HEADERS, {
+            "section name": "  ",
+            "item name": " \u00A0 ",
+            "comment name": "  ",
+            "comment type": "limit",
+          }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": null, "comment name": "Named" }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": "Covering", "comment name": null }),
+          rowFor(HEADERS, { "section name": "Roof", "item name": " \u00A0", "comment name": "Later" }),
+          rowFor(HEADERS, { "section name": null, "item name": "Doors", "comment name": "After" }),
+        ]),
+        "blank-names.xls",
+      ),
+    );
+
+    expect(outline(draft)).toEqual([
+      {
+        name: "Untitled Section",
+        items: [
+          {
+            name: "Untitled Item",
+            comments: [
+              { row: 2, name: "Untitled Comment", commentType: "info" },
+              { row: 3, name: "Untitled Comment", commentType: "limit" },
+            ],
+          },
+        ],
+      },
+      {
+        name: "Roof",
+        items: [
+          { name: "Untitled Item", comments: [{ row: 4, name: "Named", commentType: "info" }] },
+          { name: "Covering", comments: [{ row: 5, name: "Untitled Comment", commentType: "info" }] },
+          { name: "Untitled Item", comments: [{ row: 6, name: "Later", commentType: "info" }] },
+        ],
+      },
+      { name: "Untitled Section", items: [{ name: "Doors", comments: [{ row: 7, name: "After", commentType: "info" }] }] },
+    ]);
+
+    expect(draft.issues.filter((entry) => entry.kind === "blank-name")).toEqual([
+      { kind: "blank-name", sourceRow: 2, detail: { field: "Section Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 2, detail: { field: "Item Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 2, detail: { field: "Comment Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 3, detail: { field: "Section Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 3, detail: { field: "Item Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 3, detail: { field: "Comment Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 4, detail: { field: "Item Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 5, detail: { field: "Comment Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 6, detail: { field: "Item Name" }, cuts: [] },
+      { kind: "blank-name", sourceRow: 7, detail: { field: "Section Name" }, cuts: [] },
+    ]);
+    expect(
+      draft.issues.filter(
+        (entry) => entry.kind === "whitespace-trimmed" && ["Section Name", "Item Name", "Comment Name"].includes(detailField(entry.detail) ?? ""),
+      ),
+    ).toEqual([]);
+    expect(draft.issues.filter((entry) => entry.kind === "split-run")).toEqual([
+      {
+        kind: "split-run",
+        sourceRow: 6,
+        detail: {
+          level: "item",
+          name: "Untitled Item",
+          firstRow: 6,
+          lastRow: 6,
+          earlierRuns: [{ firstRow: 4, lastRow: 4 }],
+        },
+        cuts: [],
+      },
+      {
+        kind: "split-run",
+        sourceRow: 7,
+        detail: {
+          level: "section",
+          name: "Untitled Section",
+          firstRow: 7,
+          lastRow: 7,
+          earlierRuns: [{ firstRow: 2, lastRow: 3 }],
+        },
+        cuts: [],
+      },
+    ]);
+    expect(catalogueEntry("blank-name")).toMatchObject({
+      level: "row",
+      severity: "warning",
+      class: "Changed",
+      title: "Blank name",
+    });
+    expect(renderIssueMessage("blank-name", { field: "Section Name" })).toBe(
+      "Section Name was blank, so it was stored as Untitled Section.",
+    );
+    expect(renderIssueMessage("blank-name", { field: "Item Name" })).toBe(
+      "Item Name was blank, so it was stored as Untitled Item.",
+    );
+    expect(renderIssueMessage("blank-name", { field: "Comment Name" })).toBe(
+      "Comment Name was blank, so it was stored as Untitled Comment.",
+    );
+
+    expectRoundTrip(draft);
+    const explained = reconcile(draft, draft.tree);
+    expect(differencesOn(explained.rows, 2, "Section Name")).toEqual([
+      { column: "Section Name", raw: null, stored: "Untitled Section", explanation: { issues: ["blank-name"] } },
+    ]);
+    expect(differencesOn(explained.rows, 3, "Item Name")).toEqual([
+      { column: "Item Name", raw: " \u00A0 ", stored: "Untitled Item", explanation: { issues: ["blank-name"] } },
+    ]);
+    expect(differencesOn(explained.rows, 6, "Split run")).toEqual([
+      { column: "Split run", raw: "item", stored: "Untitled Item", explanation: { issues: ["split-run"] } },
+    ]);
+
+    const stripped = structuredClone(draft);
+    stripped.issues = stripped.issues.filter(
+      (entry) => !(entry.kind === "blank-name" && entry.sourceRow === 2 && detailField(entry.detail) === "Section Name"),
+    );
+    const broken = reconcile(stripped, stripped.tree);
+    expect(broken.rows.find((row) => row.sourceRow === 2)?.status).toBe("✗");
+    expect(differencesOn(broken.rows, 2, "Section Name")).toEqual([
+      { column: "Section Name", raw: null, stored: "Untitled Section", explanation: null },
+    ]);
+
+    const unsplit = withoutIssue(draft, 6, "split-run");
+    const splitBroken = reconcile(unsplit, unsplit.tree);
+    expect(splitBroken.rows.find((row) => row.sourceRow === 6)?.status).toBe("✗");
+    expect(differencesOn(splitBroken.rows, 6, "Split run")).toEqual([
+      { column: "Split run", raw: "item", stored: "Untitled Item", explanation: null },
+    ]);
+  });
 });
 
 function readFixture(file: string): Buffer {
@@ -1266,6 +1631,9 @@ const KINDS_WITHOUT_CUTS = new Set<IssueKind>([
   "answer-type-fallback",
   "category-missing",
   "category-orphan",
+  "blank-name",
+  "split-run",
+  "duplicate-comment",
 ]);
 
 /** Routine editor leftovers and CSS removals share one notice. Dangerous CSS does not. */
@@ -1743,6 +2111,33 @@ function vocabularyIssues(draft: ImportDraft, name: string) {
 
 function issue(draft: ImportDraft, name: string, kind: IssueKind, detail: unknown) {
   return { kind, sourceRow: sourceRow(draft, name), detail, cuts: [] };
+}
+
+function outline(draft: ImportDraft) {
+  return draft.tree.sections.map((section) => ({
+    name: section.name,
+    items: section.items.map((item) => ({
+      name: item.name,
+      comments: item.comments.map((comment) => ({
+        row: comment.sourceRow,
+        name: comment.name,
+        commentType: comment.commentType,
+      })),
+    })),
+  }));
+}
+
+function withoutIssue(draft: ImportDraft, sourceRowNumber: number, kind: IssueKind): ImportDraft {
+  const copy = structuredClone(draft);
+  const index = copy.issues.findIndex((entry) => entry.sourceRow === sourceRowNumber && entry.kind === kind);
+  if (index < 0) throw new Error(`No ${kind} issue on row ${sourceRowNumber}`);
+  copy.issues.splice(index, 1);
+  return copy;
+}
+
+function detailField(detail: unknown): string | null {
+  if (typeof detail !== "object" || detail === null || !("field" in detail)) return null;
+  return typeof detail.field === "string" ? detail.field : null;
 }
 
 function differencesOn(rows: readonly ReconcileRow[], sourceRowNumber: number, column: string): ReconcileRow["differences"] {

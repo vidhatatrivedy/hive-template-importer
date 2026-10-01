@@ -134,6 +134,7 @@ export function reconcile(evidence: ImportEvidence, tree: EditableTree): Reconci
 
   flagSourceRowOrder(checked);
   flagBoundaries(checked, headers);
+  flagSplitRuns(evidence.sourceRows, headers, issuesByRow, differencesByRow);
 
   const rows: ReconcileRow[] = [];
   for (const source of evidence.sourceRows) {
@@ -577,6 +578,16 @@ function nameDifference(column: string, raw: Cell, stored: Cell, issues: readonl
   const decoded = cellText(raw);
   const trimmed = decoded.trim();
   const storedText = typeof stored === "string" ? stored : null;
+  const fallback = blankNameFallback(column);
+
+  // "Untitled …" replaces a blank name, and only `blank-name` explains it. A trim notice does not.
+  if (fallback !== null && trimmed === "") {
+    if (storedText === fallback) {
+      return { column, raw, stored, explanation: explanationForField(issues, "blank-name", column) };
+    }
+    return { column, raw, stored, explanation: null };
+  }
+
   const decodedEntities = typeof raw === "string" && decoded !== raw;
 
   if (storedText === decoded && decodedEntities) {
@@ -589,6 +600,20 @@ function nameDifference(column: string, raw: Cell, stored: Cell, issues: readonl
   }
 
   return { column, raw, stored, explanation: null };
+}
+
+/** Independent copy of the parser's blank-name fallback. Recommendation is not a name. */
+function blankNameFallback(column: string): string | null {
+  if (matchesExpectedHeader(column, SECTION_NAME)) return "Untitled Section";
+  if (matchesExpectedHeader(column, ITEM_NAME)) return "Untitled Item";
+  if (matchesExpectedHeader(column, COMMENT_NAME)) return "Untitled Comment";
+  return null;
+}
+
+function normalisedStructureName(value: Cell, column: string): string {
+  const trimmed = cellText(value).trim();
+  if (trimmed !== "") return trimmed;
+  return blankNameFallback(column) ?? "";
 }
 
 function equalityDifference(column: string, raw: Cell, stored: Cell): Difference | null {
@@ -651,6 +676,68 @@ function flagBoundaries(checked: readonly CheckedComment[], headers: readonly st
       }
     }
     if (current.source) previous = current;
+  }
+}
+
+type RunSpan = { name: string; firstRow: number; lastRow: number };
+
+/**
+ * A Section or Item name that reappears after a different name is a split run.
+ * Detected from Source rows, after the Untitled fallback, so it does not trust the parser.
+ * The first row of the later run is unexplained unless it carries `split-run`.
+ */
+function flagSplitRuns(
+  sourceRows: readonly SourceRow[],
+  headers: readonly string[],
+  issuesByRow: ReadonlyMap<number, readonly ImportIssue[]>,
+  differencesByRow: Map<number, Difference[]>,
+): void {
+  const sectionIndex = columnIndex(headers, SECTION_NAME);
+  const itemIndex = columnIndex(headers, ITEM_NAME);
+  const named = sourceRows.map((row) => ({
+    row: row.rowNumber,
+    section: normalisedStructureName(cellAt(row, sectionIndex), SECTION_NAME),
+    item: normalisedStructureName(cellAt(row, itemIndex), ITEM_NAME),
+  }));
+
+  const sectionRuns = spansOf(named.map((entry) => ({ row: entry.row, name: entry.section })));
+  flagLaterRuns(sectionRuns, "section", issuesByRow, differencesByRow);
+  for (const sectionRun of sectionRuns) {
+    const items = named
+      .filter((entry) => entry.row >= sectionRun.firstRow && entry.row <= sectionRun.lastRow)
+      .map((entry) => ({ row: entry.row, name: entry.item }));
+    flagLaterRuns(spansOf(items), "item", issuesByRow, differencesByRow);
+  }
+}
+
+function spansOf(entries: readonly { row: number; name: string }[]): RunSpan[] {
+  const runs: RunSpan[] = [];
+  for (const entry of entries) {
+    const last = runs[runs.length - 1];
+    if (last && last.name === entry.name) last.lastRow = entry.row;
+    else runs.push({ name: entry.name, firstRow: entry.row, lastRow: entry.row });
+  }
+  return runs;
+}
+
+function flagLaterRuns(
+  runs: readonly RunSpan[],
+  level: "section" | "item",
+  issuesByRow: ReadonlyMap<number, readonly ImportIssue[]>,
+  differencesByRow: Map<number, Difference[]>,
+): void {
+  for (let index = 0; index < runs.length; index += 1) {
+    const run = runs[index];
+    if (!run) continue;
+    const repeated = runs.slice(0, index).some((earlier) => earlier.name === run.name);
+    if (!repeated) continue;
+    const explained = (issuesByRow.get(run.firstRow) ?? []).some((issue) => issue.kind === "split-run");
+    differencesByRow.get(run.firstRow)?.push({
+      column: "Split run",
+      raw: level,
+      stored: run.name,
+      explanation: explained ? { issues: ["split-run"] } : null,
+    });
   }
 }
 
