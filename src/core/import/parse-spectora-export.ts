@@ -1,9 +1,10 @@
 import { decodeHTML } from "entities";
 import readXlsxFile from "read-excel-file/node";
+import { MAX_UPLOAD_BYTES, type Rejection } from "@/core/import/rejections";
 import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import type { Comment, ImportDraft, ImportIssue, Item, Section } from "@/core/import/schemas";
 
-export type ParseResult = { ok: true; draft: ImportDraft };
+export type ParseResult = { ok: true; draft: ImportDraft } | { ok: false; rejection: Rejection };
 
 const COLUMNS = {
   sectionName: "Section Name",
@@ -33,6 +34,14 @@ const DECODED_COLUMNS = [
   "defaultValue",
 ] as const;
 
+const REQUIRED_COLUMNS = [
+  { header: COLUMNS.sectionName, short: "Section Name" },
+  { header: COLUMNS.itemName, short: "Item Name" },
+  { header: COLUMNS.commentName, short: "Comment Name" },
+  { header: COLUMNS.commentText, short: "Comment Text" },
+  { header: COLUMNS.commentType, short: "Comment Type" },
+] as const;
+
 const COMMENT_TYPES = ["info", "limit", "defect"] as const;
 const ANSWER_TYPES = ["boolean", "checkbox", "number", "range", "text", "date"] as const;
 
@@ -46,12 +55,31 @@ type ColumnIndexes = Record<keyof typeof COLUMNS, number>;
  * Header matching in this tracer is a trimmed, lowercased equality with Spectora's verbatim header.
  */
 export async function parseSpectoraExport(bytes: Uint8Array, filename: string): Promise<ParseResult> {
-  const sheets = await readXlsxFile(Buffer.from(bytes), { trim: false });
-  const sheet = sheets[0];
-  if (!sheet || sheet.data.length === 0) throw new Error("Workbook has no worksheet");
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+    return { ok: false, rejection: { kind: "too-large", byteSize: bytes.byteLength, limit: MAX_UPLOAD_BYTES } };
+  }
+  if (!isXlsxZip(bytes)) return { ok: false, rejection: { kind: "not-xlsx" } };
 
-  const headers = sheet.data[0].map(headerText);
+  let sheets: Awaited<ReturnType<typeof readXlsxFile>>;
+  try {
+    sheets = await readXlsxFile(Buffer.from(bytes), { trim: false });
+  } catch {
+    return { ok: false, rejection: { kind: "unreadable-xlsx" } };
+  }
+  const sheet = sheets[0];
+  if (!sheet) return { ok: false, rejection: { kind: "unreadable-xlsx" } };
+
+  const headerRow = sheet.data[0];
+  if (!headerRow || !hasNonBlankDataRow(sheet.data, headerRow.length)) {
+    return { ok: false, rejection: { kind: "no-data-rows" } };
+  }
+  const headers = headerRow.map(headerText);
+  const missing = missingRequired(headers);
+  if (missing.length > 0) return { ok: false, rejection: { kind: "missing-columns", missing } };
   const indexes = columnIndexes(headers);
+  if (isPlainTextExport(sheet.data, headers.length, indexes)) {
+    return { ok: false, rejection: { kind: "plain-text-export" } };
+  }
   const sourceRows: ImportDraft["sourceRows"] = [];
   const issues: ImportDraft["issues"] = [];
   const sections: Section[] = [];
@@ -111,6 +139,57 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
   return { ok: true, draft };
 }
 
+const NAME_AND_TEXT = ["sectionName", "itemName", "commentName", "commentText"] as const;
+const HTML_TAG = /<\/?[A-Za-z]/;
+const ENTITY_AT_START = /^&(?:#x[0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]*);/;
+
+/**
+ * No Comment Text cell contains a tag, and a bare `&` (not the start of an entity)
+ * appears in a name or Comment Text. Columns are found by header.
+ */
+function isPlainTextExport(
+  data: readonly (readonly unknown[] | undefined)[],
+  width: number,
+  indexes: ColumnIndexes,
+): boolean {
+  let tagged = false;
+  let bareAmpersand = false;
+  for (let index = 1; index < data.length; index++) {
+    const cells = align(data[index], width).map(storedCell);
+    if (HTML_TAG.test(cellString(cells[indexes.commentText]))) tagged = true;
+    for (const column of NAME_AND_TEXT) {
+      if (hasBareAmpersand(cellString(cells[indexes[column]]))) bareAmpersand = true;
+    }
+  }
+  return !tagged && bareAmpersand;
+}
+
+function cellString(value: Cell): string {
+  return typeof value === "string" ? value : "";
+}
+
+function hasBareAmpersand(text: string): boolean {
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] !== "&") continue;
+    const entity = ENTITY_AT_START.exec(text.slice(index));
+    if (!entity) return true;
+    index += entity[0].length - 1;
+  }
+  return false;
+}
+
+function hasNonBlankDataRow(data: readonly (readonly unknown[] | undefined)[], width: number): boolean {
+  for (let index = 1; index < data.length; index++) {
+    if (!align(data[index], width).map(storedCell).every(isBlankCell)) return true;
+  }
+  return false;
+}
+
+/** Office Open XML is a zip. Legacy .xls, CSV, PDF and any other bytes are not. */
+function isXlsxZip(bytes: Uint8Array): boolean {
+  return bytes.byteLength >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+}
+
 function columnIndexes(headers: string[]): ColumnIndexes {
   const indexes = {} as ColumnIndexes;
   for (const [key, header] of Object.entries(COLUMNS) as [keyof typeof COLUMNS, string][]) {
@@ -119,11 +198,19 @@ function columnIndexes(headers: string[]): ColumnIndexes {
   return indexes;
 }
 
+function missingRequired(headers: readonly string[]): string[] {
+  return REQUIRED_COLUMNS.filter((column) => findHeader(headers, column.header) < 0).map((column) => column.short);
+}
+
 function headerIndex(headers: readonly string[], header: string): number {
-  const want = header.trim().toLowerCase();
-  const index = headers.findIndex((cell) => cell.trim().toLowerCase() === want);
+  const index = findHeader(headers, header);
   if (index < 0) throw new Error(`Missing column: ${header}`);
   return index;
+}
+
+function findHeader(headers: readonly string[], header: string): number {
+  const want = header.trim().toLowerCase();
+  return headers.findIndex((cell) => cell.trim().toLowerCase() === want);
 }
 
 function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, name: string, textHtml: string): Comment {

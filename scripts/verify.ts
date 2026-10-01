@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { catalogue, countEditableTree, parseSpectoraExport, reconcile } from "../src/core/import";
-import type { ImportDraft, ImportIssue } from "../src/core/import";
+import type { ImportDraft, ImportIssue, ParseResult } from "../src/core/import";
 import type { IssueSeverity } from "../src/core/import/catalogue";
 
 const FIXTURE_DIR = path.resolve("fixtures/spectora");
@@ -17,9 +17,11 @@ export type VerifyRow = {
   unexplained: number;
   warnings: number;
   notices: number;
+  /** Rejection kind, or null when the file was imported. */
+  rejection: string | null;
 };
 
-const COLUMNS: [string, (row: VerifyRow) => number][] = [
+const COLUMNS: [string, (row: VerifyRow) => string | number][] = [
   ["rows", (row) => row.rowsRead],
   ["comments", (row) => row.comments],
   ["sections", (row) => row.sections],
@@ -28,6 +30,7 @@ const COLUMNS: [string, (row: VerifyRow) => number][] = [
   ["unexplained", (row) => row.unexplained],
   ["warnings", (row) => row.warnings],
   ["notices", (row) => row.notices],
+  ["rejection", (row) => row.rejection ?? ""],
 ];
 
 export function summariseDraft(file: string, draft: ImportDraft): VerifyRow {
@@ -43,6 +46,23 @@ export function summariseDraft(file: string, draft: ImportDraft): VerifyRow {
     unexplained: result.unexplained,
     warnings: countSeverity(draft.issues, "warning"),
     notices: countSeverity(draft.issues, "notice"),
+    rejection: null,
+  };
+}
+
+export function summariseParse(file: string, result: ParseResult): VerifyRow {
+  if (result.ok) return summariseDraft(file, result.draft);
+  return {
+    file,
+    rowsRead: 0,
+    comments: 0,
+    sections: 0,
+    items: 0,
+    explained: 0,
+    unexplained: 0,
+    warnings: 0,
+    notices: 0,
+    rejection: result.rejection.kind,
   };
 }
 
@@ -57,9 +77,17 @@ export function formatVerifyTable(rows: readonly VerifyRow[]): string {
   return lines.join("\n");
 }
 
-/** Non-zero when any accepted fixture has an Unexplained difference. */
+/**
+ * Non-zero when an HTML fixture is rejected or has an Unexplained difference,
+ * or when a plain-text fixture is not rejected as `plain-text-export`.
+ */
 export function verifyExitCode(rows: readonly VerifyRow[]): number {
-  return rows.some((row) => row.unexplained > 0) ? 1 : 0;
+  return rows.some((row) => !fixtureAccepted(row)) ? 1 : 0;
+}
+
+function fixtureAccepted(row: VerifyRow): boolean {
+  if (row.file.includes("(plain text)")) return row.rejection === "plain-text-export";
+  return row.rejection === null && row.unexplained === 0;
 }
 
 function countSeverity(issues: readonly ImportIssue[], severity: IssueSeverity): number {
@@ -81,7 +109,7 @@ async function main() {
   for (const file of files) {
     const bytes = fs.readFileSync(path.join(FIXTURE_DIR, file));
     const result = await parseSpectoraExport(bytes, file);
-    rows.push(summariseDraft(file, result.draft));
+    rows.push(summariseParse(file, result));
   }
 
   console.log(formatVerifyTable(rows));

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
 import { reconcile, toExportRows, type ReconcileRow } from "@/core/import/reconcile";
 import type { Comment, EditableTree, ImportDraft } from "@/core/import/schemas";
-import { formatVerifyTable, summariseDraft, verifyExitCode } from "../../../scripts/verify";
+import { formatVerifyTable, summariseDraft, summariseParse, verifyExitCode } from "../../../scripts/verify";
 
 const FIXTURE_DIR = path.resolve(__dirname, "../../../fixtures/spectora");
 
@@ -268,11 +268,19 @@ describe("verify", () => {
     expect(formatVerifyTable([row])).toContain("unexplained");
     expect(formatVerifyTable([row])).toContain("warnings");
     expect(formatVerifyTable([row])).toContain("notices");
+    expect(formatVerifyTable([row])).toContain("rejection");
+    expect(row.rejection).toBeNull();
     expect(verifyExitCode([row])).toBe(0);
 
-    const plain = summariseDraft(PLAIN_TEXT, await draftOf(PLAIN_TEXT));
-    expect(plain.unexplained).toBe(0);
+    const plain = summariseParse(
+      PLAIN_TEXT,
+      await parseSpectoraExport(fs.readFileSync(path.join(FIXTURE_DIR, PLAIN_TEXT)), PLAIN_TEXT),
+    );
+    expect(plain.rejection).toBe("plain-text-export");
+    expect(formatVerifyTable([plain])).toContain("plain-text-export");
     expect(verifyExitCode([plain])).toBe(0);
+    expect(verifyExitCode([{ ...plain, rejection: null }])).toBe(1);
+    expect(verifyExitCode([{ ...row, rejection: "not-xlsx" }])).toBe(1);
 
     const corrupted = structuredClone(await draftOf(RADON));
     firstComment(corrupted.tree).textHtml += "x";
@@ -307,5 +315,6 @@ function commentOn(draft: ImportDraft, sourceRow: number): Comment {
 
 async function draftOf(file: string): Promise<ImportDraft> {
   const result = await parseSpectoraExport(fs.readFileSync(path.join(FIXTURE_DIR, file)), file);
+  if (!result.ok) throw new Error(`${file} was rejected: ${result.rejection.kind}`);
   return result.draft;
 }

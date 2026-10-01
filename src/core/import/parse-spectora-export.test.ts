@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import writeXlsxFile from "write-excel-file/node";
 import { catalogue, renderIssueMessage, type IssueKind } from "@/core/import/catalogue";
-import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
+import { MAX_UPLOAD_BYTES, rejectionMessage } from "@/core/import/rejections";
+import { parseSpectoraExport, type ParseResult } from "@/core/import/parse-spectora-export";
 import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import {
   countEditableTree,
@@ -142,11 +143,7 @@ function commentOn(draft: ImportDraft, sourceRow: number): Comment {
 describe("parseSpectoraExport", () => {
   it("parses each HTML fixture to the README's rows, sections and items", async () => {
     for (const fixture of HTML_FIXTURES) {
-      const bytes = readFixture(fixture.file);
-      const result = await parseSpectoraExport(bytes, fixture.file);
-      expect(result.ok, fixture.file).toBe(true);
-
-      const { draft } = result;
+      const draft = await draftOf(fixture.file);
       expect(draft.run.blankRows, fixture.file).toBe(0);
       expect(draft.run.rowsRead, fixture.file).toBe(fixture.rows);
       expect(draft.sourceRows, fixture.file).toHaveLength(fixture.rows);
@@ -168,12 +165,10 @@ describe("parseSpectoraExport", () => {
 
   it("records run metadata, the verbatim header and a suggested name without the export date", async () => {
     for (const fixture of HTML_FIXTURES) {
-      const bytes = readFixture(fixture.file);
-      const result = await parseSpectoraExport(bytes, fixture.file);
-      expect(result.ok).toBe(true);
+      const draft = await draftOf(fixture.file);
 
-      expect(result.draft.suggestedName, fixture.file).toBe(fixture.suggestedName);
-      expect(result.draft.run, fixture.file).toMatchObject({
+      expect(draft.suggestedName, fixture.file).toBe(fixture.suggestedName);
+      expect(draft.run, fixture.file).toMatchObject({
         filename: fixture.file,
         sha256: fixture.sha256,
         byteSize: fixture.byteSize,
@@ -182,7 +177,7 @@ describe("parseSpectoraExport", () => {
         blankRows: 0,
         valuesDecoded: fixture.valuesDecoded,
       });
-      expect(result.draft.run.headers, fixture.file).toEqual(HEADERS);
+      expect(draft.run.headers, fixture.file).toEqual(HEADERS);
     }
   });
 
@@ -313,9 +308,8 @@ describe("parseSpectoraExport", () => {
     const bytes = readFixture("Radon Inspection-2026-09-30.xls");
     const untitled = await parseSpectoraExport(bytes, ".xls");
     const dateOnly = await parseSpectoraExport(bytes, "-2026-09-30.xls");
-    expect(untitled.ok).toBe(true);
+    if (!untitled.ok || !dateOnly.ok) throw new Error("Radon was rejected");
     expect(untitled.draft.suggestedName).toBe("Untitled Template");
-    expect(dateOnly.ok).toBe(true);
     expect(dateOnly.draft.suggestedName).toBe("-2026-09-30");
   });
 
@@ -328,9 +322,7 @@ describe("parseSpectoraExport", () => {
       `<img src="x" onerror="alert(1)">`,
       `<p style="position: fixed">t</p>`,
     ];
-    const result = await parseSpectoraExport(await workbookWithCommentText(texts), "synthetic.xls");
-    expect(result.ok).toBe(true);
-    const { draft } = result;
+    const draft = expectDraft(await parseSpectoraExport(await workbookWithCommentText(texts), "synthetic.xls"));
 
     const unsafeRows = [
       { row: 2, property: "background" },
@@ -483,18 +475,19 @@ describe("parseSpectoraExport", () => {
       },
     ] as const;
 
-    const result = await parseSpectoraExport(
-      await workbookWithCommentText(samples.map((sample) => sample.text)),
-      "synthetic.xls",
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbookWithCommentText(samples.map((sample) => sample.text)),
+        "synthetic.xls",
+      ),
     );
-    expect(result.ok).toBe(true);
-    const parsed = importDraftSchema.safeParse(result.draft);
+    const parsed = importDraftSchema.safeParse(draft);
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues)).toBe(true);
 
     for (const [index, sample] of samples.entries()) {
       const sourceRow = index + 2;
       const label = sample.issues[0]?.kind ?? `row ${sourceRow}`;
-      const issues = result.draft.issues.filter((issue) => issue.sourceRow === sourceRow);
+      const issues = draft.issues.filter((issue) => issue.sourceRow === sourceRow);
       expect(
         issues.map((issue) => ({ kind: issue.kind, detail: issue.detail })),
         label,
@@ -504,6 +497,100 @@ describe("parseSpectoraExport", () => {
         expect(renderIssueMessage(issue.kind, issue.detail).trim().length, label).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("rejects 5 MB of zeros as too-large, before any other check, and names the size and the limit", async () => {
+    const bytes = new Uint8Array(5 * 1024 * 1024);
+    const result = await parseSpectoraExport(bytes, "zeros.xls");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.rejection).toEqual({ kind: "too-large", byteSize: bytes.byteLength, limit: MAX_UPLOAD_BYTES });
+    expect(MAX_UPLOAD_BYTES).toBe(4_194_304);
+    expect(rejectionMessage(result.rejection)).toBe(
+      "This file is 5242880 bytes, which is over the 4194304-byte limit.",
+    );
+  });
+
+  it("rejects an oversized PDF as too-large rather than as not a spreadsheet", async () => {
+    const bytes = new Uint8Array(MAX_UPLOAD_BYTES + 1);
+    bytes.set(new TextEncoder().encode("%PDF-1.7"));
+    const result = await parseSpectoraExport(bytes, "big.pdf");
+    expect(result).toEqual({
+      ok: false,
+      rejection: { kind: "too-large", byteSize: bytes.byteLength, limit: MAX_UPLOAD_BYTES },
+    });
+  });
+
+  it("rejects the plain-text fixture and imports a workbook with no tags and no ampersand", async () => {
+    const file = "InterNACHI Residential -2026-09-30 (plain text).xls";
+    const rejected = await parseSpectoraExport(readFixture(file), file);
+    expect(rejected).toEqual({ ok: false, rejection: { kind: "plain-text-export" } });
+    expect(rejectionMessage({ kind: "plain-text-export" })).toBe(
+      "This is Spectora's plain-text export. It has lost all formatting and link URLs. Re-export with … Export HTML Text.",
+    );
+
+    const row = HEADERS.map(() => "");
+    row[0] = "Roof";
+    row[1] = "Covering";
+    row[2] = "Shingles";
+    row[HEADERS.indexOf("Comment Text")] = "No formatting here.";
+    row[HEADERS.indexOf("Comment Type (info, limit, defect)")] = "info";
+    row[HEADERS.indexOf("Answer Type (boolean, checkbox, date, number, range, text)")] = "boolean";
+    const imported = expectDraft(await parseSpectoraExport(await writeXlsxFile([HEADERS, row]).toBuffer(), "plain.xls"));
+    const comment = imported.tree.sections[0]?.items[0]?.comments[0];
+    expect(imported.tree.sections.map((section) => section.name)).toEqual(["Roof"]);
+    expect(imported.tree.sections[0]?.items.map((item) => item.name)).toEqual(["Covering"]);
+    expect(comment).toMatchObject({ name: "Shingles", textHtml: "No formatting here." });
+  });
+
+  it("rejects a workbook missing Comment Type and Item Name and names both", async () => {
+    const headers = HEADERS.filter(
+      (header) => header !== "Item Name" && header !== "Comment Type (info, limit, defect)",
+    );
+    const row = headers.map(() => "");
+    row[headers.indexOf("Section Name")] = "Roof";
+    row[headers.indexOf("Comment Name")] = "Shingles";
+    row[headers.indexOf("Comment Text")] = "<p>Checked</p>";
+    const bytes = await writeXlsxFile([headers, row]).toBuffer();
+    const result = await parseSpectoraExport(bytes, "missing.xls");
+    expect(result).toEqual({
+      ok: false,
+      rejection: { kind: "missing-columns", missing: ["Item Name", "Comment Type"] },
+    });
+    expect(rejectionMessage({ kind: "missing-columns", missing: ["Item Name", "Comment Type"] })).toBe(
+      "This export is missing Item Name and Comment Type.",
+    );
+  });
+
+  it("rejects a header-only workbook and a sheet of blank rows as having no comments", async () => {
+    const headerOnly = await writeXlsxFile([HEADERS]).toBuffer();
+    const blanks = await writeXlsxFile([HEADERS, HEADERS.map(() => " "), HEADERS.map(() => "\u00A0")]).toBuffer();
+    for (const bytes of [headerOnly, blanks]) {
+      const result = await parseSpectoraExport(bytes, "empty.xls");
+      expect(result).toEqual({ ok: false, rejection: { kind: "no-data-rows" } });
+    }
+    expect(rejectionMessage({ kind: "no-data-rows" })).toBe("This export has no comments.");
+  });
+
+  it("rejects a truncated zip as an unreadable spreadsheet", async () => {
+    const bytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
+    const result = await parseSpectoraExport(bytes, "broken.xlsx");
+    expect(result).toEqual({ ok: false, rejection: { kind: "unreadable-xlsx" } });
+    expect(rejectionMessage({ kind: "unreadable-xlsx" })).toBe(
+      "This spreadsheet couldn't be read. In Spectora: Template → ⋮ → Export to spreadsheet → Export HTML Text.",
+    );
+  });
+
+  it.each([
+    ["a PDF", new TextEncoder().encode("%PDF-1.7\n")],
+    ["a legacy .xls workbook", Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])],
+    ["a CSV", new TextEncoder().encode("Section Name,Item Name\nRoof,Shingles\n")],
+  ])("rejects %s as not a Spectora spreadsheet", async (_label, bytes) => {
+    const result = await parseSpectoraExport(bytes, "upload.bin");
+    expect(result).toEqual({ ok: false, rejection: { kind: "not-xlsx" } });
+    expect(rejectionMessage({ kind: "not-xlsx" })).toBe(
+      "This isn't a Spectora spreadsheet export. In Spectora: Template → ⋮ → Export to spreadsheet → Export HTML Text.",
+    );
   });
 
   it("keeps an Item name that recurs under different Sections as separate Items", async () => {
@@ -522,8 +609,14 @@ function readFixture(file: string): Buffer {
   return fs.readFileSync(path.join(FIXTURE_DIR, file));
 }
 
+function expectDraft(result: ParseResult): ImportDraft {
+  if (!result.ok) throw new Error(`rejected: ${result.rejection.kind}`);
+  return result.draft;
+}
+
 async function draftOf(file: string): Promise<ImportDraft> {
   const result = await parseSpectoraExport(readFixture(file), file);
+  if (!result.ok) throw new Error(`${file} was rejected: ${result.rejection.kind}`);
   return result.draft;
 }
 
