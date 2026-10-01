@@ -11,6 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "tsx scripts/verify.ts",
+    "db:push": "supabase --yes db push --db-url \"$SUPABASE_DB_URL\" --skip-vault",
+    "db:reset": "supabase --yes db reset --db-url \"$SUPABASE_DB_URL\" --no-seed",
+    "test:db": "tsx scripts/test-db.ts",
     "sandcastle": "tsx .sandcastle/main.mts"
   },
   "dependencies": {
@@ -21,6 +24,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "read-excel-file": "9.3.10",
+    "server-only": "file:src/db/server-only",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -34,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.7",
     "jsdom": "22.1.0",
+    "supabase": "2.119.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",

@@ -1,0 +1,71 @@
+import { z } from "zod";
+
+/** How a Version came to exist. Compared with the database check of the same name. */
+export const versionOrigins = ["import", "blank", "copy", "save", "restore"] as const;
+export type VersionOrigin = (typeof versionOrigins)[number];
+
+const timestamp = z.string().min(1);
+
+const countsSchema = z.object({
+  sections: z.number().int().nonnegative(),
+  items: z.number().int().nonnegative(),
+  comments: z.number().int().nonnegative(),
+});
+
+const importRunSchema = z.object({
+  id: z.uuid(),
+  filename: z.string(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  importedAt: timestamp,
+  byteSize: z.number().int().nonnegative(),
+});
+
+export const templateDetailSchema = z.object({
+  id: z.uuid(),
+  name: z.string().min(1),
+  createdAt: timestamp,
+  creation: z.enum(["import", "blank", "copy"]),
+  copiedFrom: z
+    .object({
+      templateId: z.uuid().nullable(),
+      templateName: z.string().min(1),
+      versionNumber: z.number().int().positive(),
+    })
+    .nullable(),
+  importRun: importRunSchema.nullable(),
+  latest: z.object({
+    id: z.uuid(),
+    number: z.number().int().positive(),
+    savedAt: timestamp,
+  }),
+  versions: z.array(
+    z.object({
+      id: z.uuid(),
+      number: z.number().int().positive(),
+      savedAt: timestamp,
+      origin: z.enum(versionOrigins),
+      restoredFromNumber: z.number().int().positive().nullable(),
+      counts: countsSchema,
+    }),
+  ),
+});
+
+export type TemplateDetail = z.infer<typeof templateDetailSchema>;
+
+/** Expected refusals. Message text stays in core; this layer returns kinds and data only. */
+export type DbRefusal =
+  | { kind: "stale-base"; latestNumber: number }
+  | { kind: "template-not-found" }
+  | { kind: "foreign-source-row"; rowNumbers: number[] };
+
+export type Result<T> = { ok: true; value: T } | { ok: false; error: DbRefusal };
+
+export const importTemplateResultSchema = z.object({
+  templateId: z.uuid(),
+  versionId: z.uuid(),
+  importRunId: z.uuid(),
+});
+
+export const deleteTemplateResultSchema = z.object({
+  importRunDeleted: z.boolean(),
+});

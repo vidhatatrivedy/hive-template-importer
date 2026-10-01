@@ -1,0 +1,7 @@
+# Migrations only. `npm run db:push` and `npm run db:reset` target SUPABASE_DB_URL.
+# There is no local stack.
+project_id = "hive-template-importer"
+
+[db.seed]
+enabled = false
+sql_paths = []

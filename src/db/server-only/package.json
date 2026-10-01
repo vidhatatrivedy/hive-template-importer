@@ -1,0 +1,12 @@
+{
+  "name": "server-only",
+  "private": true,
+  "description": "Throws in Client Component bundles. Empty under tsx, Vitest and React Server Components.",
+  "exports": {
+    ".": {
+      "react-server": "./empty.js",
+      "browser": "./throw.js",
+      "default": "./empty.js"
+    }
+  }
+}
