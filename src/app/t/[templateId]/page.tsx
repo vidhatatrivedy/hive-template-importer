@@ -7,6 +7,7 @@ import { getDb } from "@/db/server";
 import { parseTemplateView, templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
 import { buttonClass, glassClass } from "@/app/ui/classes";
 import type { TemplateDetail } from "@/db/schemas";
+import { Editor } from "./editor";
 import { loadTrustReport } from "./load-trust-report";
 import { TrustReportSheet } from "./trust-report-sheet";
 
@@ -16,23 +17,33 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const view = parseTemplateView(await searchParams);
   if (!z.uuid().safeParse(templateId).success) notFound();
 
-  const template = await getDb().getTemplate(templateId);
+  const db = getDb();
+  const template = await db.getTemplate(templateId);
   if (!template) notFound();
 
   const latest = template.versions[0];
   if (!latest) throw new Error("Template has no Versions");
+  const tree = await db.getVersionTree(latest.id);
+  if (!tree) notFound();
   const counts = formatCounts(latest.counts);
   const hasReport = template.creation === "import";
   const trustOpen = hasReport && view.panes.has("trust");
-  const trust = trustOpen ? await loadTrustReport(getDb(), template) : null;
+  const trust = trustOpen ? await loadTrustReport(db, template) : null;
   if (trustOpen && !trust) notFound();
 
   return (
     <div className="flex h-full min-w-0 p-3">
       <div className={`${glassClass} relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl`}>
-        <header className="flex h-11 shrink-0 items-center gap-4 border-b border-black/[0.05] px-4 dark:border-white/[0.06]">
-          <h1 className="min-w-0 truncate font-medium text-neutral-900 dark:text-white">{template.name}</h1>
-          <p className="shrink-0 text-neutral-500 tabular-nums">{counts}</p>
+        <Editor
+          templateId={template.id}
+          templateName={template.name}
+          versionId={latest.id}
+          versionNumber={latest.number}
+          tree={tree}
+          row={view.row}
+          versionsOpen={view.panes.has("versions")}
+          counts={counts}
+        >
           {template.importRun ? (
             <p className="ml-auto max-w-[40%] truncate text-neutral-400">{template.importRun.filename}</p>
           ) : null}
@@ -45,8 +56,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
               Trust Report
             </Link>
           ) : null}
-        </header>
-        <EditorSlot counts={counts} />
+        </Editor>
         <PaneHost view={view}>
           {trust ? (
             <TrustReportSheet templateId={template.id} view={view} latestNumber={latest.number} loaded={trust} />
@@ -61,16 +71,9 @@ function formatCounts(counts: TemplateDetail["versions"][number]["counts"]): str
   return `${counts.sections} Sections · ${counts.items} Items · ${counts.comments} Comments`;
 }
 
-/** Empty stand-in until the columns land. Nothing here is interactive. */
-function EditorSlot({ counts }: { counts: string }) {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center text-neutral-500 tabular-nums">{counts}</div>
-  );
-}
-
 /**
- * Sits outside the editor slot and is not keyed on the search params, so a later
- * editor keeps its unsaved edits when a sheet opens. Laid out for two sheets
+ * Sits outside the editor and is not keyed on the search params, so the editor
+ * keeps its selection when a sheet opens. Laid out for two sheets
  * (Versions, then Trust Report).
  */
 function PaneHost({ view, children }: { view: TemplateView; children: ReactNode }) {

@@ -4,8 +4,7 @@ import type { EditableTree, ImportEvidence } from "@/core/import/schemas";
 import type { TrustReport } from "@/core/import/trust-report";
 import { cutSegments, type CutSpan, type Segment } from "@/app/cut-segments";
 
-/** Slice 5's Comment detail uses this when a Comment has no Source row. */
-export const ADDED_IN_THE_EDITOR = "Added in the editor, no Source row";
+export { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 
 const COMMENT_TEXT = "Comment Text";
 

@@ -23,6 +23,25 @@ describe("the Comment HTML renderer", () => {
   });
 });
 
+describe("the editor", () => {
+  it("doesn't pull the parser, parse5 or the sanitiser into the browser", () => {
+    const { modules, packages } = importGraph(path.join(SRC, "app/t/[templateId]/editor.tsx"));
+    const relative = [...modules].map((file) => path.relative(SRC, file));
+
+    expect(relative).toContain("app/editor/editor-state.ts");
+    expect(relative).toContain("app/ui/comment-html.tsx");
+    expect(relative).toContain("app/editor/added-in-the-editor.ts");
+    expect(relative).toContain("core/sanitise/purify-config.ts");
+    expect(relative).not.toContain("app/source-row-view.ts");
+    expect(relative).not.toContain("core/import/parse-spectora-export.ts");
+    expect(relative).not.toContain("core/sanitise/sanitise-comment-html.ts");
+    expect(relative).not.toContain("core/sanitise/index.ts");
+    for (const name of SERVER_ONLY_PACKAGES) {
+      expect([...packages].filter((specifier) => specifier === name || specifier.startsWith(`${name}/`))).toEqual([]);
+    }
+  });
+});
+
 describe("the import screen's client bundle", () => {
   it("doesn't pull in the parser, parse5 or read-excel-file", () => {
     const { modules, packages } = importGraph(CLIENT_ENTRY);
