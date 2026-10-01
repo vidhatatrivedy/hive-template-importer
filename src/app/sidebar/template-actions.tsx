@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { lifecycleErrorMessage, type LifecycleError } from "@/core/import/lifecycle-messages";
+import { isNextRedirect } from "@/app/is-next-redirect";
 import { duplicate, renameTemplate } from "@/app/sidebar/actions";
 import {
   duplicateConfirm,
@@ -25,10 +26,6 @@ import { buttonClass, glassClass, primaryButtonClass, rowIdleClass } from "@/app
 
 /** One Copy at a time, shared by the row menu and the header. Cleared when the route changes. */
 let duplicateInFlight = false;
-
-function duplicateIsRunning(): boolean {
-  return duplicateInFlight;
-}
 
 /** Returns false when a Copy is already under way. */
 function beginDuplicate(): boolean {
@@ -69,17 +66,18 @@ export function TemplateActions({
   const menuWasOpen = useRef(false);
   /** Set before the await so a second click in the same turn cannot start another Copy. */
   const submitting = useRef(false);
-  const asking = useRef(false);
+  /** A confirm is open, so a second click must not stack another one. */
+  const awaitingConfirm = useRef(false);
   /** Keeps the menu up while a confirm is open or Duplicate is in flight. */
   const holdMenu = useRef(false);
   const pathname = usePathname();
   const open = parseOpenTemplate(pathname);
   const dirty = useUnsaved();
-  const seenPath = useRef(pathname);
+  const previousPathname = useRef(pathname);
 
   useEffect(() => {
-    if (seenPath.current === pathname) return;
-    seenPath.current = pathname;
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
     endDuplicate();
   }, [pathname]);
 
@@ -129,26 +127,30 @@ export function TemplateActions({
   const menuNotice = duplicateError ? lifecycleErrorMessage("duplicate", duplicateError) : null;
 
   function startDuplicate() {
-    if (submitting.current || asking.current || duplicateIsRunning()) return;
+    if (submitting.current || awaitingConfirm.current || duplicateInFlight) return;
     setDuplicateError(null);
     const prompt = lifecyclePrompt("duplicate", target, { open, dirty });
-    if (prompt.kind === "none") {
-      void runDuplicate();
-      return;
+    switch (prompt.kind) {
+      case "none":
+        void runDuplicate();
+        return;
+      case "discard":
+        askThenDuplicate(confirmDiscard());
+        return;
+      case "duplicate-unsaved":
+      case "duplicate-viewing":
+        askThenDuplicate(confirmChoice(duplicateConfirm(prompt)));
+        return;
+      case "delete":
+        return;
     }
-    if (prompt.kind === "discard") {
-      askThenDuplicate(confirmDiscard());
-      return;
-    }
-    if (prompt.kind !== "duplicate-unsaved" && prompt.kind !== "duplicate-viewing") return;
-    askThenDuplicate(confirmChoice(duplicateConfirm(prompt)));
   }
 
   function askThenDuplicate(answer: Promise<boolean>) {
-    asking.current = true;
+    awaitingConfirm.current = true;
     holdMenu.current = true;
     void answer.then((accepted) => {
-      asking.current = false;
+      awaitingConfirm.current = false;
       if (!accepted) {
         holdMenu.current = false;
         return;
@@ -169,9 +171,7 @@ export function TemplateActions({
     } catch (caught) {
       if (isNextRedirect(caught)) {
         // The sidebar row stays mounted, so release the menu. The lock stays until the route changes.
-        submitting.current = false;
-        setDuplicating(false);
-        holdMenu.current = false;
+        clearDuplicatePending();
         setMenuOpen(false);
         return;
       }
@@ -182,6 +182,10 @@ export function TemplateActions({
   function finishDuplicate(error: LifecycleError<"duplicate">) {
     endDuplicate();
     setDuplicateError(error);
+    clearDuplicatePending();
+  }
+
+  function clearDuplicatePending() {
     submitting.current = false;
     setDuplicating(false);
     holdMenu.current = false;
@@ -216,7 +220,7 @@ export function TemplateActions({
             setMenuOpen(false);
             setRenaming(true);
           }}
-          onDuplicate={() => void startDuplicate()}
+          onDuplicate={startDuplicate}
         />
       ) : null}
       {renaming ? <RenameDialog target={target} onClose={() => setRenaming(false)} /> : null}
@@ -242,19 +246,21 @@ function ActionsMenu({
   onDuplicate: () => void;
 }) {
   const renameRef = useRef<HTMLButtonElement>(null);
-  const focused = useRef(false);
+  /** Rename is focused once. A later notice must not pull focus back. */
+  const didFocusRename = useRef(false);
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const anchor = anchorRef.current;
     if (!menu || !anchor) return;
     placeMenu(menu, anchor);
-    if (focused.current) return;
-    focused.current = true;
+    if (didFocusRename.current) return;
+    didFocusRename.current = true;
     renameRef.current?.focus();
   }, [anchorRef, menuRef, notice]);
 
   const itemClass = `flex h-7 w-full items-center rounded-md px-2 text-left disabled:pointer-events-none disabled:opacity-40 ${rowIdleClass}`;
+  const menuWidth = notice ? "w-64" : "w-36";
 
   return createPortal(
     <div
@@ -263,7 +269,7 @@ function ActionsMenu({
       role="menu"
       aria-label="Template actions"
       style={{ visibility: "hidden" }}
-      className={`${glassClass} fixed z-40 flex flex-col rounded-xl p-1 ${notice ? "w-64" : "w-36"}`}
+      className={`${glassClass} fixed z-40 flex flex-col rounded-xl p-1 ${menuWidth}`}
     >
       <button
         ref={renameRef}
@@ -418,12 +424,6 @@ function rowTriggerClass(visible: boolean): string {
 
 function headerTriggerClass(): string {
   return "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]";
-}
-
-/** A Server Action `redirect` rejects the client promise. That is navigation, not a failed Duplicate. */
-function isNextRedirect(error: unknown): boolean {
-  if (typeof error !== "object" || error === null || !("digest" in error)) return false;
-  return typeof error.digest === "string" && error.digest.startsWith("NEXT_REDIRECT");
 }
 
 /** Keeps the popover on screen. Hidden until this runs so it does not flash at the origin. */

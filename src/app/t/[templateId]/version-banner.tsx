@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type ReactNode } from "react";
 import { restoreErrorMessage, type RestoreError } from "@/core/import/editor-messages";
+import { isNextRedirect } from "@/app/is-next-redirect";
 import { templateHref, type TemplateView } from "@/app/template-view";
 import { restorePrompt } from "@/app/version-label";
 import { ConfirmDialog, GuardedLink } from "@/app/unsaved-guard";
@@ -116,10 +117,4 @@ function restoreRecovery(error: RestoreError | null, refresh: () => void): React
     default:
       return null;
   }
-}
-
-/** A Server Action `redirect` rejects the client promise. That is navigation, not a failed Restore. */
-function isNextRedirect(error: unknown): boolean {
-  if (typeof error !== "object" || error === null || !("digest" in error)) return false;
-  return typeof error.digest === "string" && error.digest.startsWith("NEXT_REDIRECT");
 }
