@@ -29,6 +29,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const counts = formatCounts(latest.counts);
   const hasReport = template.creation === "import";
   const trustOpen = hasReport && view.panes.has("trust");
+  // Start evidence before the Trust Report so both share one cached read, and the report's tree fetch overlaps it.
   const evidencePromise = template.importRun
     ? getCachedImportEvidence(db, template.importRun.id)
     : Promise.resolve(null);

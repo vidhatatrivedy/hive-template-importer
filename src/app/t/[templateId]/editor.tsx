@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type Ref } from "react";
 import { saveErrorMessage } from "@/core/import/editor-messages";
 import { summariseCuts, type TextChange } from "@/core/import/prepare-save";
-import type { ReadOnlyFields } from "@/core/import/read-only-fields";
+import type { ReadOnlyFields, ReadOnlyPhoto } from "@/core/import/read-only-fields";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 import { sanitiseCommentHtml } from "@/core/sanitise";
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
@@ -695,80 +695,88 @@ function CommentDetail({
         locked={locked}
         onPatch={onPatch}
       />
-      <QuietFields comment={comment} fields={sourceFields} />
+      <ReadOnlyBlock comment={comment} fields={sourceFields} />
     </div>
   );
 }
 
 /** Unit options, location, estimate, default photos and last modified. Nothing here is editable. */
-function QuietFields({ comment, fields }: { comment: Comment; fields: ReadOnlyFields | undefined }) {
+function ReadOnlyBlock({ comment, fields }: { comment: Comment; fields: ReadOnlyFields | undefined }) {
   const units = comment.unitOptions.filter((option) => option.trim() !== "");
+  const location = fields?.defaultLocation;
   const estimate = estimateText(fields);
   const photos = fields?.photos ?? [];
-  if (!units.length && !fields?.defaultLocation && !estimate && !photos.length && !fields?.lastModified) {
-    return null;
-  }
+  const lastModified = fields?.lastModified;
+  if (units.length === 0 && !location && !estimate && photos.length === 0 && !lastModified) return null;
   return (
     <div className="flex flex-col gap-3 border-t border-black/[0.05] pt-3 text-neutral-600 dark:border-white/[0.06] dark:text-neutral-400">
-      {units.length > 0 ? (
-        <div>
-          <div className={labelClass}>Unit options</div>
-          <ul className="mt-1 flex flex-wrap gap-1">
-            {units.map((option, index) => (
-              <li
-                key={`${index}:${option}`}
-                className="rounded-full border border-black/10 px-2 py-0.5 dark:border-white/15"
-              >
-                {option}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {fields?.defaultLocation ? (
-        <div className="min-w-0">
-          <div className={labelClass}>Default location</div>
-          <div className="break-words whitespace-pre-wrap">{fields.defaultLocation}</div>
-        </div>
-      ) : null}
+      {units.length > 0 ? <UnitOptions options={units} /> : null}
+      {location ? <Field label="Default location" value={location} preserveWhitespace /> : null}
       {estimate ? <Field label="Estimate" value={estimate} /> : null}
-      {photos.length > 0 ? (
-        <div>
-          <div className={labelClass}>Default photos</div>
-          <ul className="mt-1 flex flex-col gap-2">
-            {photos.map((photo, index) => (
-              <li key={index} className="flex items-start gap-2">
-                {photo.url && httpPhotoUrl(photo.url) ? (
-                  // The file's URL is arbitrary, so this stays a plain image with the spec's loading and referrer rules.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={photo.url}
-                    alt={photo.caption ?? "Default photo"}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="h-16 w-16 shrink-0 rounded object-cover"
-                  />
-                ) : photo.url ? (
-                  <span className="break-all">{photo.url}</span>
-                ) : null}
-                {photo.caption ? <span className="break-words">{photo.caption}</span> : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {fields?.lastModified ? <Field label="Last modified" value={fields.lastModified} /> : null}
+      {photos.length > 0 ? <DefaultPhotos photos={photos} /> : null}
+      {lastModified ? <Field label="Last modified" value={lastModified} /> : null}
     </div>
   );
 }
 
-function estimateText(fields: ReadOnlyFields | undefined): string | null {
-  if (!fields?.estimateMin && !fields?.estimateMax) return null;
-  if (fields.estimateMin && fields.estimateMax) return `${fields.estimateMin}–${fields.estimateMax}`;
-  return fields.estimateMin ?? fields.estimateMax ?? null;
+function UnitOptions({ options }: { options: readonly string[] }) {
+  return (
+    <div>
+      <div className={labelClass}>Unit options</div>
+      <ul className="mt-1 flex flex-wrap gap-1">
+        {options.map((option, index) => (
+          <li
+            key={`${index}:${option}`}
+            className="rounded-full border border-black/10 px-2 py-0.5 dark:border-white/15"
+          >
+            {option}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
-function httpPhotoUrl(url: string): boolean {
+function DefaultPhotos({ photos }: { photos: readonly ReadOnlyPhoto[] }) {
+  return (
+    <div>
+      <div className={labelClass}>Default photos</div>
+      <ul className="mt-1 flex flex-col gap-2">
+        {photos.map((photo, index) => (
+          <li key={index} className="flex items-start gap-2">
+            {photo.url ? <PhotoUrl url={photo.url} caption={photo.caption} /> : null}
+            {photo.caption ? <span className="break-words">{photo.caption}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PhotoUrl({ url, caption }: { url: string; caption: string | null }) {
+  if (!isHttpUrl(url)) return <span className="break-all">{url}</span>;
+  return (
+    // The file's URL is arbitrary, so this stays a plain image with the spec's loading and referrer rules.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={caption ?? "Default photo"}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      className="h-16 w-16 shrink-0 rounded object-cover"
+    />
+  );
+}
+
+function estimateText(fields: ReadOnlyFields | undefined): string | null {
+  const min = fields?.estimateMin;
+  const max = fields?.estimateMax;
+  if (!min && !max) return null;
+  if (min && max) return `${min}–${max}`;
+  return min ?? max ?? null;
+}
+
+function isHttpUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     return parsed.protocol === "http:" || parsed.protocol === "https:";
@@ -1309,11 +1317,19 @@ function applyCheckboxDefault(next: string, options: readonly string[], onPatch:
   if (option !== undefined) onPatch({ defaultText: option });
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({
+  label,
+  value,
+  preserveWhitespace = false,
+}: {
+  label: string;
+  value: string;
+  preserveWhitespace?: boolean;
+}) {
   return (
     <div className="min-w-0">
       <div className={labelClass}>{label}</div>
-      <div className="break-words">{value}</div>
+      <div className={preserveWhitespace ? "break-words whitespace-pre-wrap" : "break-words"}>{value}</div>
     </div>
   );
 }
