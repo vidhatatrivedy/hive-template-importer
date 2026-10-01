@@ -17,9 +17,12 @@ import {
   isDirty,
   isSavingOrAwaiting,
   locate,
+  recommendationChoices,
   sectionContents,
   type Column,
+  type CommentPatch,
   type EditorAction,
+  type EditorMode,
   type EditorState,
   type NodeRef,
 } from "@/app/editor/editor-state";
@@ -47,6 +50,23 @@ const ANSWER_LABEL: Record<Comment["answerType"], string> = {
   date: "Date",
 };
 
+const COMMENT_TYPES = ["info", "limit", "defect"] as const satisfies readonly Comment["commentType"][];
+const ANSWER_TYPES = ["boolean", "checkbox", "number", "range", "text", "date"] as const satisfies readonly Comment["answerType"][];
+
+const CATEGORY_CHOICES: { value: string; category: Comment["category"]; label: string }[] = [
+  { value: "none", category: null, label: "None" },
+  { value: "-1", category: -1, label: "Low" },
+  { value: "0", category: 0, label: "Medium" },
+  { value: "1", category: 1, label: "High" },
+];
+
+const DEFAULT_CLEARED = "Default cleared: its option was removed.";
+const COMMA_OPTION = "Spectora couldn't export an option with a comma.";
+const NEEDS_OPTION = "A multiple-choice Comment needs at least one option.";
+
+const controlClass =
+  "w-full rounded-md border border-black/[0.08] bg-white/60 px-1.5 py-1 dark:border-white/[0.1] dark:bg-neutral-900/60 disabled:opacity-60";
+
 /**
  * The Template editor. One reducer, not keyed on the search params, so toggling a sheet
  * keeps the selection. A change of `row` selects that Source row.
@@ -60,6 +80,7 @@ export function Editor({
   row,
   versionsOpen,
   counts,
+  mode = "edit",
   children,
 }: {
   templateId: string;
@@ -70,11 +91,12 @@ export function Editor({
   row: number | null;
   versionsOpen: boolean;
   counts: string;
+  mode?: EditorMode;
   children: ReactNode;
 }) {
   const [state, dispatch] = useReducer(
     editorReducer,
-    { versionId, number: versionNumber, tree, row },
+    { versionId, number: versionNumber, tree, row, mode },
     initialEditorState,
   );
   const loadedVersion = useRef(versionId);
@@ -183,6 +205,7 @@ export function Editor({
     router.refresh();
   }
 
+  const recommendations = useMemo(() => recommendationChoices(state.tree), [state.tree]);
   const markBlank = state.save.status === "invalid";
   const blank = useMemo(
     () => (markBlank ? new Set(blankNames(state.tree).map((ref) => ref.id)) : new Set<string>()),
@@ -416,12 +439,23 @@ export function Editor({
             section={section}
             item={item}
             comment={comment}
-            nameLocked={savingOrAwaiting}
+            plain={state.mode === "read-only"}
+            locked={savingOrAwaiting}
             nameBlank={comment?.id ? blank.has(comment.id) : false}
             nameRef={nameInput}
+            recommendations={recommendations}
+            defaultCleared={state.note?.commentId === comment?.id}
             onName={(name) => {
               if (!comment?.id) return;
               dispatch({ type: "setComment", id: comment.id, patch: { name } });
+            }}
+            onPatch={(patch) => {
+              if (!comment?.id) return;
+              dispatch({ type: "setComment", id: comment.id, patch });
+            }}
+            onOption={(op, index, value) => {
+              if (!comment?.id) return;
+              dispatch({ type: "option", id: comment.id, op, index, value });
             }}
           />
         </section>
@@ -437,10 +471,15 @@ function CommentPane({
   section,
   item,
   comment,
-  nameLocked,
+  plain,
+  locked,
   nameBlank,
   nameRef,
+  recommendations,
+  defaultCleared,
   onName,
+  onPatch,
+  onOption,
 }: {
   rowMiss: number | null;
   templateId: string;
@@ -448,10 +487,15 @@ function CommentPane({
   section: Section | null;
   item: Item | null;
   comment: Comment | null;
-  nameLocked: boolean;
+  plain: boolean;
+  locked: boolean;
   nameBlank: boolean;
   nameRef: Ref<HTMLInputElement>;
+  recommendations: readonly string[];
+  defaultCleared: boolean;
   onName: (name: string) => void;
+  onPatch: (patch: CommentPatch) => void;
+  onOption: (op: "add" | "edit" | "remove" | "up" | "down", index?: number, value?: string) => void;
 }) {
   if (rowMiss !== null) {
     return <p className="text-neutral-500">No Comment in this Version carries Source row {rowMiss}.</p>;
@@ -464,10 +508,15 @@ function CommentPane({
       sectionName={section.name}
       itemName={item.name}
       comment={comment}
-      nameLocked={nameLocked}
+      plain={plain}
+      locked={locked}
       nameBlank={nameBlank}
       nameRef={nameRef}
+      recommendations={recommendations}
+      defaultCleared={defaultCleared}
       onName={onName}
+      onPatch={onPatch}
+      onOption={onOption}
     />
   );
 }
@@ -478,20 +527,30 @@ function CommentDetail({
   sectionName,
   itemName,
   comment,
-  nameLocked,
+  plain,
+  locked,
   nameBlank,
   nameRef,
+  recommendations,
+  defaultCleared,
   onName,
+  onPatch,
+  onOption,
 }: {
   templateId: string;
   versionsOpen: boolean;
   sectionName: string;
   itemName: string;
   comment: Comment;
-  nameLocked: boolean;
+  plain: boolean;
+  locked: boolean;
   nameBlank: boolean;
   nameRef: Ref<HTMLInputElement>;
+  recommendations: readonly string[];
+  defaultCleared: boolean;
   onName: (name: string) => void;
+  onPatch: (patch: CommentPatch) => void;
+  onOption: (op: "add" | "edit" | "remove" | "up" | "down", index?: number, value?: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -511,48 +570,408 @@ function CommentDetail({
         )}
       </div>
       <div>
-        <input
-          ref={nameRef}
-          aria-label="Name"
-          aria-invalid={nameBlank || undefined}
-          value={comment.name}
-          readOnly={nameLocked}
-          onChange={(event) => onName(event.currentTarget.value)}
-          className="w-full rounded-md border border-transparent bg-transparent px-1 text-[15px] font-medium text-neutral-900 outline-none hover:border-black/10 focus:border-black/20 aria-invalid:border-red-500/60 dark:text-white dark:hover:border-white/15 dark:focus:border-white/25"
-        />
+        {plain ? (
+          <p className="px-1 text-[15px] font-medium text-neutral-900 dark:text-white">{comment.name}</p>
+        ) : (
+          <input
+            ref={nameRef}
+            aria-label="Name"
+            aria-invalid={nameBlank || undefined}
+            value={comment.name}
+            readOnly={locked}
+            onChange={(event) => onName(event.currentTarget.value)}
+            className="w-full rounded-md border border-transparent bg-transparent px-1 text-[15px] font-medium text-neutral-900 outline-none hover:border-black/10 focus:border-black/20 aria-invalid:border-red-500/60 dark:text-white dark:hover:border-white/15 dark:focus:border-white/25"
+          />
+        )}
         {nameBlank ? <p className="px-1 text-red-600 dark:text-red-400">{BLANK_NAME}</p> : null}
       </div>
       <div className="grid grid-cols-4 gap-3">
-        <Field label="Type" value={TYPE_LABEL[comment.commentType]} />
-        <Field label="Answer" value={ANSWER_LABEL[comment.answerType]} />
-        {comment.commentType === "defect" ? <Field label="Category" value={categoryLabel(comment.category)} /> : null}
-        <Field label="Recommendation" value={comment.recommendation ?? "None"} />
+        {plain ? (
+          <Field label="Type" value={TYPE_LABEL[comment.commentType]} />
+        ) : (
+          <LabeledSelect
+            label="Type"
+            value={comment.commentType}
+            disabled={locked}
+            onChange={(value) => {
+              if (isCommentType(value)) onPatch({ commentType: value });
+            }}
+          >
+            {COMMENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {TYPE_LABEL[type]}
+              </option>
+            ))}
+          </LabeledSelect>
+        )}
+        {plain ? (
+          <Field label="Answer" value={ANSWER_LABEL[comment.answerType]} />
+        ) : (
+          <LabeledSelect
+            label="Answer"
+            value={comment.answerType}
+            disabled={locked}
+            onChange={(value) => {
+              if (isAnswerType(value)) onPatch({ answerType: value });
+            }}
+          >
+            {ANSWER_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {ANSWER_LABEL[type]}
+              </option>
+            ))}
+          </LabeledSelect>
+        )}
+        {comment.commentType === "defect" ? (
+          plain ? (
+            <Field label="Category" value={categoryLabel(comment.category)} />
+          ) : (
+            <LabeledSelect
+              label="Category"
+              value={comment.category === null ? "none" : String(comment.category)}
+              disabled={locked}
+              onChange={(value) => {
+                const choice = CATEGORY_CHOICES.find((candidate) => candidate.value === value);
+                if (choice) onPatch({ category: choice.category });
+              }}
+            >
+              {CATEGORY_CHOICES.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
+                </option>
+              ))}
+            </LabeledSelect>
+          )
+        ) : null}
+        <RecommendationField
+          comment={comment}
+          choices={recommendations}
+          plain={plain}
+          locked={locked}
+          onPatch={onPatch}
+        />
       </div>
       {comment.answerType === "checkbox" ? (
-        <div>
-          <div className={labelClass}>Options</div>
-          {comment.choiceOptions.length > 0 ? (
-            <ul className="mt-1 flex flex-wrap gap-1">
-              {comment.choiceOptions.map((option, index) => (
-                <li
-                  key={`${index}-${option}`}
-                  className="rounded-full border border-black/10 px-2 py-0.5 dark:border-white/10"
-                >
-                  {option}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1 text-neutral-500">None</p>
-          )}
-        </div>
+        <OptionsField comment={comment} plain={plain} locked={locked} onOption={onOption} />
       ) : null}
-      <Field label="Default" value={defaultLabel(comment)} />
+      <DefaultField comment={comment} plain={plain} locked={locked} defaultCleared={defaultCleared} onPatch={onPatch} />
       <div className="border-t border-black/[0.05] pt-3 dark:border-white/[0.06]">
         <CommentHtml html={comment.textHtml} sourceRow={comment.sourceRow} />
       </div>
     </div>
   );
+}
+
+function RecommendationField({
+  comment,
+  choices,
+  plain,
+  locked,
+  onPatch,
+}: {
+  comment: Comment;
+  choices: readonly string[];
+  plain: boolean;
+  locked: boolean;
+  onPatch: (patch: CommentPatch) => void;
+}) {
+  if (plain) return <Field label="Recommendation" value={comment.recommendation ?? "None"} />;
+  return <RecommendationEditor key={comment.id} comment={comment} choices={choices} locked={locked} onPatch={onPatch} />;
+}
+
+/** "Other…" is local: a Recommendation typed here joins the list once it is stored. */
+function RecommendationEditor({
+  comment,
+  choices,
+  locked,
+  onPatch,
+}: {
+  comment: Comment;
+  choices: readonly string[];
+  locked: boolean;
+  onPatch: (patch: CommentPatch) => void;
+}) {
+  const [other, setOther] = useState(false);
+  const otherInput = useRef<HTMLInputElement>(null);
+  const value = other ? "other" : comment.recommendation === null ? "none" : `choice:${comment.recommendation}`;
+
+  useEffect(() => {
+    if (other) otherInput.current?.focus();
+  }, [other]);
+
+  function choose(next: string) {
+    if (next === "none") {
+      setOther(false);
+      onPatch({ recommendation: null });
+      return;
+    }
+    if (next === "other") {
+      setOther(true);
+      if (!other && comment.recommendation !== null) onPatch({ recommendation: null });
+      return;
+    }
+    if (next.startsWith("choice:")) {
+      setOther(false);
+      onPatch({ recommendation: next.slice("choice:".length) });
+    }
+  }
+
+  return (
+    <div className="min-w-0">
+      <LabeledSelect label="Recommendation" value={value} disabled={locked} onChange={choose}>
+        <option value="none">None</option>
+        {choices.map((choice) => (
+          <option key={choice} value={`choice:${choice}`}>
+            {choice}
+          </option>
+        ))}
+        <option value="other">Other…</option>
+      </LabeledSelect>
+      {other ? (
+        <input
+          ref={otherInput}
+          aria-label="Other recommendation"
+          value={comment.recommendation ?? ""}
+          disabled={locked}
+          onChange={(event) => onPatch({ recommendation: event.currentTarget.value === "" ? null : event.currentTarget.value })}
+          className={`${controlClass} mt-1`}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function OptionsField({
+  comment,
+  plain,
+  locked,
+  onOption,
+}: {
+  comment: Comment;
+  plain: boolean;
+  locked: boolean;
+  onOption: (op: "add" | "edit" | "remove" | "up" | "down", index?: number, value?: string) => void;
+}) {
+  const needsOption = comment.choiceOptions.every((option) => option.trim() === "");
+  return (
+    <div>
+      <div className={labelClass}>Options</div>
+      {plain ? (
+        comment.choiceOptions.length > 0 ? (
+          <ul className="mt-1 flex flex-wrap gap-1">
+            {comment.choiceOptions.map((option, index) => (
+              <li key={`${index}-${option}`} className="rounded-full border border-black/10 px-2 py-0.5 dark:border-white/10">
+                {option}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-neutral-500">None</p>
+        )
+      ) : (
+        <OptionEditor comment={comment} locked={locked} onOption={onOption} />
+      )}
+      {plain && comment.choiceOptions.some((option) => option.includes(",")) ? (
+        <p className="mt-1 text-neutral-500">{COMMA_OPTION}</p>
+      ) : null}
+      {plain && needsOption ? <p className="mt-1 text-neutral-500">{NEEDS_OPTION}</p> : null}
+    </div>
+  );
+}
+
+function OptionEditor({
+  comment,
+  locked,
+  onOption,
+}: {
+  comment: Comment;
+  locked: boolean;
+  onOption: (op: "add" | "edit" | "remove" | "up" | "down", index?: number, value?: string) => void;
+}) {
+  const pendingFocus = useRef(false);
+  const inputs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    inputs.current[comment.choiceOptions.length - 1]?.focus();
+  }, [comment.choiceOptions]);
+
+  return (
+    <>
+      <ul className="mt-1 flex flex-col gap-1">
+        {comment.choiceOptions.map((option, index) => (
+          <li key={index}>
+            <div className="flex items-center gap-1">
+              <input
+                ref={(node) => {
+                  inputs.current[index] = node;
+                }}
+                aria-label={`Option ${index + 1}`}
+                value={option}
+                disabled={locked}
+                onChange={(event) => onOption("edit", index, event.currentTarget.value)}
+                className={`${controlClass} min-w-0 flex-1`}
+              />
+              <IconButton
+                label="Move option up"
+                disabled={locked || index === 0}
+                onClick={() => onOption("up", index)}
+              >
+                ↑
+              </IconButton>
+              <IconButton
+                label="Move option down"
+                disabled={locked || index === comment.choiceOptions.length - 1}
+                onClick={() => onOption("down", index)}
+              >
+                ↓
+              </IconButton>
+              <IconButton label="Remove option" disabled={locked} onClick={() => onOption("remove", index)}>
+                ✕
+              </IconButton>
+            </div>
+            {option.includes(",") ? <p className="text-neutral-500">{COMMA_OPTION}</p> : null}
+          </li>
+        ))}
+      </ul>
+      {comment.choiceOptions.every((option) => option.trim() === "") ? (
+        <p className="mt-1 text-neutral-500">{NEEDS_OPTION}</p>
+      ) : null}
+      <button
+        type="button"
+        disabled={locked}
+        onClick={() => {
+          pendingFocus.current = true;
+          onOption("add");
+        }}
+        className="mt-1 text-[11px] text-neutral-500 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40 dark:hover:text-white"
+      >
+        + option
+      </button>
+    </>
+  );
+}
+
+function DefaultField({
+  comment,
+  plain,
+  locked,
+  defaultCleared,
+  onPatch,
+}: {
+  comment: Comment;
+  plain: boolean;
+  locked: boolean;
+  defaultCleared: boolean;
+  onPatch: (patch: CommentPatch) => void;
+}) {
+  return (
+    <div className="max-w-xs">
+      {plain ? (
+        <Field label="Default" value={defaultLabel(comment)} />
+      ) : comment.answerType === "boolean" ? (
+        <LabeledSelect
+          label="Default"
+          value={comment.defaultBoolean === true ? "true" : comment.defaultBoolean === false ? "false" : "none"}
+          disabled={locked}
+          onChange={(value) => onPatch({ defaultBoolean: value === "true" ? true : value === "false" ? false : null })}
+        >
+          <option value="none">None</option>
+          <option value="true">True</option>
+          <option value="false">False</option>
+        </LabeledSelect>
+      ) : comment.answerType === "checkbox" ? (
+        <CheckboxDefault comment={comment} locked={locked} onPatch={onPatch} />
+      ) : (
+        <label className="block max-w-xs">
+          <span className={labelClass}>Default</span>
+          <input
+            aria-label="Default"
+            value={comment.defaultText ?? ""}
+            disabled={locked}
+            onChange={(event) => onPatch({ defaultText: event.currentTarget.value === "" ? null : event.currentTarget.value })}
+            className={`${controlClass} mt-1`}
+          />
+        </label>
+      )}
+      {defaultCleared ? <p className="mt-1 text-neutral-500">{DEFAULT_CLEARED}</p> : null}
+    </div>
+  );
+}
+
+function CheckboxDefault({
+  comment,
+  locked,
+  onPatch,
+}: {
+  comment: Comment;
+  locked: boolean;
+  onPatch: (patch: CommentPatch) => void;
+}) {
+  const match = comment.defaultText === null ? -1 : comment.choiceOptions.indexOf(comment.defaultText);
+  const orphan = comment.defaultText !== null && match < 0;
+  const value = comment.defaultText === null ? "none" : orphan ? "orphan" : `option-${match}`;
+
+  return (
+    <LabeledSelect
+      label="Default"
+      value={value}
+      disabled={locked}
+      onChange={(next) => {
+        if (next === "none") onPatch({ defaultText: null });
+        else if (next.startsWith("option-")) {
+          const option = comment.choiceOptions[Number(next.slice("option-".length))];
+          if (option !== undefined) onPatch({ defaultText: option });
+        }
+      }}
+    >
+      <option value="none">None</option>
+      {comment.choiceOptions.map((option, index) => (
+        <option key={index} value={`option-${index}`}>
+          {option === "" ? "(blank)" : option}
+        </option>
+      ))}
+      {orphan ? <option value="orphan">{comment.defaultText} (not an option)</option> : null}
+    </LabeledSelect>
+  );
+}
+
+function LabeledSelect({
+  label,
+  value,
+  disabled,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="min-w-0">
+      <span className={labelClass}>{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        className={`${controlClass} mt-1`}
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function isCommentType(value: string): value is Comment["commentType"] {
+  return COMMENT_TYPES.some((type) => type === value);
+}
+
+function isAnswerType(value: string): value is Comment["answerType"] {
+  return ANSWER_TYPES.some((type) => type === value);
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -872,5 +1291,8 @@ function defaultLabel(comment: Comment): string {
     return "None";
   }
   if (comment.defaultText === null || comment.defaultText === "") return "None";
+  if (comment.answerType === "checkbox" && !comment.choiceOptions.includes(comment.defaultText)) {
+    return `${comment.defaultText} (not an option)`;
+  }
   return comment.defaultText;
 }

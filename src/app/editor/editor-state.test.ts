@@ -584,6 +584,15 @@ describe("editorReducer: Save refusals", () => {
   });
 });
 
+function itemComments(source: EditableTree, commentId: string): EditableTree["sections"][number]["items"][number]["comments"] {
+  for (const section of source.sections) {
+    for (const item of section.items) {
+      if (item.comments.some((comment) => comment.id === commentId)) return item.comments;
+    }
+  }
+  throw new Error(`No Comment ${commentId}`);
+}
+
 function commentIdAt(source: EditableTree, sourceRow: number): string {
   for (const section of source.sections) {
     for (const item of section.items) {
@@ -878,6 +887,100 @@ describe("editorReducer: structure", () => {
     expect(saving.save.status).toBe("saving");
     expect(editorReducer(saving, { type: "addSection" })).toBe(saving);
     expect(editorReducer(saving, { type: "delete", ref: sectionRef })).toBe(saving);
+  });
+});
+
+describe("editorReducer: comment fields", () => {
+  it("a type change moves the Comment to the end of the stored list and it shows last in its new group", () => {
+    const brand = commentIdAt(tree, 149);
+    const changed = editorReducer(open(), { type: "setComment", id: brand, patch: { commentType: "defect" } });
+    const comments = itemComments(changed.tree, brand);
+
+    // Cooling Equipment stored order starts 148, 149, 150, … 161. Brand (149) leaves its place and goes last.
+    expect(comments.map((comment) => comment.sourceRow)).toEqual([
+      148, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 149,
+    ]);
+    const deficiencies = commentGroups(comments).find((group) => group.label === "Deficiencies");
+    expect(deficiencies?.comments.at(-1)?.sourceRow).toBe(149);
+    expect(deficiencies?.comments.at(-1)?.name).toBe("Brand");
+  });
+
+  it("keeps a Category hidden across a type change, and options and a default hidden across an Answer type change", () => {
+    const cracking = commentIdAt(tree, 10);
+    const asInfo = editorReducer(open(), { type: "setComment", id: cracking, patch: { commentType: "info" } });
+    expect(itemComments(asInfo.tree, cracking).find((comment) => comment.id === cracking)).toMatchObject({
+      commentType: "info",
+      category: 0,
+    });
+    const defectAgain = editorReducer(asInfo, { type: "setComment", id: cracking, patch: { commentType: "defect" } });
+    expect(itemComments(defectAgain.tree, cracking).find((comment) => comment.id === cracking)?.category).toBe(0);
+
+    const attendance = commentIdAt(tree, 2);
+    const withDefault = editorReducer(open(), {
+      type: "setComment",
+      id: attendance,
+      patch: { defaultText: "Client" },
+    });
+    const asText = editorReducer(withDefault, { type: "setComment", id: attendance, patch: { answerType: "text" } });
+    expect(itemComments(asText.tree, attendance).find((comment) => comment.id === attendance)).toMatchObject({
+      answerType: "text",
+      defaultText: "Client",
+      choiceOptions: ["Listing Agent", "Home Owner", "Client", "Client's Agent"],
+    });
+    const checkboxAgain = editorReducer(asText, {
+      type: "setComment",
+      id: attendance,
+      patch: { answerType: "checkbox" },
+    });
+    const restored = itemComments(checkboxAgain.tree, attendance).find((comment) => comment.id === attendance);
+    expect(restored?.answerType).toBe("checkbox");
+    expect(restored?.defaultText).toBe("Client");
+    expect(restored?.choiceOptions).toEqual(["Listing Agent", "Home Owner", "Client", "Client's Agent"]);
+  });
+
+  it("clears a default when its option is removed, updates it when that option is edited, and can add and reorder options", () => {
+    const attendance = commentIdAt(tree, 2);
+    const withDefault = editorReducer(open(), {
+      type: "setComment",
+      id: attendance,
+      patch: { defaultText: "Client" },
+    });
+
+    const removed = editorReducer(withDefault, { type: "option", id: attendance, op: "remove", index: 2 });
+    const afterRemove = itemComments(removed.tree, attendance).find((comment) => comment.id === attendance);
+    expect(afterRemove?.choiceOptions).toEqual(["Listing Agent", "Home Owner", "Client's Agent"]);
+    expect(afterRemove?.defaultText).toBeNull();
+    expect(removed.note).toEqual({ commentId: attendance, kind: "default-cleared" });
+    const discarded = editorReducer(removed, { type: "discard" });
+    expect(discarded.note).toBeNull();
+    expect(itemComments(discarded.tree, attendance).find((comment) => comment.id === attendance)?.defaultText).toBeNull();
+
+    const edited = editorReducer(withDefault, { type: "option", id: attendance, op: "edit", index: 2, value: "Buyer" });
+    const afterEdit = itemComments(edited.tree, attendance).find((comment) => comment.id === attendance);
+    expect(afterEdit?.choiceOptions[2]).toBe("Buyer");
+    expect(afterEdit?.defaultText).toBe("Buyer");
+    expect(edited.note).toBeNull();
+
+    const added = editorReducer(withDefault, { type: "option", id: attendance, op: "add" });
+    expect(itemComments(added.tree, attendance).find((comment) => comment.id === attendance)?.choiceOptions).toEqual([
+      "Listing Agent",
+      "Home Owner",
+      "Client",
+      "Client's Agent",
+      "",
+    ]);
+
+    const reordered = editorReducer(withDefault, { type: "option", id: attendance, op: "up", index: 1 });
+    expect(itemComments(reordered.tree, attendance).find((comment) => comment.id === attendance)?.choiceOptions).toEqual([
+      "Home Owner",
+      "Listing Agent",
+      "Client",
+      "Client's Agent",
+    ]);
+    expect(editorReducer(reordered, { type: "option", id: attendance, op: "up", index: 0 }).tree).toBe(reordered.tree);
+
+    const viewing = open(null, "read-only");
+    expect(editorReducer(viewing, { type: "option", id: attendance, op: "add" })).toBe(viewing);
   });
 });
 

@@ -51,6 +51,8 @@ export type EditorState = {
   held: EditorBase | null;
   /** The number in the next added node's `tmp-` id. Never reused, so a new node can't take an old one's id. */
   nextTmp: number;
+  /** Set when a checkbox default pointed at an option that was removed. Cleared on Discard. */
+  note: { commentId: string; kind: "default-cleared" } | null;
 };
 
 /** Fields a Comment can be edited through. Ids, Source rows and unit options stay put. */
@@ -68,6 +70,7 @@ export type EditorAction =
   | { type: "move"; ref: NodeRef; dir: Direction }
   | { type: "rename"; ref: NodeRef; name: string }
   | { type: "setComment"; id: string; patch: CommentPatch }
+  | { type: "option"; id: string; op: "add" | "edit" | "remove" | "up" | "down"; index?: number; value?: string }
   | { type: "saveRequested" }
   | { type: "saveSucceeded"; number: number }
   | { type: "saveFailed"; error: SaveError }
@@ -124,6 +127,7 @@ export function initialEditorState(
     save: { status: "idle" },
     held: null,
     nextTmp: 1,
+    note: null,
   };
   if (row !== null) return editorReducer(state, { type: "selectRow", row });
   return selectFirst(state);
@@ -217,6 +221,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return rename(state, action.ref, action.name);
     case "setComment":
       return setComment(state, action.id, action.patch);
+    case "option":
+      return changeOptions(state, action.id, action.op, action.index, action.value);
     case "saveRequested":
       return requestSave(state);
     case "saveSucceeded":
@@ -303,9 +309,77 @@ function setComment(state: EditorState, id: string, patch: CommentPatch): Editor
   if (!place || !current) return state;
   const next = applyCommentPatch(current, patch);
   if (sameComment(current, next)) return state;
+  // A type change moves the Comment to the end, so it shows last in its new group. Nothing else is cleared.
+  const comments = place.item.comments.filter((comment) => comment !== current);
+  comments.splice(next.commentType === current.commentType ? place.commentIndex : comments.length, 0, next);
+  const note = state.note?.commentId === id && patch.defaultText !== undefined ? null : state.note;
+  return { ...state, note, tree: replaceItem(state.tree, place, { ...place.item, comments }) };
+}
+
+/** The distinct Recommendations already used in this Template, sorted, for the detail's list. */
+export function recommendationChoices(tree: EditableTree): string[] {
+  const choices = new Set<string>();
+  for (const section of tree.sections) {
+    for (const item of section.items) {
+      for (const comment of item.comments) {
+        if (comment.recommendation !== null) choices.add(comment.recommendation);
+      }
+    }
+  }
+  return [...choices].sort();
+}
+
+function changeOptions(
+  state: EditorState,
+  id: string,
+  op: "add" | "edit" | "remove" | "up" | "down",
+  index: number | undefined,
+  value: string | undefined,
+): EditorState {
+  if (state.mode === "read-only" || state.save.status === "saving") return state;
+  const place = commentPlace(state.tree, id);
+  const current = place?.item.comments[place.commentIndex];
+  if (!place || !current) return state;
+
+  const options = current.choiceOptions.slice();
+  let defaultText = current.defaultText;
+  let note = state.note;
+
+  if (op === "add") {
+    options.push("");
+  } else {
+    if (index === undefined || options[index] === undefined) return state;
+    if (op === "edit") {
+      const nextValue = value ?? "";
+      const previous = options[index];
+      if (previous === nextValue) return state;
+      options[index] = nextValue;
+      if (previous === defaultText) defaultText = nextValue;
+    } else if (op === "remove") {
+      const removed = options.splice(index, 1)[0];
+      if (current.answerType === "checkbox" && removed === defaultText) {
+        defaultText = null;
+        note = { commentId: id, kind: "default-cleared" };
+      }
+    } else {
+      const next = swapped(options, index, op === "up" ? index - 1 : index + 1);
+      if (!next) return state;
+      return writeComment(state, place, { ...current, choiceOptions: next }, note);
+    }
+  }
+
+  return writeComment(state, place, { ...current, choiceOptions: options, defaultText }, note);
+}
+
+function writeComment(
+  state: EditorState,
+  place: ItemPlace & { commentIndex: number },
+  comment: Comment,
+  note: EditorState["note"],
+): EditorState {
   const comments = place.item.comments.slice();
-  comments[place.commentIndex] = next;
-  return { ...state, tree: replaceItem(state.tree, place, { ...place.item, comments }) };
+  comments[place.commentIndex] = comment;
+  return { ...state, note, tree: replaceItem(state.tree, place, { ...place.item, comments }) };
 }
 
 /** Structure changes wait for an editable, settled state: nothing in flight and not a read-only Version. */
@@ -608,6 +682,7 @@ function replaceVersion(state: EditorState, base: EditorBase, save: SaveState): 
     selection: path ? selectionAt(base.tree, path) : emptySelection(),
     save,
     held: null,
+    note: null,
   };
 }
 
