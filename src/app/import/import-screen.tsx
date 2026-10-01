@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useReducer, useRef, useTransition, type DragEvent, type FormEvent } from "react";
 import { importErrorMessage } from "@/core/import/import-errors";
 import { commitImport, previewImport } from "@/app/import/actions";
 import { importFlow, initialImportFlow, type ImportFlow, type ImportFlowEvent } from "@/app/import/import-flow";
 import type { ImportReview } from "@/app/import/import-review";
+import { templateHref } from "@/app/template-view";
 import { buttonClass, glassClass, labelClass, primaryButtonClass } from "@/app/ui/classes";
+import { FormattedDate } from "@/app/ui/formatted-date";
 
 /** The upload, Import review and rejection screens: one page, one state machine, no URL per step. */
 export function ImportScreen() {
@@ -154,6 +157,19 @@ function Review({
       <p className="tabular-nums">
         {plural(issueCounts.warning, "warning")} · {plural(issueCounts.notice, "notice")}
       </p>
+      {review.previousImport ? (
+        <p>
+          {"You imported this file as '"}
+          <Link
+            href={templateHref(review.previousImport.templateId, { panes: new Set(), row: null })}
+            className="underline underline-offset-2"
+          >
+            {review.previousImport.name}
+          </Link>
+          {"' on "}
+          <FormattedDate value={review.previousImport.importedAt} dateOnly />.
+        </p>
+      ) : null}
       <p className="text-neutral-500">{committing ? "Importing…" : "Nothing is stored until you press Import."}</p>
       <div className="flex gap-2">
         <button type="submit" className={primaryButtonClass} disabled={committing || name.trim() === ""}>

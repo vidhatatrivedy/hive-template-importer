@@ -17,7 +17,8 @@ export async function previewImport(formData: FormData): Promise<PreviewResult> 
   const { file } = previewForm.parse(Object.fromEntries(formData));
   const parsed = await parseUpload(file);
   if (!parsed.ok) return { ok: false, error: parsed.rejection };
-  return { ok: true, review: toImportReview(parsed.draft) };
+  const summaries = await getDb().listTemplates();
+  return { ok: true, review: toImportReview(parsed.draft, summaries) };
 }
 
 /** Re-parses the reviewed file, stores it under the trimmed name and opens its Trust Report. */
