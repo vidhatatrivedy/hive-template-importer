@@ -38,17 +38,15 @@ export function TemplateActions({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const onOpenChangeRef = useRef(onOpenChange);
-  const skipOpenNotice = useRef(true);
+  const menuWasOpen = useRef(false);
 
   useLayoutEffect(() => {
     onOpenChangeRef.current = onOpenChange;
-  });
+  }, [onOpenChange]);
 
   useLayoutEffect(() => {
-    if (skipOpenNotice.current) {
-      skipOpenNotice.current = false;
-      return;
-    }
+    if (menuWasOpen.current === menuOpen) return;
+    menuWasOpen.current = menuOpen;
     onOpenChangeRef.current?.(menuOpen);
   }, [menuOpen]);
 
@@ -82,14 +80,7 @@ export function TemplateActions({
     };
   }, [menuOpen]);
 
-  const triggerClass =
-    placement === "row"
-      ? `absolute top-1/2 right-1 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[13px] text-neutral-500 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] ${
-          revealed || menuOpen
-            ? "opacity-100"
-            : "pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-        }`
-      : "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]";
+  const triggerClass = placement === "row" ? rowTriggerClass(revealed || menuOpen) : headerTriggerClass();
 
   return (
     <>
@@ -132,20 +123,14 @@ function ActionsMenu({
   anchorRef: RefObject<HTMLButtonElement | null>;
   onRename: () => void;
 }) {
+  const renameRef = useRef<HTMLButtonElement>(null);
+
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const anchor = anchorRef.current;
     if (!menu || !anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    const height = menu.offsetHeight;
-    const width = menu.offsetWidth;
-    const below = rect.bottom + 4;
-    const top = below + height > window.innerHeight - 8 ? Math.max(8, rect.top - 4 - height) : below;
-    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
-    menu.style.top = `${top}px`;
-    menu.style.left = `${left}px`;
-    menu.style.visibility = "visible";
-    menu.querySelector("button")?.focus();
+    placeMenu(menu, anchor);
+    renameRef.current?.focus();
   }, [anchorRef, menuRef]);
 
   const itemClass = `flex h-7 w-full items-center rounded-md px-2 text-left ${rowIdleClass}`;
@@ -159,7 +144,7 @@ function ActionsMenu({
       style={{ visibility: "hidden" }}
       className={`${glassClass} fixed z-40 flex w-36 flex-col rounded-xl p-1`}
     >
-      <button type="button" role="menuitem" className={itemClass} onClick={onRename}>
+      <button ref={renameRef} type="button" role="menuitem" className={itemClass} onClick={onRename}>
         Rename…
       </button>
       <button type="button" role="menuitem" className={itemClass}>
@@ -176,11 +161,12 @@ function ActionsMenu({
 function RenameDialog({ target, onClose }: { target: ActionTarget; onClose: () => void }) {
   const titleId = useId();
   const fieldRef = useRef<HTMLInputElement>(null);
-  const lock = useRef(false);
+  /** Set before `pending` so a second submit in the same turn is ignored. */
+  const submitting = useRef(false);
   const [draft, setDraft] = useState(target.name);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<LifecycleError<"rename"> | null>(null);
-  const blank = renamePlan(target.name, draft).kind === "blank";
+  const plan = renamePlan(target.name, draft);
 
   useEffect(() => {
     const field = fieldRef.current;
@@ -191,7 +177,7 @@ function RenameDialog({ target, onClose }: { target: ActionTarget; onClose: () =
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || lock.current) return;
+      if (event.key !== "Escape" || submitting.current) return;
       event.preventDefault();
       onClose();
     }
@@ -201,15 +187,14 @@ function RenameDialog({ target, onClose }: { target: ActionTarget; onClose: () =
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (lock.current) return;
-    const plan = renamePlan(target.name, draft);
+    if (submitting.current) return;
     if (plan.kind === "blank") return;
     if (plan.kind === "unchanged") {
       onClose();
       return;
     }
 
-    lock.current = true;
+    submitting.current = true;
     setPending(true);
     setError(null);
     try {
@@ -222,16 +207,17 @@ function RenameDialog({ target, onClose }: { target: ActionTarget; onClose: () =
     } catch {
       setError({ kind: "rename-failed" });
     } finally {
-      lock.current = false;
+      submitting.current = false;
       setPending(false);
     }
   }
 
-  return (
+  // Portaled: the sidebar and the editor card use backdrop-filter and overflow, which trap `fixed`.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/20 p-6 dark:bg-black/40"
       onMouseDown={(event) => {
-        if (lock.current) return;
+        if (submitting.current) return;
         if (event.target === event.currentTarget) onClose();
       }}
     >
@@ -267,18 +253,44 @@ function RenameDialog({ target, onClose }: { target: ActionTarget; onClose: () =
               className={buttonClass}
               disabled={pending}
               onClick={() => {
-                if (lock.current) return;
+                if (submitting.current) return;
                 onClose();
               }}
             >
               Cancel
             </button>
-            <button type="submit" className={primaryButtonClass} disabled={blank || pending}>
+            <button type="submit" className={primaryButtonClass} disabled={plan.kind === "blank" || pending}>
               {pending ? "Renaming…" : "Rename"}
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
+}
+
+function rowTriggerClass(visible: boolean): string {
+  const shown = visible
+    ? "opacity-100"
+    : "pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100";
+  return `absolute top-1/2 right-1 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[13px] text-neutral-500 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] ${shown}`;
+}
+
+function headerTriggerClass(): string {
+  return "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]";
+}
+
+/** Keeps the popover on screen. Hidden until this runs so it does not flash at the origin. */
+function placeMenu(menu: HTMLElement, anchor: HTMLElement) {
+  const rect = anchor.getBoundingClientRect();
+  const height = menu.offsetHeight;
+  const width = menu.offsetWidth;
+  const below = rect.bottom + 4;
+  const fitsBelow = below + height <= window.innerHeight - 8;
+  const top = fitsBelow ? below : Math.max(8, rect.top - 4 - height);
+  const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+  menu.style.visibility = "visible";
 }

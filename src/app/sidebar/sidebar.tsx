@@ -20,12 +20,12 @@ export type SidebarList =
  */
 export function Sidebar({ list }: { list: SidebarList }) {
   const [actionsOpen, setActionsOpen] = useState(false);
+  const widthClass = actionsOpen ? "w-60" : "w-11 focus-within:w-60 hover:w-60";
+  const listClass = actionsOpen ? "opacity-100" : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100";
   return (
     <aside
       aria-label="Templates"
-      className={`${glassClass} group absolute top-3 bottom-3 left-3 z-30 flex flex-col overflow-hidden rounded-2xl transition-[width] duration-150 ${
-        actionsOpen ? "w-60" : "w-11 focus-within:w-60 hover:w-60"
-      }`}
+      className={`${glassClass} group absolute top-3 bottom-3 left-3 z-30 flex flex-col overflow-hidden rounded-2xl transition-[width] duration-150 ${widthClass}`}
     >
       <div className="flex w-60 shrink-0 flex-col gap-2 py-3">
         <div className="flex items-center">
@@ -41,9 +41,7 @@ export function Sidebar({ list }: { list: SidebarList }) {
         </div>
       </div>
       <div
-        className={`w-60 min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 transition-opacity ${
-          actionsOpen ? "opacity-100" : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-        }`}
+        className={`w-60 min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 transition-opacity ${listClass}`}
       >
         <SidebarContent list={list} onActionsOpenChange={setActionsOpen} />
       </div>
