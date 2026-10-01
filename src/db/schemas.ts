@@ -75,5 +75,11 @@ export const deleteTemplateResultSchema = z.object({
   importRunDeleted: z.boolean(),
 });
 
+export const saveVersionResultSchema = z.object({
+  versionId: z.uuid(),
+  number: z.number().int().positive(),
+});
+
 export type ImportTemplateResult = z.infer<typeof importTemplateResultSchema>;
 export type DeleteTemplateResult = z.infer<typeof deleteTemplateResultSchema>;
+export type SaveVersionResult = z.infer<typeof saveVersionResultSchema>;
