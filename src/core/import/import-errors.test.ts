@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { importErrorKinds, importErrorMessage, type ImportActionError } from "@/core/import/import-errors";
+import { importErrorKinds, importErrorMessage, type ImportActionError, type ImportErrorKind } from "@/core/import/import-errors";
 import { MAX_UPLOAD_BYTES } from "@/core/import/rejections";
 
-const samples: Record<(typeof importErrorKinds)[number], ImportActionError> = {
+const samples: Record<ImportErrorKind, ImportActionError> = {
   "too-large": { kind: "too-large", byteSize: 5 * 1024 * 1024, limit: MAX_UPLOAD_BYTES },
   "not-xlsx": { kind: "not-xlsx" },
   "unreadable-xlsx": { kind: "unreadable-xlsx" },
