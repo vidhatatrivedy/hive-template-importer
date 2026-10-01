@@ -6,6 +6,16 @@ export { MAX_UPLOAD_BYTES, rejectionKinds, rejectionMessage } from "./rejections
 export type { Rejection, RejectionKind } from "./rejections";
 export { reconcile, toExportRows } from "./reconcile";
 export type { Cell, Difference, DifferenceExplanation, ExportRow, ReconcileResult, ReconcileRow } from "./reconcile";
+export { buildTrustReport } from "./trust-report";
+export type {
+  ExternalAssetHost,
+  KeptColumn,
+  MissingFromExport,
+  ReconciliationSection,
+  TrustIssueGroup,
+  TrustReport,
+  TrustReportSummary,
+} from "./trust-report";
 export {
   commentSchema,
   countEditableTree,
