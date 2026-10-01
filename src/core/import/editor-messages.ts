@@ -38,9 +38,8 @@ export function saveErrorMessage(error: SaveError): string {
     case "foreign-source-row":
       return `Rows ${listNumbers(error.rowNumbers)} aren't Source rows of this Template's import, so nothing was saved. This is a bug.`;
     case "names-blank":
-      return error.count === 1
-        ? "1 name is empty. Name it, then save."
-        : `${error.count} names are empty. Name them, then save.`;
+      if (error.count === 1) return "1 name is empty. Name it, then save.";
+      return `${error.count} names are empty. Name them, then save.`;
     case "save-failed":
       return "Save didn't go through. Your changes are still here. Try again.";
     default: {
@@ -67,7 +66,7 @@ export function restoreErrorMessage(error: RestoreError): string {
 }
 
 function listNumbers(numbers: readonly number[]): string {
-  if (numbers.length <= 1) return numbers[0] !== undefined ? String(numbers[0]) : "";
-  if (numbers.length === 2) return `${numbers[0]} and ${numbers[1]}`;
+  if (numbers.length === 0) return "";
+  if (numbers.length === 1) return String(numbers[0]);
   return `${numbers.slice(0, -1).join(", ")} and ${numbers[numbers.length - 1]}`;
 }

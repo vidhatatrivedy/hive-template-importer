@@ -301,9 +301,13 @@ describe("summariseCuts", () => {
   });
 
   it("uses singular and plural forms, and lists each tag, attribute or property once", () => {
-    expect(summariseCuts([cut("tag-removed", { tag: "script" }), cut("tag-removed", { tag: "script" }), cut("tag-removed", { tag: "style" })])).toEqual([
-      "3 tags removed with their content: `<script>`, `<style>`",
-    ]);
+    expect(
+      summariseCuts([
+        cut("tag-removed", { tag: "script" }),
+        cut("tag-removed", { tag: "script" }),
+        cut("tag-removed", { tag: "style" }),
+      ]),
+    ).toEqual(["3 tags removed with their content: `<script>`, `<style>`"]);
     expect(summariseCuts([cut("attribute-removed", { tag: "p", attribute: "onclick" })])).toEqual([
       "1 attribute removed: `onclick`",
     ]);
@@ -313,12 +317,12 @@ describe("summariseCuts", () => {
         cut("css-property-removed", { tag: "div", property: "z-index" }),
       ]),
     ).toEqual(["2 style properties removed: `position`, `z-index`"]);
-    expect(summariseCuts([cut("iframe-to-link", { tag: "iframe" }), cut("iframe-to-link", { tag: "iframe" })])).toEqual([
-      "2 iframes turned into links",
-    ]);
-    expect(summariseCuts([cut("link-scheme-removed", { tag: "a" }), cut("link-scheme-removed", { tag: "img" })])).toEqual([
-      "2 link addresses removed (unsafe scheme)",
-    ]);
+    expect(
+      summariseCuts([cut("iframe-to-link", { tag: "iframe" }), cut("iframe-to-link", { tag: "iframe" })]),
+    ).toEqual(["2 iframes turned into links"]);
+    expect(
+      summariseCuts([cut("link-scheme-removed", { tag: "a" }), cut("link-scheme-removed", { tag: "img" })]),
+    ).toEqual(["2 link addresses removed (unsafe scheme)"]);
     expect(summariseCuts([cut("markup-rebuilt", { tag: "div" }), cut("markup-rebuilt", { tag: "div" })])).toEqual([
       "Markup rebuilt",
     ]);
@@ -332,16 +336,19 @@ describe("summariseCuts", () => {
       ]),
     ).toEqual(["2 editor leftovers removed: `class`, `data-foo`"]);
     expect(summariseCuts([cut("tag-unwrapped", { tag: "font" })])).toEqual(["1 tag unwrapped: `<font>`"]);
-    expect(summariseCuts([cut("tag-unwrapped", { tag: "font" }), cut("tag-unwrapped", { tag: "center" })])).toEqual([
-      "2 tags unwrapped: `<font>`, `<center>`",
-    ]);
+    expect(
+      summariseCuts([cut("tag-unwrapped", { tag: "font" }), cut("tag-unwrapped", { tag: "center" })]),
+    ).toEqual(["2 tags unwrapped: `<font>`, `<center>`"]);
     expect(summariseCuts([cut("style-unparseable", { tag: "p" })])).toEqual(["1 unparseable style removed: `<p>`"]);
-    expect(summariseCuts([cut("style-unparseable", { tag: "p" }), cut("style-unparseable", { tag: "div" })])).toEqual([
-      "2 unparseable styles removed: `<p>`, `<div>`",
-    ]);
+    expect(
+      summariseCuts([cut("style-unparseable", { tag: "p" }), cut("style-unparseable", { tag: "div" })]),
+    ).toEqual(["2 unparseable styles removed: `<p>`, `<div>`"]);
     expect(summariseCuts([cut("youtube-wrapper-emptied", { tag: "div" })])).toEqual(["1 empty YouTube wrapper removed"]);
     expect(
-      summariseCuts([cut("youtube-wrapper-emptied", { tag: "div" }), cut("youtube-wrapper-emptied", { tag: "div" })]),
+      summariseCuts([
+        cut("youtube-wrapper-emptied", { tag: "div" }),
+        cut("youtube-wrapper-emptied", { tag: "div" }),
+      ]),
     ).toEqual(["2 empty YouTube wrappers removed"]);
   });
 
