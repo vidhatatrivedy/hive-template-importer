@@ -16,7 +16,7 @@ import {
 } from "@/app/editor/editor-state";
 import { templateHref } from "@/app/template-view";
 import { confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
-import { buttonClass, labelClass, primaryButtonClass } from "@/app/ui/classes";
+import { buttonClass, labelClass, primaryButtonClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
 import { saveTemplate } from "./actions";
@@ -514,7 +514,7 @@ function RowButton({
       aria-current={selected ? "true" : undefined}
       onClick={onClick}
       className={`flex w-full items-center gap-2 px-3 py-1 text-left ${
-        selected ? "bg-black/[0.06] dark:bg-white/[0.08]" : "hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+        selected ? rowActiveClass : rowIdleClass
       }`}
     >
       {children}

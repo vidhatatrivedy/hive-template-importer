@@ -1,6 +1,6 @@
 "use server";
 
-import { refresh } from "next/cache";
+import { revalidatePath } from "next/cache";
 import type { SaveError } from "@/core/import/editor-messages";
 import { prepareSave } from "@/core/import/prepare-save";
 import { editableTreeSchema, type EditableTree } from "@/core/import/schemas";
@@ -21,6 +21,6 @@ export async function saveTemplate(
   const saved = await getDb().saveVersion(templateId, baseNumber, parsed.data);
   if (!saved.ok) return { ok: false, error: saved.error };
 
-  refresh();
+  revalidatePath("/", "layout");
   return { ok: true, number: saved.value.number };
 }

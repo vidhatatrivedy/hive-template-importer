@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { UnsavedGuardProvider } from "@/app/unsaved-guard";
+import { TemplateSidebar } from "@/app/sidebar/template-sidebar";
 import { Backdrop } from "@/app/ui/backdrop";
 import "./globals.css";
 
@@ -27,7 +28,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="h-full">
         <UnsavedGuardProvider>
-          <Backdrop>{children}</Backdrop>
+          <Backdrop>
+            <TemplateSidebar />
+            <div className="h-full pl-14">{children}</div>
+          </Backdrop>
         </UnsavedGuardProvider>
       </body>
     </html>

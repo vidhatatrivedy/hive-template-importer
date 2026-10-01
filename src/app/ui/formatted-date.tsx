@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { formatDate } from "@/app/ui/format-date";
 
 /**
  * Medium date and short time in the viewer's locale and time zone.
@@ -18,13 +19,4 @@ export function FormattedDate({ value, dateOnly = false }: { value: string; date
 
 function subscribe() {
   return () => {};
-}
-
-function formatDate(value: string, dateOnly: boolean): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const options: Intl.DateTimeFormatOptions = dateOnly
-    ? { dateStyle: "medium" }
-    : { dateStyle: "medium", timeStyle: "short" };
-  return new Intl.DateTimeFormat(undefined, options).format(date);
 }

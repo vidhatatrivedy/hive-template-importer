@@ -25,3 +25,8 @@ export const severityClass: Record<IssueSeverity, string> = {
   warning: severityWarningClass,
   notice: severityNoticeClass,
 };
+
+/** The selected row in a list, and the hover fill of the others. */
+export const rowActiveClass = "bg-black/[0.06] dark:bg-white/[0.08]";
+
+export const rowIdleClass = "hover:bg-black/[0.03] dark:hover:bg-white/[0.04]";
