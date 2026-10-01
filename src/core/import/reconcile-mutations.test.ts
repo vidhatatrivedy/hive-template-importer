@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
-import { reconcile, type Difference, type ReconcileResult, type ReconcileRow } from "@/core/import/reconcile";
+import { reconcile, type Cell, type Difference, type ReconcileResult, type ReconcileRow } from "@/core/import/reconcile";
 import type { Comment, ImportDraft, Item, Section } from "@/core/import/schemas";
 
 const FIXTURE_DIR = path.resolve(__dirname, "../../../fixtures/spectora");
@@ -12,13 +12,12 @@ const RADON = "Radon Inspection-2026-09-30.xls";
 
 /**
  * Seam: `reconcile(evidence, tree)`. Each test corrupts one fixture draft and
- * asserts the Unexplained difference lands on that Source row, or on the Section
- * or Item the corruption moved.
+ * asserts the Unexplained difference lands on the affected Source row.
  */
 describe("reconciliation can fail", () => {
   it("reports a changed character of stored text on that Source row", async () => {
     const draft = structuredClone(await draftOf(RADON));
-    const { section, item, comment } = placed(draft, 2);
+    const { section, item, comment } = commentPlacement(draft, 2);
     expect(section.name).toBe("Details");
     expect(item.name).toBe("General");
     expect(reconcile(draft, draft.tree).unexplained).toBe(0);
@@ -39,7 +38,7 @@ describe("reconciliation can fail", () => {
 
   it("reports a dropped Comment on its Source row", async () => {
     const draft = structuredClone(await draftOf(RADON));
-    const { section, item } = placed(draft, 2);
+    const { section, item } = commentPlacement(draft, 2);
     expect(section.name).toBe("Details");
     expect(item.name).toBe("General");
     expect(reconcile(draft, draft.tree).unexplained).toBe(0);
@@ -56,7 +55,7 @@ describe("reconciliation can fail", () => {
 
   it("reports swapped Comments on the Source row that is out of order", async () => {
     const draft = structuredClone(await draftOf(RADON));
-    const { section, item } = placed(draft, 2);
+    const { section, item } = commentPlacement(draft, 2);
     expect(section.name).toBe("Details");
     expect(item.name).toBe("General");
     const first = commentAt(item, 0);
@@ -107,7 +106,7 @@ describe("reconciliation can fail", () => {
     expect(reconcile(draft, draft.tree).unexplained).toBe(0);
 
     general.comments.push(...monitor.comments);
-    section.items.splice(section.items.indexOf(monitor), 1);
+    section.items = section.items.filter((item) => item !== monitor);
 
     const result = reconcile(draft, draft.tree);
     expect(section.items.map((item) => item.name)).toEqual(["General"]);
@@ -123,7 +122,7 @@ describe("reconciliation can fail", () => {
 
   it("reports a removed whitespace-trimmed issue on that Item's Source row", async () => {
     const draft = structuredClone(await draftOf(BEN));
-    const { section, item } = placed(draft, 474);
+    const { section, item } = commentPlacement(draft, 474);
     expect(section.name).toBe("Plumbing");
     expect(item.name).toBe("Water Supply");
     expect(reconcile(draft, draft.tree).unexplained).toBe(0);
@@ -147,7 +146,7 @@ describe("reconciliation can fail", () => {
 
   it("reports a removed cut on that Comment's Source row", async () => {
     const draft = structuredClone(await draftOf(BEN));
-    const { section, item } = placed(draft, 10);
+    const { section, item, comment } = commentPlacement(draft, 10);
     expect(section.name).toBe("Inspection Detail");
     expect(item.name).toBe("Buy Back Guarantee");
     const issue = draft.issues.find((entry) => entry.sourceRow === 10 && entry.kind === "editor-leftovers");
@@ -162,7 +161,7 @@ describe("reconciliation can fail", () => {
       {
         column: "Comment Text",
         raw: cell(draft, 10, "Comment Text"),
-        stored: cellStored(draft, 10),
+        stored: comment.textHtml,
         explanation: null,
       },
     ]);
@@ -170,7 +169,7 @@ describe("reconciliation can fail", () => {
 
   it("reports a null Source row on that Comment and on the Source row it left", async () => {
     const draft = structuredClone(await draftOf(RADON));
-    const { section, item, comment } = placed(draft, 2);
+    const { section, item, comment } = commentPlacement(draft, 2);
     expect(section.name).toBe("Details");
     expect(item.name).toBe("General");
     expect(reconcile(draft, draft.tree).unexplained).toBe(0);
@@ -204,18 +203,14 @@ function rowAt(result: ReconcileResult, sourceRow: number): ReconcileRow | undef
   return result.rows.find((row) => row.sourceRow === sourceRow);
 }
 
-function cell(draft: ImportDraft, sourceRow: number, header: string): ImportDraft["sourceRows"][number]["cells"][number] {
+function cell(draft: ImportDraft, sourceRow: number, header: string): Cell {
   const index = draft.run.headers.indexOf(header);
   const row = draft.sourceRows.find((entry) => entry.rowNumber === sourceRow);
   if (!row || index < 0) throw new Error(`No ${header} cell on Source row ${sourceRow}`);
   return row.cells[index] ?? null;
 }
 
-function cellStored(draft: ImportDraft, sourceRow: number): string {
-  return placed(draft, sourceRow).comment.textHtml;
-}
-
-function placed(draft: ImportDraft, sourceRow: number): { section: Section; item: Item; comment: Comment } {
+function commentPlacement(draft: ImportDraft, sourceRow: number): { section: Section; item: Item; comment: Comment } {
   for (const section of draft.tree.sections) {
     for (const item of section.items) {
       const comment = item.comments.find((entry) => entry.sourceRow === sourceRow);
