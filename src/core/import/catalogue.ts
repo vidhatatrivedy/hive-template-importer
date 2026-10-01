@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { untitledName } from "@/core/import/untitled-name";
 
 /** Severities an Import issue can have. `warning` changes what the reader understands; `notice` does not. */
 export const issueSeverities = ["warning", "notice"] as const;
@@ -79,13 +80,6 @@ const categoryValue = z.union([z.literal(-1), z.literal(0), z.literal(1)]);
 /** Spectora headers carry a parenthetical hint. Issue text names the column without it. */
 function columnTitle(field: string): string {
   return field.replace(/\s*\([^)]*\)\s*$/, "").trim();
-}
-
-function untitledName(field: string): string {
-  if (field === "Section Name") return "Untitled Section";
-  if (field === "Item Name") return "Untitled Item";
-  if (field === "Comment Name") return "Untitled Comment";
-  return "Untitled";
 }
 
 function commentTypeLabel(commentType: "info" | "limit" | "defect"): string {

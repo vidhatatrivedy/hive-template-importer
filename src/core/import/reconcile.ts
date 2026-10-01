@@ -602,7 +602,7 @@ function nameDifference(column: string, raw: Cell, stored: Cell, issues: readonl
   return { column, raw, stored, explanation: null };
 }
 
-/** Independent copy of the parser's blank-name fallback. Recommendation is not a name. */
+/** Independent copy of `untitledName`. Recommendation is not a name, so a wrong stored fallback stays unexplained. */
 function blankNameFallback(column: string): string | null {
   if (matchesExpectedHeader(column, SECTION_NAME)) return "Untitled Section";
   if (matchesExpectedHeader(column, ITEM_NAME)) return "Untitled Item";
@@ -661,15 +661,13 @@ function flagBoundaries(checked: readonly CheckedComment[], headers: readonly st
   let previous: CheckedComment | null = null;
   for (const current of checked) {
     if (previous?.source && current.source) {
-      const sourceSectionBreak =
-        normalisedName(cellAt(previous.source, sectionIndex)) !== normalisedName(cellAt(current.source, sectionIndex));
+      const sourceSectionBreak = structureNamesDiffer(previous.source, current.source, sectionIndex, SECTION_NAME);
       const treeSectionBreak = previous.section !== current.section;
       if (sourceSectionBreak !== treeSectionBreak) {
         current.differences.push(boundary("Section boundary", sourceSectionBreak, treeSectionBreak));
       }
       const sourceItemBreak =
-        sourceSectionBreak ||
-        normalisedName(cellAt(previous.source, itemIndex)) !== normalisedName(cellAt(current.source, itemIndex));
+        sourceSectionBreak || structureNamesDiffer(previous.source, current.source, itemIndex, ITEM_NAME);
       const treeItemBreak = previous.item !== current.item;
       if (sourceItemBreak !== treeItemBreak) {
         current.differences.push(boundary("Item boundary", sourceItemBreak, treeItemBreak));
@@ -677,6 +675,14 @@ function flagBoundaries(checked: readonly CheckedComment[], headers: readonly st
     }
     if (current.source) previous = current;
   }
+}
+
+/** Blank names use the Untitled fallback, so a blank cell matches the literal fallback title. */
+function structureNamesDiffer(previous: SourceRow, current: SourceRow, index: number, column: string): boolean {
+  return (
+    normalisedStructureName(cellAt(previous, index), column) !==
+    normalisedStructureName(cellAt(current, index), column)
+  );
 }
 
 type RunSpan = { name: string; firstRow: number; lastRow: number };
@@ -726,9 +732,7 @@ function flagLaterRuns(
   issuesByRow: ReadonlyMap<number, readonly ImportIssue[]>,
   differencesByRow: Map<number, Difference[]>,
 ): void {
-  for (let index = 0; index < runs.length; index += 1) {
-    const run = runs[index];
-    if (!run) continue;
+  for (const [index, run] of runs.entries()) {
     const repeated = runs.slice(0, index).some((earlier) => earlier.name === run.name);
     if (!repeated) continue;
     const explained = (issuesByRow.get(run.firstRow) ?? []).some((issue) => issue.kind === "split-run");
@@ -786,10 +790,6 @@ function cellText(value: Cell): string {
   if (typeof value === "string") return decodeHTML(value);
   if (value === null) return "";
   return String(value);
-}
-
-function normalisedName(value: Cell): string {
-  return cellText(value).trim();
 }
 
 function fieldOf(detail: unknown): string | null {

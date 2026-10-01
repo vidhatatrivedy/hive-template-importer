@@ -1594,6 +1594,39 @@ describe("parseSpectoraExport", () => {
       { column: "Split run", raw: "item", stored: "Untitled Item", explanation: null },
     ]);
   });
+
+  it("groups a blank name with the literal Untitled title and reports no boundary", async () => {
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "section name": null, "item name": "Doors", "comment name": "Latch" }),
+          rowFor(HEADERS, { "section name": "Untitled Section", "item name": null, "comment name": "Hinge" }),
+          rowFor(HEADERS, { "section name": "Untitled Section", "item name": "Untitled Item", "comment name": "Strike" }),
+        ]),
+        "untitled-literal.xls",
+      ),
+    );
+
+    expect(outline(draft)).toEqual([
+      {
+        name: "Untitled Section",
+        items: [
+          { name: "Doors", comments: [{ row: 2, name: "Latch", commentType: "info" }] },
+          {
+            name: "Untitled Item",
+            comments: [
+              { row: 3, name: "Hinge", commentType: "info" },
+              { row: 4, name: "Strike", commentType: "info" },
+            ],
+          },
+        ],
+      },
+    ]);
+    expectRoundTrip(draft);
+    const explained = reconcile(draft, draft.tree);
+    expect(differencesOn(explained.rows, 3, "Section boundary")).toEqual([]);
+    expect(differencesOn(explained.rows, 4, "Item boundary")).toEqual([]);
+  });
 });
 
 function readFixture(file: string): Buffer {

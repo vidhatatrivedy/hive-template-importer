@@ -3,6 +3,7 @@ import readXlsxFile from "read-excel-file/node";
 import { MAX_UPLOAD_BYTES, type Rejection } from "@/core/import/rejections";
 import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import type { Comment, ImportDraft, ImportIssue, Item, Section } from "@/core/import/schemas";
+import { untitledName } from "@/core/import/untitled-name";
 
 export type ParseResult = { ok: true; draft: ImportDraft } | { ok: false; rejection: Rejection };
 
@@ -411,12 +412,6 @@ function cellAt(cells: Cell[], index: number): Cell {
   return cells[index] ?? null;
 }
 
-const UNTITLED_NAME: Record<string, string> = {
-  [COLUMNS.sectionName]: "Untitled Section",
-  [COLUMNS.itemName]: "Untitled Item",
-  [COLUMNS.commentName]: "Untitled Comment",
-};
-
 /**
  * Decode, then trim. A blank result is the Untitled fallback and `blank-name` only:
  * that warning replaces a trim notice for the same cell. Grouping uses this fallback,
@@ -427,7 +422,7 @@ function trimmedName(value: Cell, field: string, rowNumber: number, issues: Impo
   const name = decoded.text.trim();
   if (name === "") {
     issues.push({ kind: "blank-name", sourceRow: rowNumber, detail: { field }, cuts: [] });
-    return UNTITLED_NAME[field] ?? "Untitled";
+    return untitledName(field);
   }
   if (name !== decoded.text) {
     issues.push({ kind: "whitespace-trimmed", sourceRow: rowNumber, detail: { field }, cuts: [] });
@@ -448,11 +443,8 @@ function structureIssues(sections: readonly Section[]): ImportIssue[] {
   const sectionRuns: NameRun[] = [];
   for (const section of sections) {
     const rows = section.items.flatMap((item) => rowNumbers(item.comments));
-    const run = nameRun(section.name, rows);
-    if (!run) continue;
-    const earlier = sectionRuns.filter((candidate) => candidate.name === run.name);
-    sectionRuns.push(run);
-    if (earlier.length > 0) issues.push(splitRunIssue("section", run, earlier));
+    const split = recordRun(sectionRuns, "section", section.name, rows);
+    if (split) issues.push(split);
     issues.push(...itemStructureIssues(section));
   }
   return issues;
@@ -462,28 +454,28 @@ function itemStructureIssues(section: Section): ImportIssue[] {
   const issues: ImportIssue[] = [];
   const itemRuns: NameRun[] = [];
   for (const item of section.items) {
-    const run = nameRun(item.name, rowNumbers(item.comments));
-    if (!run) continue;
-    const earlier = itemRuns.filter((candidate) => candidate.name === run.name);
-    itemRuns.push(run);
-    if (earlier.length > 0) issues.push(splitRunIssue("item", run, earlier));
+    const split = recordRun(itemRuns, "item", item.name, rowNumbers(item.comments));
+    if (split) issues.push(split);
     issues.push(...duplicateIssues(item));
   }
   return issues;
 }
 
+type DuplicateGroup = { name: string; commentType: Comment["commentType"]; rows: number[] };
+
 function duplicateIssues(item: Item): ImportIssue[] {
-  const groups = new Map<string, { name: string; commentType: Comment["commentType"]; rows: number[] }>();
+  const groups: DuplicateGroup[] = [];
   for (const comment of item.comments) {
     if (comment.sourceRow === null) continue;
-    const key = `${comment.name}\0${comment.commentType}`;
-    const group = groups.get(key);
+    const group = groups.find(
+      (candidate) => candidate.name === comment.name && candidate.commentType === comment.commentType,
+    );
     if (group) group.rows.push(comment.sourceRow);
-    else groups.set(key, { name: comment.name, commentType: comment.commentType, rows: [comment.sourceRow] });
+    else groups.push({ name: comment.name, commentType: comment.commentType, rows: [comment.sourceRow] });
   }
 
   const issues: ImportIssue[] = [];
-  for (const group of groups.values()) {
+  for (const group of groups) {
     if (group.rows.length < 2) continue;
     for (const sourceRow of group.rows.slice(1)) {
       issues.push({
@@ -510,6 +502,20 @@ function splitRunIssue(level: "section" | "item", run: NameRun, earlier: readonl
     },
     cuts: [],
   };
+}
+
+/** Records this run. Returns a split-run issue when an earlier run already used the name. */
+function recordRun(
+  runs: NameRun[],
+  level: "section" | "item",
+  name: string,
+  rows: readonly number[],
+): ImportIssue | null {
+  const run = nameRun(name, rows);
+  if (!run) return null;
+  const earlier = runs.filter((candidate) => candidate.name === run.name);
+  runs.push(run);
+  return earlier.length > 0 ? splitRunIssue(level, run, earlier) : null;
 }
 
 function nameRun(name: string, rows: readonly number[]): NameRun | null {
