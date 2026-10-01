@@ -50,7 +50,7 @@ export function SourceRowBody({ view }: { view: SourceRowView }) {
         <h3 className={labelClass}>Comment Text</h3>
         <p className="whitespace-pre-wrap break-words font-mono text-[11px]">
           {view.segments.map((segment, index) => (
-            <CutSpan key={index} segment={segment} />
+            <CommentTextSegment key={index} segment={segment} />
           ))}
         </p>
         {view.textNote ? <p>{view.textNote}</p> : null}
@@ -63,7 +63,7 @@ export function SourceRowBody({ view }: { view: SourceRowView }) {
         <dl className="mt-2 flex flex-col gap-2">
           {view.cells.map((cell, index) => (
             <div key={`${cell.header}-${index}`}>
-              <dt className="text-neutral-500">{cell.header.trim() === "" ? `Column ${index + 1}` : cell.header}</dt>
+              <dt className="text-neutral-500">{columnHeading(cell.header, index)}</dt>
               <dd className="whitespace-pre-wrap break-words font-mono text-[11px]">{cell.value}</dd>
             </div>
           ))}
@@ -73,20 +73,28 @@ export function SourceRowBody({ view }: { view: SourceRowView }) {
   );
 }
 
-function CutSpan({ segment }: { segment: Segment }) {
-  if (segment.kind === "kept") return <span>{segment.text}</span>;
-  if (segment.kind === "removed") {
-    return (
-      <span>
-        <del>{segment.text}</del>
-        <span className={`${labelClass} ml-1`}>{segment.cutKind}</span>
-      </span>
-    );
+function columnHeading(header: string, index: number): string {
+  if (header.trim() !== "") return header;
+  return `Column ${index + 1}`;
+}
+
+function CommentTextSegment({ segment }: { segment: Segment }) {
+  switch (segment.kind) {
+    case "kept":
+      return <span>{segment.text}</span>;
+    case "removed":
+      return (
+        <span>
+          <del>{segment.text}</del>
+          <span className={`${labelClass} ml-1`}>{segment.cutKind}</span>
+        </span>
+      );
+    case "inserted":
+      return (
+        <span>
+          <ins className="no-underline">{segment.text}</ins>
+          <span className={`${labelClass} ml-1`}>inserted</span>
+        </span>
+      );
   }
-  return (
-    <span>
-      <ins className="no-underline">{segment.text}</ins>
-      <span className={`${labelClass} ml-1`}>inserted</span>
-    </span>
-  );
 }

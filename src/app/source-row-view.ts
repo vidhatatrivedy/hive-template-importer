@@ -2,7 +2,7 @@ import { catalogueEntry, type IssueClass, type IssueSeverity } from "@/core/impo
 import type { Cell, Difference, DifferenceExplanation } from "@/core/import/reconcile";
 import type { EditableTree, ImportEvidence } from "@/core/import/schemas";
 import type { TrustReport } from "@/core/import/trust-report";
-import { cutSegments, type Segment } from "@/app/cut-segments";
+import { cutSegments, type CutSpan, type Segment } from "@/app/cut-segments";
 
 /** Slice 5's Comment detail uses this when a Comment has no Source row. */
 export const ADDED_IN_THE_EDITOR = "Added in the editor, no Source row";
@@ -61,8 +61,31 @@ export function sourceRowView(
 
   const located = commentsOnRow(tree, row);
   const differences = report.rows.find((candidate) => candidate.sourceRow === row)?.differences ?? [];
+  const { issues, cuts } = issuesOnRow(report, row);
+  const segments = cutSegments(rawCommentText(evidence.run.headers, source.cells), cuts);
+  const textChanged = segments.some((segment) => segment.kind !== "kept");
+
+  return {
+    kind: "row",
+    row,
+    title: `Source row ${row}`,
+    location: located.location,
+    fields: differences.map(formatField),
+    exact: differences.length === 0 ? "Stored exactly as in the file." : null,
+    issues,
+    segments,
+    textNote: textChanged ? null : "No changes to the text.",
+    storedHtml: located.storedHtml,
+    cells: evidence.run.headers.map((header, index) => ({
+      header,
+      value: cellString(source.cells[index] ?? null),
+    })),
+  };
+}
+
+function issuesOnRow(report: TrustReport, row: number): { issues: SourceRowIssue[]; cuts: CutSpan[] } {
   const issues: SourceRowIssue[] = [];
-  const cuts: ImportEvidence["issues"][number]["cuts"] = [];
+  const cuts: CutSpan[] = [];
   for (const group of report.issueGroups) {
     for (const issue of group.issues) {
       if (issue.sourceRow !== row) continue;
@@ -70,27 +93,15 @@ export function sourceRowView(
       cuts.push(...issue.cuts);
     }
   }
+  return { issues, cuts };
+}
 
-  const textColumn = evidence.run.headers.findIndex((header) => header.trim().toLowerCase() === COMMENT_TEXT.toLowerCase());
-  const rawText = textColumn >= 0 ? cellString(source.cells[textColumn] ?? null) : "";
-  const segments = cutSegments(rawText, cuts);
-
-  return {
-    kind: "row",
-    row,
-    title: `Source row ${row}`,
-    location: located.location,
-    fields: differences.map(showField),
-    exact: differences.length === 0 ? "Stored exactly as in the file." : null,
-    issues,
-    segments,
-    textNote: segments.some((segment) => segment.kind !== "kept") ? null : "No changes to the text.",
-    storedHtml: located.storedHtml,
-    cells: evidence.run.headers.map((header, index) => ({
-      header,
-      value: cellString(source.cells[index] ?? null),
-    })),
-  };
+function rawCommentText(headers: readonly string[], cells: readonly Cell[]): string {
+  const column = headers.findIndex(
+    (header) => header.trim().toLowerCase() === COMMENT_TEXT.toLowerCase(),
+  );
+  if (column < 0) return "";
+  return cellString(cells[column] ?? null);
 }
 
 function commentsOnRow(tree: EditableTree, row: number): { location: string | null; storedHtml: string } {
@@ -100,15 +111,16 @@ function commentsOnRow(tree: EditableTree, row: number): { location: string | nu
     for (const item of section.items) {
       for (const comment of item.comments) {
         if (comment.sourceRow !== row) continue;
+        if (locations.length === 0) storedHtml = comment.textHtml;
         locations.push(`${section.name} › ${item.name} › ${comment.name}`);
-        if (locations.length === 1) storedHtml = comment.textHtml;
       }
     }
   }
-  return { location: locations.length > 0 ? locations.join(" · ") : null, storedHtml };
+  if (locations.length === 0) return { location: null, storedHtml: "" };
+  return { location: locations.join(" · "), storedHtml };
 }
 
-function showField(difference: Difference): SourceRowField {
+function formatField(difference: Difference): SourceRowField {
   return {
     column: difference.column,
     raw: showValue(difference.raw),
@@ -119,8 +131,9 @@ function showField(difference: Difference): SourceRowField {
 
 /** A middle dot for each leading or trailing whitespace character, so a trim can be seen. */
 function showValue(value: Cell): string {
-  if (typeof value !== "string") return value === null ? "" : String(value);
-  return value.replace(/^\s+|\s+$/g, (spaces) => "·".repeat(spaces.length));
+  const text = cellString(value);
+  if (typeof value !== "string") return text;
+  return text.replace(/^\s+|\s+$/g, (spaces) => "·".repeat(spaces.length));
 }
 
 function cellString(value: Cell): string {

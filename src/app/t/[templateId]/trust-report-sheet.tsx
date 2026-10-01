@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { issueClasses, issueSeverities } from "@/core/import/catalogue";
 import { templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
 import { attachSourceRowLinks, importIssuesView } from "@/app/trust-issues";
@@ -34,118 +35,138 @@ export function TrustReportSheet({
   latestNumber: number;
   loaded: LoadedTrustReport;
 }) {
-  const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
   const closeHref = templateHref(templateId, withTrustPane(view, false));
 
   if (view.row !== null) {
     const rowView = sourceRowView(loaded.report, loaded.evidence, loaded.tree, view.row);
     return (
-      <aside
-        aria-label={rowView.kind === "row" ? rowView.title : "Source row"}
-        className={`${glassSheetClass} flex w-[392px] flex-col overflow-hidden rounded-xl tabular-nums`}
-      >
-        <header className="flex h-10 shrink-0 items-center justify-between border-b border-black/[0.05] px-4 dark:border-white/[0.06]">
-          <Link href={templateHref(templateId, { panes: view.panes, row: null })} className="underline underline-offset-2">
+      <TrustSheet
+        label={rowView.kind === "row" ? rowView.title : "Source row"}
+        closeHref={closeHref}
+        heading={
+          <Link
+            href={templateHref(templateId, { panes: view.panes, row: null })}
+            className="underline underline-offset-2"
+          >
             ← Trust Report
           </Link>
-          <CloseTrustReport href={closeHref} />
-        </header>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
-          <SourceRowBody view={rowView} />
-        </div>
-      </aside>
+        }
+      >
+        <SourceRowBody view={rowView} />
+      </TrustSheet>
     );
   }
 
+  const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
   const { summary } = loaded.report;
   const summaryView = trustSummaryView(loaded.report, latestNumber);
   const { reconciliation, externalAssets, keptButNotUsed, missingFromExport } = trustSectionsView(loaded.report);
 
   return (
+    <TrustSheet
+      label="Import Trust Report"
+      closeHref={closeHref}
+      heading={<h2 className="font-medium text-neutral-900 dark:text-white">Import Trust Report</h2>}
+    >
+      {summaryView.versionLabel ? <p className="text-neutral-500">{summaryView.versionLabel}</p> : null}
+
+      <section className="flex flex-col gap-2">
+        <h3 className={labelClass}>Summary</h3>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          <dt className="text-neutral-500">File</dt>
+          <dd className="min-w-0 truncate" title={summary.filename}>
+            {summary.filename}
+          </dd>
+          <dt className="text-neutral-500">Imported</dt>
+          <dd>
+            <FormattedDate value={loaded.importedAt} />
+          </dd>
+          <dt className="text-neutral-500">SHA-256</dt>
+          <dd>
+            <abbr title={loaded.sha256} className="font-mono no-underline">
+              {summary.sha256}
+            </abbr>
+          </dd>
+          <dt className="text-neutral-500">Size</dt>
+          <dd>{summaryView.fileSize}</dd>
+        </dl>
+        <p>{summaryView.rowFlow}</p>
+        <p>
+          {summary.sections} Sections · {summary.items} Items · {summary.comments} Comments
+        </p>
+        <ul className="flex flex-wrap gap-x-3">
+          {issueSeverities.map((severity) => (
+            <li key={severity} className={severityClass[severity]}>
+              {summary.bySeverity[severity]} {summary.bySeverity[severity] === 1 ? severity : `${severity}s`}
+            </li>
+          ))}
+        </ul>
+        <ul className="flex flex-wrap gap-x-3 text-neutral-500">
+          {issueClasses.map((issueClass) => (
+            <li key={issueClass}>
+              {summary.byClass[issueClass]} {issueClass}
+            </li>
+          ))}
+        </ul>
+        <p>{summary.valuesDecoded} values decoded</p>
+        {summaryView.failure ? (
+          <div className="flex flex-col gap-1">
+            <p className={verdictClass}>{summaryView.verdict}</p>
+            <p className={verdictClass}>{summaryView.failure.message}</p>
+            <ul className="flex flex-col">
+              {summaryView.failure.sourceRows.map((row, index) => (
+                <li key={row ?? `none-${index}`}>
+                  {row === null ? (
+                    <span className="text-neutral-500">A stored Comment with no Source row</span>
+                  ) : (
+                    <Link href={rowHref(row)} className="underline underline-offset-2">
+                      Source row {row}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className={verdictClass}>✓ {summaryView.verdict}</p>
+        )}
+      </section>
+
+      <Reconciliation sections={reconciliation} />
+      <ImportIssues
+        key={templateId}
+        severities={issueSeverities}
+        classes={issueClasses}
+        groups={attachSourceRowLinks(importIssuesView(loaded.report.issueGroups), rowHref)}
+      />
+      <ExternalAssets assets={externalAssets} rowHref={rowHref} />
+      <KeptButNotUsed kept={keptButNotUsed} />
+      <MissingFromExport missing={missingFromExport} />
+    </TrustSheet>
+  );
+}
+
+function TrustSheet({
+  label,
+  heading,
+  closeHref,
+  children,
+}: {
+  label: string;
+  heading: ReactNode;
+  closeHref: string;
+  children: ReactNode;
+}) {
+  return (
     <aside
-      aria-label="Import Trust Report"
+      aria-label={label}
       className={`${glassSheetClass} flex w-[392px] flex-col overflow-hidden rounded-xl tabular-nums`}
     >
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-black/[0.05] px-4 dark:border-white/[0.06]">
-        <h2 className="font-medium text-neutral-900 dark:text-white">Import Trust Report</h2>
+        {heading}
         <CloseTrustReport href={closeHref} />
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
-        {summaryView.versionLabel ? <p className="text-neutral-500">{summaryView.versionLabel}</p> : null}
-
-        <section className="flex flex-col gap-2">
-          <h3 className={labelClass}>Summary</h3>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-            <dt className="text-neutral-500">File</dt>
-            <dd className="min-w-0 truncate" title={summary.filename}>
-              {summary.filename}
-            </dd>
-            <dt className="text-neutral-500">Imported</dt>
-            <dd>
-              <FormattedDate value={loaded.importedAt} />
-            </dd>
-            <dt className="text-neutral-500">SHA-256</dt>
-            <dd>
-              <abbr title={loaded.sha256} className="font-mono no-underline">
-                {summary.sha256}
-              </abbr>
-            </dd>
-            <dt className="text-neutral-500">Size</dt>
-            <dd>{summaryView.fileSize}</dd>
-          </dl>
-          <p>{summaryView.rowFlow}</p>
-          <p>
-            {summary.sections} Sections · {summary.items} Items · {summary.comments} Comments
-          </p>
-          <ul className="flex flex-wrap gap-x-3">
-            {issueSeverities.map((severity) => (
-              <li key={severity} className={severityClass[severity]}>
-                {summary.bySeverity[severity]} {summary.bySeverity[severity] === 1 ? severity : `${severity}s`}
-              </li>
-            ))}
-          </ul>
-          <ul className="flex flex-wrap gap-x-3 text-neutral-500">
-            {issueClasses.map((issueClass) => (
-              <li key={issueClass}>
-                {summary.byClass[issueClass]} {issueClass}
-              </li>
-            ))}
-          </ul>
-          <p>{summary.valuesDecoded} values decoded</p>
-          {summaryView.failure ? (
-            <div className="flex flex-col gap-1">
-              <p className={verdictClass}>{summaryView.verdict}</p>
-              <p className={verdictClass}>{summaryView.failure.message}</p>
-              <ul className="flex flex-col">
-                {summaryView.failure.sourceRows.map((row, index) => (
-                  <li key={row ?? `none-${index}`}>
-                    {row === null ? (
-                      <span className="text-neutral-500">A stored Comment with no Source row</span>
-                    ) : (
-                      <Link href={rowHref(row)} className="underline underline-offset-2">
-                        Source row {row}
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className={verdictClass}>✓ {summaryView.verdict}</p>
-          )}
-        </section>
-
-        <Reconciliation sections={reconciliation} />
-        <ImportIssues
-          key={templateId}
-          severities={issueSeverities}
-          classes={issueClasses}
-          groups={attachSourceRowLinks(importIssuesView(loaded.report.issueGroups), rowHref)}
-        />
-        <ExternalAssets assets={externalAssets} rowHref={rowHref} />
-        <KeptButNotUsed kept={keptButNotUsed} />
-        <MissingFromExport missing={missingFromExport} />
-      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">{children}</div>
     </aside>
   );
 }

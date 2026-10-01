@@ -16,7 +16,7 @@
     "test:db": "tsx scripts/test-db.ts",
     "sandcastle": "tsx .sandcastle/main.mts"
   },
-    "dependencies": {
+  "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
     "dompurify": "3.4.16",
     "entities": "^8.1.0",

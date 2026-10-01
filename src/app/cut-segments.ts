@@ -18,10 +18,11 @@ export type CutSpan = {
 /**
  * Splits raw Comment Text into the spans the Source row view draws.
  * Cuts may arrive in issue order; they are sorted by start and must not overlap.
+ * A removed span is a slice of `raw`, so kept and removed join back to the cell.
  * A non-empty `replacement` becomes an inserted span immediately after the removed one.
  */
 export function cutSegments(raw: string, cuts: readonly CutSpan[]): Segment[] {
-  const ordered = [...cuts].sort((left, right) => left.start - right.start || left.end - right.end);
+  const ordered = [...cuts].sort(compareCutSpans);
   const segments: Segment[] = [];
   let position = 0;
 
@@ -35,8 +36,13 @@ export function cutSegments(raw: string, cuts: readonly CutSpan[]): Segment[] {
     position = cut.end;
   }
 
-  if (ordered.length === 0 || position < raw.length) {
-    segments.push({ kind: "kept", text: raw.slice(position) });
+  const remainder = raw.slice(position);
+  if (segments.length === 0 || remainder !== "") {
+    segments.push({ kind: "kept", text: remainder });
   }
   return segments;
+}
+
+function compareCutSpans(left: CutSpan, right: CutSpan): number {
+  return left.start - right.start || left.end - right.end;
 }
