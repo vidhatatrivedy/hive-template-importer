@@ -58,6 +58,15 @@ export type EditorState = {
 /** Fields a Comment can be edited through. Ids, Source rows and unit options stay put. */
 export type CommentPatch = Partial<Omit<Comment, "id" | "sourceRow" | "unitOptions">>;
 
+export type OptionOp = "add" | "edit" | "remove" | "up" | "down";
+
+/** One change to a checkbox Comment's options. `add` ignores `index` and `value`. */
+export type OptionChange = {
+  op: OptionOp;
+  index?: number;
+  value?: string;
+};
+
 export type EditorAction =
   | ({ type: "serverVersion" } & EditorBase)
   | { type: "select"; ref: NodeRef }
@@ -70,7 +79,7 @@ export type EditorAction =
   | { type: "move"; ref: NodeRef; dir: Direction }
   | { type: "rename"; ref: NodeRef; name: string }
   | { type: "setComment"; id: string; patch: CommentPatch }
-  | { type: "option"; id: string; op: "add" | "edit" | "remove" | "up" | "down"; index?: number; value?: string }
+  | ({ type: "option"; id: string } & OptionChange)
   | { type: "saveRequested" }
   | { type: "saveSucceeded"; number: number }
   | { type: "saveFailed"; error: SaveError }
@@ -222,7 +231,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "setComment":
       return setComment(state, action.id, action.patch);
     case "option":
-      return changeOptions(state, action.id, action.op, action.index, action.value);
+      return changeOptions(state, action.id, action);
     case "saveRequested":
       return requestSave(state);
     case "saveSucceeded":
@@ -302,8 +311,7 @@ function discard(state: EditorState): EditorState {
 }
 
 function setComment(state: EditorState, id: string, patch: CommentPatch): EditorState {
-  if (state.mode === "read-only") return state;
-  if (state.save.status === "saving") return state;
+  if (state.mode === "read-only" || state.save.status === "saving") return state;
   const place = commentPlace(state.tree, id);
   const current = place?.item.comments[place.commentIndex];
   if (!place || !current) return state;
@@ -311,8 +319,10 @@ function setComment(state: EditorState, id: string, patch: CommentPatch): Editor
   if (sameComment(current, next)) return state;
   // A type change moves the Comment to the end, so it shows last in its new group. Nothing else is cleared.
   const comments = place.item.comments.filter((comment) => comment !== current);
-  comments.splice(next.commentType === current.commentType ? place.commentIndex : comments.length, 0, next);
-  const note = state.note?.commentId === id && patch.defaultText !== undefined ? null : state.note;
+  const at = next.commentType === current.commentType ? place.commentIndex : comments.length;
+  comments.splice(at, 0, next);
+  let note = state.note;
+  if (note?.commentId === id && patch.defaultText !== undefined) note = null;
   return { ...state, note, tree: replaceItem(state.tree, place, { ...place.item, comments }) };
 }
 
@@ -329,46 +339,78 @@ export function recommendationChoices(tree: EditableTree): string[] {
   return [...choices].sort();
 }
 
-function changeOptions(
-  state: EditorState,
-  id: string,
-  op: "add" | "edit" | "remove" | "up" | "down",
-  index: number | undefined,
-  value: string | undefined,
-): EditorState {
+function changeOptions(state: EditorState, id: string, change: OptionChange): EditorState {
   if (state.mode === "read-only" || state.save.status === "saving") return state;
   const place = commentPlace(state.tree, id);
   const current = place?.item.comments[place.commentIndex];
   if (!place || !current) return state;
 
-  const options = current.choiceOptions.slice();
-  let defaultText = current.defaultText;
-  let note = state.note;
-
+  const { op, index, value } = change;
   if (op === "add") {
-    options.push("");
-  } else {
-    if (index === undefined || options[index] === undefined) return state;
-    if (op === "edit") {
-      const nextValue = value ?? "";
-      const previous = options[index];
-      if (previous === nextValue) return state;
-      options[index] = nextValue;
-      if (previous === defaultText) defaultText = nextValue;
-    } else if (op === "remove") {
-      const removed = options.splice(index, 1)[0];
-      if (current.answerType === "checkbox" && removed === defaultText) {
-        defaultText = null;
-        note = { commentId: id, kind: "default-cleared" };
-      }
-    } else {
-      const next = swapped(options, index, op === "up" ? index - 1 : index + 1);
-      if (!next) return state;
-      return writeComment(state, place, { ...current, choiceOptions: next }, note);
+    return writeComment(state, place, { ...current, choiceOptions: [...current.choiceOptions, ""] }, state.note);
+  }
+  if (index === undefined || current.choiceOptions[index] === undefined) return state;
+
+  switch (op) {
+    case "edit":
+      return editOption(state, place, current, index, value);
+    case "remove":
+      return removeOption(state, id, place, current, index);
+    case "up":
+      return moveOption(state, place, current, index, index - 1);
+    case "down":
+      return moveOption(state, place, current, index, index + 1);
+    default: {
+      const unreachable: never = op;
+      throw new Error(`Unknown option change: ${String(unreachable)}`);
     }
   }
+}
 
-  return writeComment(state, place, { ...current, choiceOptions: options, defaultText }, note);
+function editOption(
+  state: EditorState,
+  place: ItemPlace & { commentIndex: number },
+  current: Comment,
+  index: number,
+  value: string | undefined,
+): EditorState {
+  const nextValue = value ?? "";
+  const previous = current.choiceOptions[index];
+  if (previous === undefined || previous === nextValue) return state;
+  const choiceOptions = current.choiceOptions.slice();
+  choiceOptions[index] = nextValue;
+  const defaultText = previous === current.defaultText ? nextValue : current.defaultText;
+  return writeComment(state, place, { ...current, choiceOptions, defaultText }, state.note);
+}
+
+function removeOption(
+  state: EditorState,
+  id: string,
+  place: ItemPlace & { commentIndex: number },
+  current: Comment,
+  index: number,
+): EditorState {
+  const choiceOptions = current.choiceOptions.slice();
+  const removed = choiceOptions.splice(index, 1)[0];
+  let defaultText = current.defaultText;
+  let note = state.note;
+  if (current.answerType === "checkbox" && removed === defaultText) {
+    defaultText = null;
+    note = { commentId: id, kind: "default-cleared" };
+  }
+  return writeComment(state, place, { ...current, choiceOptions, defaultText }, note);
+}
+
+function moveOption(
+  state: EditorState,
+  place: ItemPlace & { commentIndex: number },
+  current: Comment,
+  index: number,
+  destination: number,
+): EditorState {
+  const choiceOptions = swapped(current.choiceOptions, index, destination);
+  if (!choiceOptions) return state;
+  return writeComment(state, place, { ...current, choiceOptions }, state.note);
 }
 
 function writeComment(

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
-import type { EditableTree } from "@/core/import/schemas";
+import type { Comment, EditableTree } from "@/core/import/schemas";
 import type { SaveError } from "@/core/import/editor-messages";
 import {
   blankNames,
@@ -584,13 +584,19 @@ describe("editorReducer: Save refusals", () => {
   });
 });
 
-function itemComments(source: EditableTree, commentId: string): EditableTree["sections"][number]["items"][number]["comments"] {
+function itemComments(source: EditableTree, commentId: string): Comment[] {
   for (const section of source.sections) {
     for (const item of section.items) {
       if (item.comments.some((comment) => comment.id === commentId)) return item.comments;
     }
   }
   throw new Error(`No Comment ${commentId}`);
+}
+
+function commentById(source: EditableTree, commentId: string): Comment {
+  const comment = itemComments(source, commentId).find((candidate) => candidate.id === commentId);
+  if (!comment) throw new Error(`No Comment ${commentId}`);
+  return comment;
 }
 
 function commentIdAt(source: EditableTree, sourceRow: number): string {
@@ -908,12 +914,12 @@ describe("editorReducer: comment fields", () => {
   it("keeps a Category hidden across a type change, and options and a default hidden across an Answer type change", () => {
     const cracking = commentIdAt(tree, 10);
     const asInfo = editorReducer(open(), { type: "setComment", id: cracking, patch: { commentType: "info" } });
-    expect(itemComments(asInfo.tree, cracking).find((comment) => comment.id === cracking)).toMatchObject({
+    expect(commentById(asInfo.tree, cracking)).toMatchObject({
       commentType: "info",
       category: 0,
     });
     const defectAgain = editorReducer(asInfo, { type: "setComment", id: cracking, patch: { commentType: "defect" } });
-    expect(itemComments(defectAgain.tree, cracking).find((comment) => comment.id === cracking)?.category).toBe(0);
+    expect(commentById(defectAgain.tree, cracking).category).toBe(0);
 
     const attendance = commentIdAt(tree, 2);
     const withDefault = editorReducer(open(), {
@@ -922,7 +928,7 @@ describe("editorReducer: comment fields", () => {
       patch: { defaultText: "Client" },
     });
     const asText = editorReducer(withDefault, { type: "setComment", id: attendance, patch: { answerType: "text" } });
-    expect(itemComments(asText.tree, attendance).find((comment) => comment.id === attendance)).toMatchObject({
+    expect(commentById(asText.tree, attendance)).toMatchObject({
       answerType: "text",
       defaultText: "Client",
       choiceOptions: ["Listing Agent", "Home Owner", "Client", "Client's Agent"],
@@ -932,10 +938,10 @@ describe("editorReducer: comment fields", () => {
       id: attendance,
       patch: { answerType: "checkbox" },
     });
-    const restored = itemComments(checkboxAgain.tree, attendance).find((comment) => comment.id === attendance);
-    expect(restored?.answerType).toBe("checkbox");
-    expect(restored?.defaultText).toBe("Client");
-    expect(restored?.choiceOptions).toEqual(["Listing Agent", "Home Owner", "Client", "Client's Agent"]);
+    const restored = commentById(checkboxAgain.tree, attendance);
+    expect(restored.answerType).toBe("checkbox");
+    expect(restored.defaultText).toBe("Client");
+    expect(restored.choiceOptions).toEqual(["Listing Agent", "Home Owner", "Client", "Client's Agent"]);
   });
 
   it("clears a default when its option is removed, updates it when that option is edited, and can add and reorder options", () => {
@@ -947,22 +953,22 @@ describe("editorReducer: comment fields", () => {
     });
 
     const removed = editorReducer(withDefault, { type: "option", id: attendance, op: "remove", index: 2 });
-    const afterRemove = itemComments(removed.tree, attendance).find((comment) => comment.id === attendance);
-    expect(afterRemove?.choiceOptions).toEqual(["Listing Agent", "Home Owner", "Client's Agent"]);
-    expect(afterRemove?.defaultText).toBeNull();
+    const afterRemove = commentById(removed.tree, attendance);
+    expect(afterRemove.choiceOptions).toEqual(["Listing Agent", "Home Owner", "Client's Agent"]);
+    expect(afterRemove.defaultText).toBeNull();
     expect(removed.note).toEqual({ commentId: attendance, kind: "default-cleared" });
     const discarded = editorReducer(removed, { type: "discard" });
     expect(discarded.note).toBeNull();
-    expect(itemComments(discarded.tree, attendance).find((comment) => comment.id === attendance)?.defaultText).toBeNull();
+    expect(commentById(discarded.tree, attendance).defaultText).toBeNull();
 
     const edited = editorReducer(withDefault, { type: "option", id: attendance, op: "edit", index: 2, value: "Buyer" });
-    const afterEdit = itemComments(edited.tree, attendance).find((comment) => comment.id === attendance);
-    expect(afterEdit?.choiceOptions[2]).toBe("Buyer");
-    expect(afterEdit?.defaultText).toBe("Buyer");
+    const afterEdit = commentById(edited.tree, attendance);
+    expect(afterEdit.choiceOptions[2]).toBe("Buyer");
+    expect(afterEdit.defaultText).toBe("Buyer");
     expect(edited.note).toBeNull();
 
     const added = editorReducer(withDefault, { type: "option", id: attendance, op: "add" });
-    expect(itemComments(added.tree, attendance).find((comment) => comment.id === attendance)?.choiceOptions).toEqual([
+    expect(commentById(added.tree, attendance).choiceOptions).toEqual([
       "Listing Agent",
       "Home Owner",
       "Client",
@@ -971,7 +977,7 @@ describe("editorReducer: comment fields", () => {
     ]);
 
     const reordered = editorReducer(withDefault, { type: "option", id: attendance, op: "up", index: 1 });
-    expect(itemComments(reordered.tree, attendance).find((comment) => comment.id === attendance)?.choiceOptions).toEqual([
+    expect(commentById(reordered.tree, attendance).choiceOptions).toEqual([
       "Home Owner",
       "Listing Agent",
       "Client",
