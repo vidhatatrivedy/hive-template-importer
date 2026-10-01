@@ -1,0 +1,20 @@
+.commentHtml {
+  min-height: 1.45em;
+  overflow-wrap: anywhere;
+}
+
+/* Zero specificity, so an inline font-size still wins. The cap is the pane title size. */
+.commentHtml :where(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.commentHtml :where(img, iframe) {
+  max-width: 100%;
+}
+
+.commentHtml :where(img) {
+  height: auto;
+}

@@ -21,15 +21,15 @@ describe("Template URLs", () => {
     expect(templateHref(templateId, parseTemplateView({ pane: "versions,trust", row: "12" }))).toBe(href);
   });
 
-  it("ignores unknown panes, non-integer rows and rows below 2", () => {
+  it("ignores unknown panes, non-integer rows and row 0, and keeps row 1", () => {
     expect(parseTemplateView({ pane: "report,trust,nope", row: "1" })).toEqual({
       panes: new Set(["trust"]),
-      row: null,
+      row: 1,
     });
     expect(parseTemplateView({ pane: ["versions", "sidebar", "trust"], row: "abc" }).panes).toEqual(
       new Set(["versions", "trust"]),
     );
-    expect(parseTemplateView({ row: "1" }).row).toBeNull();
+    expect(parseTemplateView({ row: "1" }).row).toBe(1);
     expect(parseTemplateView({ row: "0" }).row).toBeNull();
     expect(parseTemplateView({ row: "1.5" }).row).toBeNull();
     expect(parseTemplateView({ row: "2abc" }).row).toBeNull();

@@ -54,10 +54,13 @@ function list(value: string | string[] | undefined): string[] {
   return Array.isArray(value) ? value : [value];
 }
 
-/** A 1-based sheet row. Row 1 is the header, so anything below 2 is not a Source row. */
+/**
+ * A sheet row number. Row 1 is the header, so it is not a Source row; the Source row
+ * view says so. Zero and anything that isn't a whole number are ignored.
+ */
 function parseRow(value: string | undefined): number | null {
   if (value === undefined || !/^[0-9]+$/.test(value)) return null;
   const row = Number(value);
-  if (!Number.isSafeInteger(row) || row < 2) return null;
+  if (!Number.isSafeInteger(row) || row < 1) return null;
   return row;
 }

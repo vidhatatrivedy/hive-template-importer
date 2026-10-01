@@ -12,11 +12,13 @@ import {
   type ReconciliationRowView,
   type ReconciliationSectionView,
 } from "@/app/trust-sections";
+import { sourceRowView } from "@/app/source-row-view";
 import { trustSummaryView } from "@/app/trust-summary";
 import { glassSheetClass, labelClass, severityClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
 import { ImportIssues } from "./import-issues";
 import type { LoadedTrustReport } from "./load-trust-report";
+import { SourceRowBody } from "./source-row-sheet";
 
 const verdictClass = "font-medium text-neutral-900 dark:text-white";
 
@@ -32,10 +34,32 @@ export function TrustReportSheet({
   latestNumber: number;
   loaded: LoadedTrustReport;
 }) {
+  const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
+  const closeHref = templateHref(templateId, withTrustPane(view, false));
+
+  if (view.row !== null) {
+    const rowView = sourceRowView(loaded.report, loaded.evidence, loaded.tree, view.row);
+    return (
+      <aside
+        aria-label={rowView.kind === "row" ? rowView.title : "Source row"}
+        className={`${glassSheetClass} flex w-[392px] flex-col overflow-hidden rounded-xl tabular-nums`}
+      >
+        <header className="flex h-10 shrink-0 items-center justify-between border-b border-black/[0.05] px-4 dark:border-white/[0.06]">
+          <Link href={templateHref(templateId, { panes: view.panes, row: null })} className="underline underline-offset-2">
+            ← Trust Report
+          </Link>
+          <CloseTrustReport href={closeHref} />
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
+          <SourceRowBody view={rowView} />
+        </div>
+      </aside>
+    );
+  }
+
   const { summary } = loaded.report;
   const summaryView = trustSummaryView(loaded.report, latestNumber);
   const { reconciliation, externalAssets, keptButNotUsed, missingFromExport } = trustSectionsView(loaded.report);
-  const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
 
   return (
     <aside
@@ -44,13 +68,7 @@ export function TrustReportSheet({
     >
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-black/[0.05] px-4 dark:border-white/[0.06]">
         <h2 className="font-medium text-neutral-900 dark:text-white">Import Trust Report</h2>
-        <Link
-          href={templateHref(templateId, withTrustPane(view, false))}
-          aria-label="Close the Trust Report"
-          className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-        >
-          ×
-        </Link>
+        <CloseTrustReport href={closeHref} />
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
         {summaryView.versionLabel ? <p className="text-neutral-500">{summaryView.versionLabel}</p> : null}
@@ -129,6 +147,18 @@ export function TrustReportSheet({
         <MissingFromExport missing={missingFromExport} />
       </div>
     </aside>
+  );
+}
+
+function CloseTrustReport({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      aria-label="Close the Trust Report"
+      className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+    >
+      ×
+    </Link>
   );
 }
 

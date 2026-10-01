@@ -6,6 +6,23 @@ const SRC = path.resolve(__dirname, "../..");
 const CLIENT_ENTRY = path.join(SRC, "app/import/import-screen.tsx");
 const SERVER_ONLY_PACKAGES = ["parse5", "read-excel-file", "entities"];
 
+describe("the Comment HTML renderer", () => {
+  it("doesn't load DOMPurify, the sanitiser or parse5 until the browser runs it", () => {
+    const { modules, packages } = importGraph(path.join(SRC, "app/ui/comment-html.tsx"));
+    const relative = [...modules].map((file) => path.relative(SRC, file));
+
+    expect(relative).toContain("core/sanitise/purify-config.ts");
+    expect(relative).not.toContain("core/sanitise/sanitise-comment-html.ts");
+    expect(relative).not.toContain("core/sanitise/index.ts");
+    expect([...packages].filter((specifier) => specifier === "dompurify" || specifier.startsWith("dompurify/"))).toEqual(
+      [],
+    );
+    for (const name of SERVER_ONLY_PACKAGES) {
+      expect([...packages].filter((specifier) => specifier === name || specifier.startsWith(`${name}/`))).toEqual([]);
+    }
+  });
+});
+
 describe("the import screen's client bundle", () => {
   it("doesn't pull in the parser, parse5 or read-excel-file", () => {
     const { modules, packages } = importGraph(CLIENT_ENTRY);

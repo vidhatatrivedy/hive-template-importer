@@ -1,9 +1,12 @@
 import "server-only";
 import { buildTrustReport, type TrustReport } from "@/core/import/trust-report";
+import type { EditableTree, ImportEvidence } from "@/core/import/schemas";
 import type { Db, TemplateDetail } from "@/db";
 
 export type LoadedTrustReport = {
   report: TrustReport;
+  evidence: ImportEvidence;
+  tree: EditableTree;
   importedAt: string;
   sha256: string;
 };
@@ -24,6 +27,8 @@ export async function loadTrustReport(db: Db, detail: TemplateDetail): Promise<L
   if (!tree || !evidence) return null;
   return {
     report: buildTrustReport(evidence, tree),
+    evidence,
+    tree,
     importedAt: detail.importRun.importedAt,
     sha256: detail.importRun.sha256,
   };
