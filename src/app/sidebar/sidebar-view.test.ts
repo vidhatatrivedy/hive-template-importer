@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  duplicateConfirm,
   lifecyclePrompt,
   parseOpenTemplate,
   relativeTime,
@@ -189,6 +190,39 @@ describe("lifecyclePrompt", () => {
       versions: 1,
       losesEdits: false,
       leaves: false,
+    });
+  });
+});
+
+describe("duplicateConfirm", () => {
+  it("warns that unsaved edits will not be in the Copy and offers to keep editing", () => {
+    expect(
+      duplicateConfirm({
+        kind: "duplicate-unsaved",
+        name: "InterNACHI Residential",
+        latestNumber: 4,
+      }),
+    ).toEqual({
+      message:
+        "Duplicate 'InterNACHI Residential'? The Copy is made from Version 4, the last saved Version. Your unsaved changes won't be in it and will be discarded.",
+      confirmLabel: "Duplicate",
+      cancelLabel: "Keep editing",
+    });
+  });
+
+  it("says the Copy is made from the latest Version, not the one being viewed", () => {
+    expect(
+      duplicateConfirm({
+        kind: "duplicate-viewing",
+        name: "InterNACHI Residential",
+        viewing: 3,
+        latestNumber: 4,
+      }),
+    ).toEqual({
+      message:
+        "Duplicate 'InterNACHI Residential'? The Copy is made from Version 4, the latest Version, not Version 3 you're viewing.",
+      confirmLabel: "Duplicate",
+      cancelLabel: "Cancel",
     });
   });
 });

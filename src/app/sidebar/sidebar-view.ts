@@ -80,6 +80,33 @@ export function lifecyclePrompt(
   }
 }
 
+/** The Duplicate confirm, for the two prompts that are not the shared discard dialog. */
+export type DuplicateConfirm = {
+  message: string;
+  confirmLabel: "Duplicate";
+  cancelLabel: "Keep editing" | "Cancel";
+};
+
+/** Keep editing is focused for unsaved edits. Cancel is focused when viewing an old Version. */
+export function duplicateConfirm(
+  prompt: Extract<Prompt, { kind: "duplicate-unsaved" | "duplicate-viewing" }>,
+): DuplicateConfirm {
+  switch (prompt.kind) {
+    case "duplicate-unsaved":
+      return {
+        message: `Duplicate '${prompt.name}'? The Copy is made from Version ${prompt.latestNumber}, the last saved Version. Your unsaved changes won't be in it and will be discarded.`,
+        confirmLabel: "Duplicate",
+        cancelLabel: "Keep editing",
+      };
+    case "duplicate-viewing":
+      return {
+        message: `Duplicate '${prompt.name}'? The Copy is made from Version ${prompt.latestNumber}, the latest Version, not Version ${prompt.viewing} you're viewing.`,
+        confirmLabel: "Duplicate",
+        cancelLabel: "Cancel",
+      };
+  }
+}
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;

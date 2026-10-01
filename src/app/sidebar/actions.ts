@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
+import { templateHref } from "@/app/template-view";
 import { getDb } from "@/db/server";
 
 const renameInput = z.object({
@@ -33,4 +35,27 @@ export async function renameTemplate(templateId: string, name: string): Promise<
 
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+const duplicateInput = z.object({
+  templateId: z.string(),
+});
+
+/**
+ * Copies a Template and opens the Copy. Arguments are untrusted.
+ * `template-not-found` is returned. Success redirects to the Copy with no panes.
+ * `redirect` throws, so it stays outside `try`. A thrown action is `duplicate-failed` on the client.
+ */
+export async function duplicate(templateId: string): Promise<{ ok: false; error: { kind: "template-not-found" } }> {
+  const parsed = duplicateInput.safeParse({ templateId });
+  if (!parsed.success) throw new Error("Duplicate received arguments it cannot store");
+
+  const duplicated = await getDb().duplicateTemplate(parsed.data.templateId);
+  if (!duplicated.ok) {
+    if (duplicated.error.kind !== "template-not-found") throw new Error("Duplicate refused unexpectedly");
+    return { ok: false, error: { kind: "template-not-found" } };
+  }
+
+  revalidatePath("/", "layout");
+  redirect(templateHref(duplicated.value.templateId, { panes: new Set(), row: null }));
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import {
   useEffect,
   useId,
@@ -11,13 +12,38 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { lifecycleErrorMessage, type LifecycleError } from "@/core/import/lifecycle-messages";
-import { renameTemplate } from "@/app/sidebar/actions";
-import { renamePlan, type ActionTarget } from "@/app/sidebar/sidebar-view";
+import { duplicate, renameTemplate } from "@/app/sidebar/actions";
+import {
+  duplicateConfirm,
+  lifecyclePrompt,
+  parseOpenTemplate,
+  renamePlan,
+  type ActionTarget,
+} from "@/app/sidebar/sidebar-view";
+import { confirmChoice, confirmDiscard, useUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, glassClass, primaryButtonClass, rowIdleClass } from "@/app/ui/classes";
+
+/** One Copy at a time, shared by the row menu and the header. Cleared when the route changes. */
+let duplicateInFlight = false;
+
+function duplicateIsRunning(): boolean {
+  return duplicateInFlight;
+}
+
+/** Returns false when a Copy is already under way. */
+function beginDuplicate(): boolean {
+  if (duplicateInFlight) return false;
+  duplicateInFlight = true;
+  return true;
+}
+
+function endDuplicate() {
+  duplicateInFlight = false;
+}
 
 /**
  * The "⋯" menu on a sidebar row and beside the Template name.
- * Rename is wired. Duplicate and Delete are shown for the tickets that follow.
+ * Rename and Duplicate are wired. Delete is shown for the ticket that follows.
  */
 export function TemplateActions({
   target,
@@ -34,11 +60,28 @@ export function TemplateActions({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+  const [duplicateError, setDuplicateError] = useState<LifecycleError<"duplicate"> | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const onOpenChangeRef = useRef(onOpenChange);
   const menuWasOpen = useRef(false);
+  /** Set before the await so a second click in the same turn cannot start another Copy. */
+  const submitting = useRef(false);
+  const asking = useRef(false);
+  /** Keeps the menu up while a confirm is open or Duplicate is in flight. */
+  const holdMenu = useRef(false);
+  const pathname = usePathname();
+  const open = parseOpenTemplate(pathname);
+  const dirty = useUnsaved();
+  const seenPath = useRef(pathname);
+
+  useEffect(() => {
+    if (seenPath.current === pathname) return;
+    seenPath.current = pathname;
+    endDuplicate();
+  }, [pathname]);
 
   useLayoutEffect(() => {
     onOpenChangeRef.current = onOpenChange;
@@ -53,16 +96,18 @@ export function TemplateActions({
   useEffect(() => {
     if (!menuOpen) return;
     function close() {
+      if (holdMenu.current) return;
       setMenuOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || holdMenu.current) return;
       event.preventDefault();
       event.stopPropagation();
       close();
       buttonRef.current?.focus();
     }
     function onPointerDown(event: MouseEvent) {
+      if (holdMenu.current) return;
       const node = event.target;
       if (!(node instanceof Node)) return;
       if (menuRef.current?.contains(node) || buttonRef.current?.contains(node)) return;
@@ -81,6 +126,66 @@ export function TemplateActions({
   }, [menuOpen]);
 
   const triggerClass = placement === "row" ? rowTriggerClass(revealed || menuOpen) : headerTriggerClass();
+  const menuNotice = duplicateError ? lifecycleErrorMessage("duplicate", duplicateError) : null;
+
+  function startDuplicate() {
+    if (submitting.current || asking.current || duplicateIsRunning()) return;
+    setDuplicateError(null);
+    const prompt = lifecyclePrompt("duplicate", target, { open, dirty });
+    if (prompt.kind === "none") {
+      void runDuplicate();
+      return;
+    }
+    if (prompt.kind === "discard") {
+      askThenDuplicate(confirmDiscard());
+      return;
+    }
+    if (prompt.kind !== "duplicate-unsaved" && prompt.kind !== "duplicate-viewing") return;
+    askThenDuplicate(confirmChoice(duplicateConfirm(prompt)));
+  }
+
+  function askThenDuplicate(answer: Promise<boolean>) {
+    asking.current = true;
+    holdMenu.current = true;
+    void answer.then((accepted) => {
+      asking.current = false;
+      if (!accepted) {
+        holdMenu.current = false;
+        return;
+      }
+      void runDuplicate();
+    });
+  }
+
+  async function runDuplicate() {
+    if (submitting.current || !beginDuplicate()) return;
+    submitting.current = true;
+    holdMenu.current = true;
+    setDuplicating(true);
+    setDuplicateError(null);
+    try {
+      const result = await duplicate(target.id);
+      finishDuplicate(result.error);
+    } catch (caught) {
+      if (isNextRedirect(caught)) {
+        // The sidebar row stays mounted, so release the menu. The lock stays until the route changes.
+        submitting.current = false;
+        setDuplicating(false);
+        holdMenu.current = false;
+        setMenuOpen(false);
+        return;
+      }
+      finishDuplicate({ kind: "duplicate-failed" });
+    }
+  }
+
+  function finishDuplicate(error: LifecycleError<"duplicate">) {
+    endDuplicate();
+    setDuplicateError(error);
+    submitting.current = false;
+    setDuplicating(false);
+    holdMenu.current = false;
+  }
 
   return (
     <>
@@ -92,7 +197,11 @@ export function TemplateActions({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? menuId : undefined}
-        onClick={() => setMenuOpen((open) => !open)}
+        onClick={() => {
+          if (holdMenu.current) return;
+          setDuplicateError(null);
+          setMenuOpen((current) => !current);
+        }}
       >
         ⋯
       </button>
@@ -101,10 +210,13 @@ export function TemplateActions({
           menuRef={menuRef}
           menuId={menuId}
           anchorRef={buttonRef}
+          duplicating={duplicating}
+          notice={menuNotice}
           onRename={() => {
             setMenuOpen(false);
             setRenaming(true);
           }}
+          onDuplicate={() => void startDuplicate()}
         />
       ) : null}
       {renaming ? <RenameDialog target={target} onClose={() => setRenaming(false)} /> : null}
@@ -116,24 +228,33 @@ function ActionsMenu({
   menuRef,
   menuId,
   anchorRef,
+  duplicating,
+  notice,
   onRename,
+  onDuplicate,
 }: {
   menuRef: RefObject<HTMLDivElement | null>;
   menuId: string;
   anchorRef: RefObject<HTMLButtonElement | null>;
+  duplicating: boolean;
+  notice: string | null;
   onRename: () => void;
+  onDuplicate: () => void;
 }) {
   const renameRef = useRef<HTMLButtonElement>(null);
+  const focused = useRef(false);
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const anchor = anchorRef.current;
     if (!menu || !anchor) return;
     placeMenu(menu, anchor);
+    if (focused.current) return;
+    focused.current = true;
     renameRef.current?.focus();
-  }, [anchorRef, menuRef]);
+  }, [anchorRef, menuRef, notice]);
 
-  const itemClass = `flex h-7 w-full items-center rounded-md px-2 text-left ${rowIdleClass}`;
+  const itemClass = `flex h-7 w-full items-center rounded-md px-2 text-left disabled:pointer-events-none disabled:opacity-40 ${rowIdleClass}`;
 
   return createPortal(
     <div
@@ -142,17 +263,35 @@ function ActionsMenu({
       role="menu"
       aria-label="Template actions"
       style={{ visibility: "hidden" }}
-      className={`${glassClass} fixed z-40 flex w-36 flex-col rounded-xl p-1`}
+      className={`${glassClass} fixed z-40 flex flex-col rounded-xl p-1 ${notice ? "w-64" : "w-36"}`}
     >
-      <button ref={renameRef} type="button" role="menuitem" className={itemClass} onClick={onRename}>
+      <button
+        ref={renameRef}
+        type="button"
+        role="menuitem"
+        className={itemClass}
+        disabled={duplicating}
+        onClick={onRename}
+      >
         Rename…
       </button>
-      <button type="button" role="menuitem" className={itemClass}>
-        Duplicate
+      <button
+        type="button"
+        role="menuitem"
+        className={itemClass}
+        disabled={duplicating}
+        onClick={onDuplicate}
+      >
+        {duplicating ? "Duplicating…" : "Duplicate"}
       </button>
-      <button type="button" role="menuitem" className={itemClass}>
+      <button type="button" role="menuitem" className={itemClass} disabled={duplicating}>
         Delete…
       </button>
+      {notice ? (
+        <p role="alert" className="px-2 py-1 text-neutral-500">
+          {notice}
+        </p>
+      ) : null}
     </div>,
     document.body,
   );
@@ -279,6 +418,12 @@ function rowTriggerClass(visible: boolean): string {
 
 function headerTriggerClass(): string {
   return "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]";
+}
+
+/** A Server Action `redirect` rejects the client promise. That is navigation, not a failed Duplicate. */
+function isNextRedirect(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("digest" in error)) return false;
+  return typeof error.digest === "string" && error.digest.startsWith("NEXT_REDIRECT");
 }
 
 /** Keeps the popover on screen. Hidden until this runs so it does not flash at the origin. */
