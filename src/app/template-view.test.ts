@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTemplateView, templateHref, type TemplateView } from "@/app/template-view";
+import { parseTemplateView, templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
 
 const templateId = "6b1e0c3a-6e3d-4f3a-9c2e-1a2b3c4d5e6f";
 
@@ -44,5 +44,29 @@ describe("Template URLs", () => {
     );
     expect(templateHref(templateId, { panes: new Set(), row: 4 })).toBe(`/t/${templateId}?row=4`);
     expect(parseTemplateView({ pane: "", row: "" })).toEqual(empty);
+  });
+});
+
+describe("Trust Report toggle", () => {
+  it("opens the Trust Report and keeps Versions", () => {
+    const view = parseTemplateView({ pane: "versions" });
+    expect(templateHref(templateId, withTrustPane(view, true))).toBe(`/t/${templateId}?pane=trust,versions`);
+    expect(templateHref(templateId, withTrustPane({ panes: new Set(), row: null }, true))).toBe(
+      `/t/${templateId}?pane=trust`,
+    );
+  });
+
+  it("closing drops trust and row, and keeps Versions", () => {
+    const view = parseTemplateView({ pane: "trust,versions", row: "12" });
+    expect(templateHref(templateId, withTrustPane(view, false))).toBe(`/t/${templateId}?pane=versions`);
+    expect(templateHref(templateId, withTrustPane(parseTemplateView({ pane: "trust", row: "7" }), false))).toBe(
+      `/t/${templateId}`,
+    );
+  });
+
+  it("does not change the view it is given", () => {
+    const view = parseTemplateView({ pane: "trust", row: "7" });
+    withTrustPane(view, false);
+    expect(view).toEqual({ panes: new Set(["trust"]), row: 7 });
   });
 });

@@ -1,10 +1,14 @@
+import Link from "next/link";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import { z } from "zod";
 import { getDb } from "@/db/server";
-import { parseTemplateView, type TemplateView } from "@/app/template-view";
-import { glassClass } from "@/app/ui/classes";
+import { parseTemplateView, templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
+import { buttonClass, glassClass } from "@/app/ui/classes";
 import type { TemplateDetail } from "@/db/schemas";
+import { loadTrustReport } from "./load-trust-report";
+import { TrustReportSheet } from "./trust-report-sheet";
 
 export default async function TemplatePage({ params, searchParams }: PageProps<"/t/[templateId]">) {
   await connection();
@@ -18,6 +22,10 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   const latest = template.versions[0];
   if (!latest) throw new Error("Template has no Versions");
   const counts = formatCounts(latest.counts);
+  const hasReport = template.creation === "import";
+  const trustOpen = hasReport && view.panes.has("trust");
+  const trust = trustOpen ? await loadTrustReport(getDb(), template) : null;
+  if (trustOpen && !trust) notFound();
 
   return (
     <div className="flex h-full min-w-0 p-3">
@@ -28,9 +36,22 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
           {template.importRun ? (
             <p className="ml-auto max-w-[40%] truncate text-neutral-400">{template.importRun.filename}</p>
           ) : null}
+          {hasReport ? (
+            <Link
+              href={templateHref(template.id, withTrustPane(view, !trustOpen))}
+              aria-current={trustOpen ? "true" : undefined}
+              className={`${buttonClass} shrink-0 ${trustOpen ? "bg-black/[0.06] dark:bg-white/[0.1]" : ""}`}
+            >
+              Trust Report
+            </Link>
+          ) : null}
         </header>
         <EditorSlot counts={counts} />
-        <PaneHost view={view} />
+        <PaneHost view={view}>
+          {trust ? (
+            <TrustReportSheet templateId={template.id} view={view} latestNumber={latest.number} loaded={trust} />
+          ) : null}
+        </PaneHost>
       </div>
     </div>
   );
@@ -50,15 +71,17 @@ function EditorSlot({ counts }: { counts: string }) {
 /**
  * Sits outside the editor slot and is not keyed on the search params, so a later
  * editor keeps its unsaved edits when a sheet opens. Laid out for two sheets
- * (Versions, then Trust Report). No panes yet.
+ * (Versions, then Trust Report).
  */
-function PaneHost({ view }: { view: TemplateView }) {
+function PaneHost({ view, children }: { view: TemplateView; children: ReactNode }) {
   return (
     <div
       className="absolute top-14 right-3 bottom-3 flex gap-2"
       data-row={view.row ?? undefined}
       data-panes={panesInOrder(view)}
-    />
+    >
+      {children}
+    </div>
   );
 }
 

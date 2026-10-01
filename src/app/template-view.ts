@@ -38,6 +38,17 @@ export function templateHref(templateId: string, view: TemplateView): string {
   return params.length > 0 ? `${path}?${params.join("&")}` : path;
 }
 
+/** Opens or closes the Trust Report, keeping Versions. Closing drops `row`, which only the report reads. */
+export function withTrustPane(view: TemplateView, open: boolean): TemplateView {
+  const panes = new Set(view.panes);
+  if (open) {
+    panes.add("trust");
+    return { panes, row: view.row };
+  }
+  panes.delete("trust");
+  return { panes, row: null };
+}
+
 function list(value: string | string[] | undefined): string[] {
   if (value === undefined) return [];
   return Array.isArray(value) ? value : [value];
