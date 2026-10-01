@@ -13,7 +13,6 @@ import {
   useState,
   type ComponentProps,
   type ReactNode,
-  type RefObject,
 } from "react";
 import { buttonClass, glassClass, primaryButtonClass } from "@/app/ui/classes";
 
@@ -33,7 +32,6 @@ const DISCARD_CHOICE: ConfirmChoice = {
 type PendingChoice = ConfirmChoice & { resolve: (accepted: boolean) => void };
 
 type GuardApi = {
-  isDirty: () => boolean;
   clear: () => void;
   confirmDiscard: () => Promise<boolean>;
   confirmChoice: (choice: ConfirmChoice) => Promise<boolean>;
@@ -46,31 +44,33 @@ type GuardContextValue = {
 
 const GuardContext = createContext<GuardContextValue | null>(null);
 
-let published: RefObject<GuardApi | null> | null = null;
+/** The mounted provider's imperative API. Null before mount and after unmount. */
+let mountedGuard: GuardApi | null = null;
 
 /**
  * Asks before throwing away unsaved edits. Resolves true immediately when the editor is clean,
  * and true when the provider is not mounted (nothing is open to lose).
  */
 export function confirmDiscard(): Promise<boolean> {
-  return published?.current?.confirmDiscard() ?? Promise.resolve(true);
+  return mountedGuard?.confirmDiscard() ?? Promise.resolve(true);
 }
 
 /** The same dialog as Discard, with the caller's own text. Resolves false when no provider is mounted. */
 export function confirmChoice(choice: ConfirmChoice): Promise<boolean> {
-  return published?.current?.confirmChoice(choice) ?? Promise.resolve(false);
+  return mountedGuard?.confirmChoice(choice) ?? Promise.resolve(false);
 }
 
 function clearUnsaved(): void {
-  published?.current?.clear();
+  mountedGuard?.clear();
 }
 
 export function UnsavedGuardProvider({ children }: { children: ReactNode }) {
   const [unsaved, setUnsaved] = useState(false);
   const [pending, setPending] = useState<PendingChoice | null>(null);
+  /** Latest dirty flag, read by confirm before the next render. */
   const unsavedRef = useRef(false);
+  /** The open prompt, so a second one can cancel it before React re-renders. */
   const pendingRef = useRef<PendingChoice | null>(null);
-  const apiRef = useRef<GuardApi | null>(null);
 
   const report = useCallback((next: boolean) => {
     unsavedRef.current = next;
@@ -95,21 +95,16 @@ export function UnsavedGuardProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    apiRef.current = {
-      isDirty: () => unsavedRef.current,
-      clear: () => {
-        unsavedRef.current = false;
-        setUnsaved(false);
-      },
+    const api: GuardApi = {
+      clear: () => report(false),
       confirmDiscard: () => (unsavedRef.current ? ask(DISCARD_CHOICE) : Promise.resolve(true)),
       confirmChoice: ask,
     };
-    published = apiRef;
+    mountedGuard = api;
     return () => {
-      apiRef.current = null;
-      if (published === apiRef) published = null;
+      if (mountedGuard === api) mountedGuard = null;
     };
-  }, [ask]);
+  }, [ask, report]);
 
   useEffect(() => {
     if (!unsaved) return;
@@ -176,14 +171,7 @@ export function GuardedLink({ href, onNavigate, ...props }: GuardedLinkProps) {
       {...props}
       href={href}
       onNavigate={(event) => {
-        let prevented = false;
-        onNavigate?.({
-          preventDefault() {
-            prevented = true;
-            event.preventDefault();
-          },
-        });
-        if (prevented) return;
+        if (callerCancelledNavigation(onNavigate, event)) return;
         if (!guard.unsaved || samePathname(href, pathname)) return;
         event.preventDefault();
         void confirmDiscard().then((accepted) => {
@@ -194,6 +182,20 @@ export function GuardedLink({ href, onNavigate, ...props }: GuardedLinkProps) {
       }}
     />
   );
+}
+
+function callerCancelledNavigation(
+  onNavigate: GuardedLinkProps["onNavigate"],
+  event: { preventDefault: () => void },
+): boolean {
+  let cancelled = false;
+  onNavigate?.({
+    preventDefault() {
+      cancelled = true;
+      event.preventDefault();
+    },
+  });
+  return cancelled;
 }
 
 function useGuard(): GuardContextValue {

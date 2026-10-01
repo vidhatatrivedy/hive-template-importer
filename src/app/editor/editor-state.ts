@@ -171,16 +171,7 @@ function dismissError(state: EditorState): EditorState {
 function discard(state: EditorState): EditorState {
   if (state.mode === "read-only") return state;
   const nextBase = state.held ?? state.base;
-  const path = indexPath(state.tree, state.selection);
-  return {
-    ...state,
-    base: nextBase,
-    tree: nextBase.tree,
-    selection: path ? selectionAt(nextBase.tree, path) : emptySelection(),
-    rowMiss: null,
-    save: { status: "idle" },
-    held: null,
-  };
+  return { ...replaceVersion(state, nextBase, { status: "idle" }), rowMiss: null };
 }
 
 function setComment(state: EditorState, id: string, patch: CommentPatch): EditorState {
@@ -299,8 +290,12 @@ function adoptVersion(state: EditorState, next: EditorBase): EditorState {
 }
 
 function commitVersion(state: EditorState, next: EditorBase, save: SaveState): EditorState {
+  return replaceVersion(state, copyBase(next), save);
+}
+
+/** Puts `base` in place of the working tree and keeps the selection by its place. */
+function replaceVersion(state: EditorState, base: EditorBase, save: SaveState): EditorState {
   const path = indexPath(state.tree, state.selection);
-  const base = copyBase(next);
   return {
     ...state,
     base,

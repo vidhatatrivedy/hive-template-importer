@@ -8,6 +8,7 @@ import {
   initialEditorState,
   isDirty,
   locate,
+  type EditorMode,
   type EditorState,
 } from "@/app/editor/editor-state";
 
@@ -29,7 +30,7 @@ beforeAll(async () => {
   tree = withIds(result.draft.tree);
 });
 
-function open(row: number | null = null, mode: "edit" | "read-only" = "edit"): EditorState {
+function open(row: number | null = null, mode: EditorMode = "edit"): EditorState {
   return initialEditorState({ versionId: "version-1", number: 1, tree, row, mode });
 }
 

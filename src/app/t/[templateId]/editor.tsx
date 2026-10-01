@@ -74,6 +74,9 @@ export function Editor({
   /** Stops a second Save before the reducer has moved to `saving`. */
   const saveLock = useRef(false);
   const dirty = isDirty(state);
+  const savingOrAwaiting = isSavingOrAwaiting(state);
+  const canSave = dirty && !savingOrAwaiting;
+  const canDiscard = dirty && !savingOrAwaiting;
   useReportUnsaved(dirty);
 
   useEffect(() => {
@@ -83,13 +86,13 @@ export function Editor({
   }, [versionId, versionNumber, tree]);
 
   async function runDiscard() {
-    if (!isDirty(state) || isSavingOrAwaiting(state)) return;
+    if (!canDiscard) return;
     if (!(await confirmDiscard())) return;
     dispatch({ type: "discard" });
   }
 
   async function runSave() {
-    if (saveLock.current || !isDirty(state) || isSavingOrAwaiting(state)) return;
+    if (saveLock.current || !canSave) return;
     saveLock.current = true;
     const baseNumber = state.base.number;
     const working = state.tree;
@@ -135,9 +138,6 @@ export function Editor({
   const { section, item, comment } = locate(state.tree, state.selection);
   const focusColumn = (column: Column) => dispatch({ type: "focus", column });
   const indicator = saveIndicator(state);
-  const savingOrAwaiting = isSavingOrAwaiting(state);
-  const canSave = dirty && !savingOrAwaiting;
-  const canDiscard = dirty && !savingOrAwaiting;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
