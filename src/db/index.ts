@@ -33,12 +33,14 @@ export type {
 } from "@/db/schemas";
 export { templateDetailSchema, versionOrigins } from "@/db/schemas";
 
-/** SQLSTATE values the write functions raise. Mapped by code, never by message text. */
+/** PT* SQLSTATEs the write functions raise. Mapped from the JSON detail, never from the message. */
 const TEMPLATE_NOT_FOUND = "PT404";
 const STALE_BASE = "PT409";
 const FOREIGN_SOURCE_ROW = "PT422";
-/** Postgres `unique_violation`, the race backstop for `versions (template_id, number)`. */
+/** Postgres `unique_violation` on `versions (template_id, number)`, the race backstop. */
 const UNIQUE_VIOLATION = "23505";
+const VERSION_NUMBER_CONSTRAINT = "versions_template_id_number_key";
+const VERSION_NUMBER_COLUMNS = "(template_id, number)";
 
 export interface Db {
   importTemplate(draft: ImportDraft, name: string): Promise<ImportTemplateResult>;
@@ -110,7 +112,7 @@ async function saveVersion(
     tree,
   });
   if (error) {
-    const refusal = refusalFrom(error, baseNumber);
+    const refusal = refusalFrom(error) ?? staleBaseFromVersionConflict(error, baseNumber);
     if (refusal) return { ok: false, error: refusal };
     throw error;
   }
@@ -153,7 +155,7 @@ const foreignSourceRowDetailSchema = z.object({
   rowNumbers: z.array(z.number().int()),
 });
 
-function refusalFrom(error: PostgrestError, baseNumber?: number): DbRefusal | null {
+function refusalFrom(error: PostgrestError): DbRefusal | null {
   if (error.code === TEMPLATE_NOT_FOUND) return { kind: "template-not-found" };
   if (error.code === STALE_BASE) {
     const detail = staleBaseDetailSchema.safeParse(parseDetail(error));
@@ -165,10 +167,12 @@ function refusalFrom(error: PostgrestError, baseNumber?: number): DbRefusal | nu
     if (!detail.success) return null;
     return { kind: "foreign-source-row", rowNumbers: detail.data.rowNumbers };
   }
-  if (baseNumber !== undefined && isVersionNumberConflict(error)) {
-    return { kind: "stale-base", latestNumber: baseNumber + 1 };
-  }
   return null;
+}
+
+function staleBaseFromVersionConflict(error: PostgrestError, baseNumber: number): DbRefusal | null {
+  if (!isVersionNumberConflict(error)) return null;
+  return { kind: "stale-base", latestNumber: baseNumber + 1 };
 }
 
 function parseDetail(error: PostgrestError): unknown {
@@ -183,5 +187,5 @@ function parseDetail(error: PostgrestError): unknown {
 function isVersionNumberConflict(error: PostgrestError): boolean {
   if (error.code !== UNIQUE_VIOLATION) return false;
   const text = `${error.message} ${error.details}`;
-  return text.includes("versions_template_id_number_key") || text.includes("(template_id, number)");
+  return text.includes(VERSION_NUMBER_CONSTRAINT) || text.includes(VERSION_NUMBER_COLUMNS);
 }

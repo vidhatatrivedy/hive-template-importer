@@ -43,11 +43,7 @@ beforeAll(async () => {
     throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY must be set");
   }
   db = createDb({ url, serviceRoleKey });
-
-  const bytes = fs.readFileSync(path.join(FIXTURE_DIR, FIXTURE));
-  const parsed = await parseSpectoraExport(bytes, FIXTURE);
-  if (!parsed.ok) throw new Error(`Fixture was rejected: ${parsed.rejection.kind}`);
-  draft = parsed.draft;
+  draft = await loadDraft(FIXTURE);
 });
 
 describe("persistence tracer", () => {
@@ -176,7 +172,8 @@ describe("save version", () => {
 
       expect(withoutIds(version2)).toEqual(withoutIds(edits.tree));
       expect(withoutIds(version1)).toEqual(withoutIds(stored));
-      expect(collectIds(version2).some((id) => collectIds(edits.tree).includes(id))).toBe(false);
+      const submittedIds = new Set(collectIds(edits.tree));
+      expect(collectIds(version2).some((id) => submittedIds.has(id))).toBe(false);
 
       const edited = findComment(version2, (comment) => comment.sourceRow === edits.editedSourceRow);
       expect(edited?.sourceRow).toBe(edits.editedSourceRow);
@@ -228,16 +225,16 @@ describe("save version", () => {
   });
 
   it("refuses a Source row that belongs to another Template's Import run", async () => {
-    const otherDraft = await loadDraft(OTHER_FIXTURE);
-    const ownRows = new Set(otherDraft.sourceRows.map((row) => row.rowNumber));
-    const foreignRow = draft.sourceRows.find((row) => !ownRows.has(row.rowNumber))?.rowNumber;
+    const targetDraft = await loadDraft(OTHER_FIXTURE);
+    const targetRows = new Set(targetDraft.sourceRows.map((row) => row.rowNumber));
+    const foreignRow = draft.sourceRows.find((row) => !targetRows.has(row.rowNumber))?.rowNumber;
     if (foreignRow == null) throw new Error("No Source row belongs only to the other fixture");
 
-    const other = await db.importTemplate(draft, draft.suggestedName);
-    const target = await db.importTemplate(otherDraft, otherDraft.suggestedName);
+    const owner = await db.importTemplate(draft, draft.suggestedName);
+    const target = await db.importTemplate(targetDraft, targetDraft.suggestedName);
     try {
       const stored = await db.getVersionTree(target.versionId);
-      const comment = stored?.sections[0]?.items[0]?.comments[0];
+      const comment = firstComment(stored);
       if (!stored || !comment) throw new Error("Target Version 1 has no Comment");
       comment.sourceRow = foreignRow;
 
@@ -250,7 +247,7 @@ describe("save version", () => {
       expect(detail?.versions.map((version) => version.number)).toEqual([1]);
     } finally {
       await db.deleteTemplate(target.templateId);
-      await db.deleteTemplate(other.templateId);
+      await db.deleteTemplate(owner.templateId);
     }
   });
 
@@ -259,7 +256,7 @@ describe("save version", () => {
     expect(saved).toEqual({ ok: false, error: { kind: "template-not-found" } });
   });
 
-  it("refuses updates to a Comment, a Version and a Source row", async () => {
+  it("allows a name-only Template update and refuses content updates", async () => {
     const url = process.env.SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SECRET_KEY;
     if (!url || !serviceRoleKey) throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY must be set");
@@ -270,7 +267,7 @@ describe("save version", () => {
     const imported = await db.importTemplate(draft, draft.suggestedName);
     try {
       const stored = await db.getVersionTree(imported.versionId);
-      const comment = stored?.sections[0]?.items[0]?.comments[0];
+      const comment = firstComment(stored);
       const sourceRow = draft.sourceRows[0];
       if (!stored || !comment?.id || !sourceRow) throw new Error("Imported Template has nothing to update");
       const before = await db.getTemplate(imported.templateId);
@@ -419,6 +416,10 @@ function findItem(tree: EditableTree, predicate: (item: Item) => boolean): Item 
     }
   }
   return undefined;
+}
+
+function firstComment(tree: EditableTree | null): Comment | undefined {
+  return tree?.sections[0]?.items[0]?.comments[0];
 }
 
 function findComment(
