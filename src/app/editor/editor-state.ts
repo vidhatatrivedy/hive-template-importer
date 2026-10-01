@@ -1,3 +1,5 @@
+import type { SaveError } from "@/core/import/editor-messages";
+import { prepareSave } from "@/core/import/prepare-save";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 
 /** The column the inspector is working in. Columns to its left collapse. */
@@ -18,6 +20,13 @@ export type EditorBase = {
   tree: EditableTree;
 };
 
+/** Where a Save is. `invalid` and `confirm` arrive with later tickets. */
+export type SaveState =
+  | { status: "idle" }
+  | { status: "saving" }
+  | { status: "awaiting"; number: number }
+  | { status: "refused"; error: SaveError };
+
 export type EditorState = {
   base: EditorBase;
   tree: EditableTree;
@@ -25,13 +34,24 @@ export type EditorState = {
   focus: Column;
   /** Set when `?row=` names no Comment. Cleared by the next selection. */
   rowMiss: number | null;
+  save: SaveState;
+  /** A Version that arrived while a Save was in flight. Adopted when that Save succeeds. */
+  held: EditorBase | null;
 };
+
+/** Fields a Comment can be edited through. Ids, Source rows and unit options stay put. */
+export type CommentPatch = Partial<Omit<Comment, "id" | "sourceRow" | "unitOptions">>;
 
 export type EditorAction =
   | ({ type: "serverVersion" } & EditorBase)
   | { type: "select"; ref: NodeRef }
   | { type: "focus"; column: Column }
-  | { type: "selectRow"; row: number };
+  | { type: "selectRow"; row: number }
+  | { type: "setComment"; id: string; patch: CommentPatch }
+  | { type: "saveRequested" }
+  | { type: "saveSucceeded"; number: number }
+  | { type: "saveFailed"; error: SaveError }
+  | { type: "dismissError" };
 
 const COMMENT_GROUPS = [
   { type: "info", label: "Informational" },
@@ -65,9 +85,16 @@ export function initialEditorState(input: EditorBase & { row: number | null }): 
     selection: emptySelection(),
     focus: "sections",
     rowMiss: null,
+    save: { status: "idle" },
+    held: null,
   };
   if (row !== null) return editorReducer(state, { type: "selectRow", row });
   return selectFirst(state);
+}
+
+/** True when the working tree differs from the saved Version by value, ids included. */
+export function isDirty(state: EditorState): boolean {
+  return !sameTree(state.tree, state.base.tree);
 }
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -80,11 +107,127 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return state.focus === action.column ? state : { ...state, focus: action.column };
     case "selectRow":
       return selectRow(state, action.row);
+    case "setComment":
+      return setComment(state, action.id, action.patch);
+    case "saveRequested":
+      return requestSave(state);
+    case "saveSucceeded":
+      return saveSucceeded(state, action.number);
+    case "saveFailed":
+      return saveFailed(state, action.error);
+    case "dismissError":
+      return dismissError(state);
     default: {
       const unreachable: never = action;
       throw new Error(`Unknown editor action: ${String(unreachable)}`);
     }
   }
+}
+
+function requestSave(state: EditorState): EditorState {
+  if (state.save.status === "saving" || state.save.status === "awaiting") return state;
+  if (!isDirty(state)) return state;
+  // Blank names and text cuts stay on this path until later tickets add `invalid` and `confirm`.
+  prepareSave(state.tree);
+  return { ...state, save: { status: "saving" } };
+}
+
+function saveSucceeded(state: EditorState, number: number): EditorState {
+  if (state.save.status !== "saving") return state;
+  const awaiting: EditorState = { ...state, save: { status: "awaiting", number } };
+  if (state.held && state.held.number >= number) return commitVersion(awaiting, state.held, { status: "idle" });
+  return awaiting;
+}
+
+function saveFailed(state: EditorState, error: SaveError): EditorState {
+  if (state.save.status !== "saving") return state;
+  return { ...state, save: { status: "refused", error }, held: null };
+}
+
+function dismissError(state: EditorState): EditorState {
+  if (state.save.status !== "refused") return state;
+  return { ...state, save: { status: "idle" } };
+}
+
+function setComment(state: EditorState, id: string, patch: CommentPatch): EditorState {
+  if (state.save.status === "saving") return state;
+  for (let sectionIndex = 0; sectionIndex < state.tree.sections.length; sectionIndex++) {
+    const section = state.tree.sections[sectionIndex];
+    if (!section) continue;
+    for (let itemIndex = 0; itemIndex < section.items.length; itemIndex++) {
+      const item = section.items[itemIndex];
+      if (!item) continue;
+      const commentIndex = item.comments.findIndex((comment) => comment.id === id);
+      const current = item.comments[commentIndex];
+      if (!current) continue;
+      const next = applyCommentPatch(current, patch);
+      if (sameComment(current, next)) return state;
+      const comments = item.comments.slice();
+      comments[commentIndex] = next;
+      const items = section.items.slice();
+      items[itemIndex] = { ...item, comments };
+      const sections = state.tree.sections.slice();
+      sections[sectionIndex] = { ...section, items };
+      return { ...state, tree: { sections } };
+    }
+  }
+  return state;
+}
+
+function applyCommentPatch(comment: Comment, patch: CommentPatch): Comment {
+  const next = { ...comment };
+  for (const key of Object.keys(patch) as (keyof CommentPatch)[]) {
+    const value = patch[key];
+    if (value !== undefined) Object.assign(next, { [key]: value });
+  }
+  return next;
+}
+
+function sameTree(a: EditableTree, b: EditableTree): boolean {
+  if (a === b) return true;
+  return sameList(a.sections, b.sections, sameSection);
+}
+
+function sameSection(a: Section, b: Section): boolean {
+  if (a === b) return true;
+  return a.id === b.id && a.name === b.name && sameList(a.items, b.items, sameItem);
+}
+
+function sameItem(a: Item, b: Item): boolean {
+  if (a === b) return true;
+  return a.id === b.id && a.name === b.name && sameList(a.comments, b.comments, sameComment);
+}
+
+function sameComment(a: Comment, b: Comment): boolean {
+  if (a === b) return true;
+  return (
+    a.id === b.id &&
+    a.sourceRow === b.sourceRow &&
+    a.name === b.name &&
+    a.textHtml === b.textHtml &&
+    a.commentType === b.commentType &&
+    a.category === b.category &&
+    a.recommendation === b.recommendation &&
+    a.answerType === b.answerType &&
+    a.defaultBoolean === b.defaultBoolean &&
+    a.defaultText === b.defaultText &&
+    sameStrings(a.choiceOptions, b.choiceOptions) &&
+    sameStrings(a.unitOptions, b.unitOptions)
+  );
+}
+
+function sameList<T>(a: readonly T[], b: readonly T[], same: (left: T, right: T) => boolean): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    return other !== undefined && same(item, other);
+  });
+}
+
+function sameStrings(a: readonly string[], b: readonly string[]): boolean {
+  if (a === b) return true;
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 function emptySelection(): EditorSelection {
@@ -103,13 +246,23 @@ function selectFirst(state: EditorState): EditorState {
 }
 
 function adoptVersion(state: EditorState, next: EditorBase): EditorState {
+  if (state.save.status === "saving") {
+    return { ...state, held: { versionId: next.versionId, number: next.number, tree: next.tree } };
+  }
+  if (state.save.status === "awaiting" && next.number < state.save.number) return state;
+  const save = state.save.status === "awaiting" ? { status: "idle" as const } : state.save;
+  return commitVersion(state, next, save);
+}
+
+function commitVersion(state: EditorState, next: EditorBase, save: SaveState): EditorState {
   const path = indexPath(state.tree, state.selection);
-  const base = { versionId: next.versionId, number: next.number, tree: next.tree };
   return {
     ...state,
-    base,
+    base: { versionId: next.versionId, number: next.number, tree: next.tree },
     tree: next.tree,
     selection: path ? selectionAt(next.tree, path) : emptySelection(),
+    save,
+    held: null,
   };
 }
 

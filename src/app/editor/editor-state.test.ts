@@ -3,11 +3,21 @@ import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
 import type { EditableTree } from "@/core/import/schemas";
-import { editorReducer, initialEditorState, locate, type EditorState } from "@/app/editor/editor-state";
+import {
+  editorReducer,
+  initialEditorState,
+  isDirty,
+  locate,
+  type EditorState,
+} from "@/app/editor/editor-state";
 
 const FIXTURE = path.resolve(
   __dirname,
   "../../../fixtures/spectora/InterNACHI Residential -2026-09-30.xls",
+);
+const BEN = path.resolve(
+  __dirname,
+  "../../../fixtures/spectora/Ben Gromicko's Template for Home Inspections-2026-09-30.xls",
 );
 
 let tree: EditableTree;
@@ -166,6 +176,145 @@ describe("editorReducer", () => {
     expect(adopted.base).toMatchObject({ versionId: "version-2", number: 2 });
   });
 
+  it("is clean on load, dirty after a Comment is renamed, and clean again when the old name is typed back", () => {
+    const opened = open();
+    const commentId = opened.selection.commentId;
+    if (!commentId) throw new Error("expected a Comment");
+
+    expect(isDirty(opened)).toBe(false);
+    expect(located(opened).comment?.name).toBe("In Attendance");
+
+    const edited = editorReducer(opened, {
+      type: "setComment",
+      id: commentId,
+      patch: { name: "In Attendance " },
+    });
+
+    expect(located(edited).comment?.name).toBe("In Attendance ");
+    expect(isDirty(edited)).toBe(true);
+
+    const restored = editorReducer(edited, {
+      type: "setComment",
+      id: commentId,
+      patch: { name: "In Attendance" },
+    });
+
+    expect(located(restored).comment?.name).toBe("In Attendance");
+    expect(isDirty(restored)).toBe(false);
+  });
+
+  it("does nothing when Save is pressed and nothing has changed", () => {
+    const opened = open();
+    expect(editorReducer(opened, { type: "saveRequested" })).toBe(opened);
+  });
+
+  it("locks edits while Save is in flight, then waits for the new Version", () => {
+    const commentId = open().selection.commentId;
+    if (!commentId) throw new Error("expected a Comment");
+    const edited = editorReducer(open(), {
+      type: "setComment",
+      id: commentId,
+      patch: { name: "Attendance note" },
+    });
+    const saving = editorReducer(edited, { type: "saveRequested" });
+
+    expect(saving.save).toEqual({ status: "saving" });
+    expect(located(saving).comment?.name).toBe("Attendance note");
+    expect(
+      editorReducer(saving, { type: "setComment", id: commentId, patch: { name: "Ignored" } }),
+    ).toBe(saving);
+    expect(editorReducer(saving, { type: "saveRequested" })).toBe(saving);
+
+    const arrived = editorReducer(saving, {
+      type: "serverVersion",
+      versionId: "version-2",
+      number: 2,
+      tree: retag(renameComment(tree, commentId, "Attendance note")),
+    });
+    expect(arrived.save).toEqual({ status: "saving" });
+    expect(located(arrived).comment?.name).toBe("Attendance note");
+    expect(located(arrived).comment?.id).toBe(commentId);
+
+    const adopted = editorReducer(arrived, { type: "saveSucceeded", number: 2 });
+    expect(adopted.save).toEqual({ status: "idle" });
+    expect(isDirty(adopted)).toBe(false);
+    expect(located(adopted).comment?.id).toBe(`next-${commentId}`);
+    expect(located(adopted).comment?.name).toBe("Attendance note");
+
+    const awaiting = editorReducer(saving, { type: "saveSucceeded", number: 2 });
+    expect(awaiting.save).toEqual({ status: "awaiting", number: 2 });
+    expect(located(awaiting).comment?.name).toBe("Attendance note");
+  });
+
+  it("adopts the saved Version, or any newer one, and keeps the same Comment selected", () => {
+    const commentId = open().selection.commentId;
+    if (!commentId) throw new Error("expected a Comment");
+    const awaiting = awaitingSave(commentId, "Attendance note");
+    const saved = editorReducer(awaiting, {
+      type: "serverVersion",
+      versionId: "version-2",
+      number: 2,
+      tree: retag(renameComment(tree, commentId, "Attendance note")),
+    });
+    const { section, item, comment } = located(saved);
+
+    expect(saved.save).toEqual({ status: "idle" });
+    expect(isDirty(saved)).toBe(false);
+    expect(section?.name).toBe("Inspection Details");
+    expect(item?.name).toBe("General");
+    expect(comment?.name).toBe("Attendance note");
+    expect(comment?.id).toBe(`next-${commentId}`);
+
+    const later = editorReducer(awaiting, {
+      type: "serverVersion",
+      versionId: "version-3",
+      number: 3,
+      tree: retag(renameComment(tree, commentId, "Attendance note")),
+    });
+    expect(later.save).toEqual({ status: "idle" });
+    expect(located(later).comment?.id).toBe(`next-${commentId}`);
+    expect(located(later).comment?.name).toBe("Attendance note");
+  });
+
+  it("ignores an older Version while waiting for the one just saved", () => {
+    const commentId = open().selection.commentId;
+    if (!commentId) throw new Error("expected a Comment");
+    const awaiting = awaitingSave(commentId, "Attendance note");
+    const ignored = editorReducer(awaiting, {
+      type: "serverVersion",
+      versionId: "version-1",
+      number: 1,
+      tree: retag(tree),
+    });
+
+    expect(ignored).toBe(awaiting);
+    expect(located(ignored).comment?.name).toBe("Attendance note");
+    expect(located(ignored).comment?.id).toBe(commentId);
+  });
+
+  it("keeps the renamed Comment when Save fails, and Dismiss clears the error", () => {
+    const commentId = open().selection.commentId;
+    if (!commentId) throw new Error("expected a Comment");
+    const edited = editorReducer(open(), {
+      type: "setComment",
+      id: commentId,
+      patch: { name: "Attendance note" },
+    });
+    const refused = editorReducer(editorReducer(edited, { type: "saveRequested" }), {
+      type: "saveFailed",
+      error: { kind: "save-failed" },
+    });
+
+    expect(refused.save).toEqual({ status: "refused", error: { kind: "save-failed" } });
+    expect(located(refused).comment?.name).toBe("Attendance note");
+    expect(isDirty(refused)).toBe(true);
+
+    const dismissed = editorReducer(refused, { type: "dismissError" });
+    expect(dismissed.save).toEqual({ status: "idle" });
+    expect(located(dismissed).comment?.name).toBe("Attendance note");
+    expect(isDirty(dismissed)).toBe(true);
+  });
+
   it("keeps the inspector's selection when the same Version is read again", () => {
     const picked = editorReducer(open(), {
       type: "select",
@@ -180,6 +329,57 @@ describe("editorReducer", () => {
 
     expect(again.selection).toEqual(picked.selection);
     expect(again.focus).toBe(picked.focus);
+  });
+});
+
+function awaitingSave(commentId: string, name: string): EditorState {
+  const edited = editorReducer(open(), { type: "setComment", id: commentId, patch: { name } });
+  const saving = editorReducer(edited, { type: "saveRequested" });
+  return editorReducer(saving, { type: "saveSucceeded", number: 2 });
+}
+
+function renameComment(source: EditableTree, commentId: string, name: string): EditableTree {
+  return {
+    sections: source.sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) => ({
+        ...item,
+        comments: item.comments.map((comment) => (comment.id === commentId ? { ...comment, name } : comment)),
+      })),
+    })),
+  };
+}
+
+describe("editorReducer on Ben", () => {
+  let ben: EditableTree;
+
+  beforeAll(async () => {
+    const bytes = new Uint8Array(fs.readFileSync(BEN));
+    const result = await parseSpectoraExport(bytes, path.basename(BEN));
+    if (!result.ok) throw new Error(result.rejection.kind);
+    ben = withIds(result.draft.tree);
+  });
+
+  it("a name edit leaves every other Section as the same object, and the Template is dirty", () => {
+    const opened = initialEditorState({ versionId: "ben-1", number: 1, tree: ben, row: null });
+    const commentId = opened.selection.commentId;
+    const sectionIndex = ben.sections.findIndex((section) => section.id === opened.selection.sectionId);
+    if (!commentId || sectionIndex < 0) throw new Error("expected a Comment");
+
+    const edited = editorReducer(opened, {
+      type: "setComment",
+      id: commentId,
+      patch: { name: "Renamed on Ben" },
+    });
+
+    expect(isDirty(opened)).toBe(false);
+    expect(isDirty(edited)).toBe(true);
+    expect(located(edited).comment?.name).toBe("Renamed on Ben");
+    expect(edited.tree.sections).toHaveLength(ben.sections.length);
+    edited.tree.sections.forEach((section, index) => {
+      if (index === sectionIndex) expect(section).not.toBe(ben.sections[index]);
+      else expect(section).toBe(ben.sections[index]);
+    });
   });
 });
 

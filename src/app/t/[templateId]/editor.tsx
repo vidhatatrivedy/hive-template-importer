@@ -2,19 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useReducer, useRef, type ReactNode, type Ref } from "react";
+import { saveErrorMessage } from "@/core/import/editor-messages";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 import {
   commentGroups,
   editorReducer,
   initialEditorState,
+  isDirty,
   locate,
   type Column,
+  type EditorState,
 } from "@/app/editor/editor-state";
 import { templateHref } from "@/app/template-view";
-import { labelClass } from "@/app/ui/classes";
+import { buttonClass, labelClass, primaryButtonClass } from "@/app/ui/classes";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
+import { saveTemplate } from "./actions";
 
 const COLUMNS = ["sections", "items", "comments"] as const;
 
@@ -66,12 +70,50 @@ export function Editor({
   const loadedVersion = useRef(versionId);
   const loadedRow = useRef(row);
   const commentNodes = useRef(new Map<string, HTMLButtonElement>());
+  const saveLock = useRef(false);
+  const runSaveRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (versionId === loadedVersion.current) return;
     loadedVersion.current = versionId;
     dispatch({ type: "serverVersion", versionId, number: versionNumber, tree });
   }, [versionId, versionNumber, tree]);
+
+  async function runSave() {
+    if (saveLock.current || !isDirty(state) || state.save.status === "saving" || state.save.status === "awaiting") {
+      return;
+    }
+    saveLock.current = true;
+    const baseNumber = state.base.number;
+    const working = state.tree;
+    dispatch({ type: "saveRequested" });
+    try {
+      const result = await saveTemplate(templateId, baseNumber, working);
+      if (!result.ok) {
+        dispatch({ type: "saveFailed", error: result.error });
+        return;
+      }
+      dispatch({ type: "saveSucceeded", number: result.number });
+    } catch {
+      dispatch({ type: "saveFailed", error: { kind: "save-failed" } });
+    } finally {
+      saveLock.current = false;
+    }
+  }
+
+  useEffect(() => {
+    runSaveRef.current = () => void runSave();
+  });
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      runSaveRef.current();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (row === loadedRow.current) return;
@@ -88,6 +130,9 @@ export function Editor({
 
   const { section, item, comment } = locate(state.tree, state.selection);
   const focusColumn = (column: Column) => dispatch({ type: "focus", column });
+  const indicator = saveIndicator(state);
+  const canSave = isDirty(state) && state.save.status !== "saving" && state.save.status !== "awaiting";
+  const nameLocked = state.save.status === "saving" || state.save.status === "awaiting";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -100,8 +145,29 @@ export function Editor({
           onFocus={focusColumn}
         />
         <p className="shrink-0 text-neutral-500 tabular-nums">{counts}</p>
+        {indicator ? (
+          <p aria-live="polite" className="shrink-0 text-neutral-500">
+            {indicator}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          className={`${primaryButtonClass} shrink-0`}
+          disabled={!canSave}
+          onClick={() => void runSave()}
+        >
+          Save
+        </button>
         {children}
       </header>
+      {state.save.status === "refused" ? (
+        <div className="flex shrink-0 items-center gap-3 border-b border-black/[0.05] px-4 py-2 dark:border-white/[0.06]">
+          <p className="min-w-0 flex-1">{saveErrorMessage(state.save.error)}</p>
+          <button type="button" className={buttonClass} onClick={() => dispatch({ type: "dismissError" })}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <EditorColumn
           title="Sections"
@@ -203,6 +269,11 @@ export function Editor({
             section={section}
             item={item}
             comment={comment}
+            nameLocked={nameLocked}
+            onName={(name) => {
+              if (!comment?.id) return;
+              dispatch({ type: "setComment", id: comment.id, patch: { name } });
+            }}
           />
         </section>
       </div>
@@ -217,6 +288,8 @@ function CommentPane({
   section,
   item,
   comment,
+  nameLocked,
+  onName,
 }: {
   rowMiss: number | null;
   templateId: string;
@@ -224,6 +297,8 @@ function CommentPane({
   section: Section | null;
   item: Item | null;
   comment: Comment | null;
+  nameLocked: boolean;
+  onName: (name: string) => void;
 }) {
   if (rowMiss !== null) {
     return <p className="text-neutral-500">No Comment in this Version carries Source row {rowMiss}.</p>;
@@ -236,6 +311,8 @@ function CommentPane({
       sectionName={section.name}
       itemName={item.name}
       comment={comment}
+      nameLocked={nameLocked}
+      onName={onName}
     />
   );
 }
@@ -246,12 +323,16 @@ function CommentDetail({
   sectionName,
   itemName,
   comment,
+  nameLocked,
+  onName,
 }: {
   templateId: string;
   versionsOpen: boolean;
   sectionName: string;
   itemName: string;
   comment: Comment;
+  nameLocked: boolean;
+  onName: (name: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -270,7 +351,13 @@ function CommentDetail({
           <p className="max-w-56 text-right text-neutral-400">{ADDED_IN_THE_EDITOR}</p>
         )}
       </div>
-      <p className="text-[15px] font-medium text-neutral-900 dark:text-white">{comment.name}</p>
+      <input
+        aria-label="Name"
+        value={comment.name}
+        readOnly={nameLocked}
+        onChange={(event) => onName(event.currentTarget.value)}
+        className="w-full rounded-md border border-transparent bg-transparent px-1 text-[15px] font-medium text-neutral-900 outline-none hover:border-black/10 focus:border-black/20 dark:text-white dark:hover:border-white/15 dark:focus:border-white/25"
+      />
       <div className="grid grid-cols-4 gap-3">
         <Field label="Type" value={TYPE_LABEL[comment.commentType]} />
         <Field label="Answer" value={ANSWER_LABEL[comment.answerType]} />
@@ -423,6 +510,12 @@ function RowButton({
       {children}
     </button>
   );
+}
+
+function saveIndicator(state: EditorState): string | null {
+  if (state.save.status === "saving" || state.save.status === "awaiting") return "Saving…";
+  if (isDirty(state)) return "Unsaved changes";
+  return null;
 }
 
 function isCollapsed(column: Column, focus: Column): boolean {
