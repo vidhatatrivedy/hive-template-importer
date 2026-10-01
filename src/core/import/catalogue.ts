@@ -20,7 +20,12 @@ type CatalogueEntry<Detail> = {
   message: (detail: Detail) => string;
 };
 
-const whitespaceTrimmed = {
+/** Keeps `kind` as a string literal. `satisfies CatalogueEntry` widens it to `string`. */
+function defineIssue<const K extends string, Detail>(entry: CatalogueEntry<Detail> & { kind: K }) {
+  return entry;
+}
+
+const whitespaceTrimmed = defineIssue({
   kind: "whitespace-trimmed",
   level: "row",
   severity: "notice",
@@ -28,19 +33,146 @@ const whitespaceTrimmed = {
   title: "Whitespace trimmed",
   detail: z.object({ field: z.string().min(1) }),
   message: (detail: { field: string }) => `Leading and trailing spaces were removed from ${detail.field}.`,
-} satisfies CatalogueEntry<{ field: string }>;
+});
 
-export const catalogue = [whitespaceTrimmed] as const;
+const editorLeftovers = defineIssue({
+  kind: "editor-leftovers",
+  level: "row",
+  severity: "notice",
+  class: "Changed",
+  title: "Editor leftovers removed",
+  detail: z.object({ count: z.number().int().positive() }),
+  message: (detail: { count: number }) =>
+    detail.count === 1
+      ? "1 editor leftover was removed from this Comment."
+      : `${detail.count} editor leftovers were removed from this Comment.`,
+});
 
-export const issueKinds = [whitespaceTrimmed.kind] as const;
+const attributeRemoved = defineIssue({
+  kind: "attribute-removed",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Attribute removed",
+  detail: z.object({ tag: z.string().min(1), attribute: z.string().min(1) }),
+  message: (detail: { tag: string; attribute: string }) => `The ${detail.attribute} attribute was removed from <${detail.tag}>.`,
+});
+
+const tagUnwrapped = defineIssue({
+  kind: "tag-unwrapped",
+  level: "row",
+  severity: "notice",
+  class: "Changed",
+  title: "Tag unwrapped",
+  detail: z.object({ tag: z.string().min(1) }),
+  message: (detail: { tag: string }) => `A <${detail.tag}> tag was removed and its text was kept.`,
+});
+
+const styleUnparseable = defineIssue({
+  kind: "style-unparseable",
+  level: "row",
+  severity: "notice",
+  class: "Changed",
+  title: "Unparseable style removed",
+  detail: z.object({ tag: z.string().min(1) }),
+  message: (detail: { tag: string }) => `A style attribute on <${detail.tag}> could not be parsed and was removed.`,
+});
+
+const tagRemoved = defineIssue({
+  kind: "tag-removed",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Tag removed",
+  detail: z.object({ tag: z.string().min(1) }),
+  message: (detail: { tag: string }) => `A <${detail.tag}> tag was removed along with its content.`,
+});
+
+const linkSchemeRemoved = defineIssue({
+  kind: "link-scheme-removed",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Link scheme removed",
+  detail: z.object({ tag: z.string().min(1) }),
+  message: (detail: { tag: string }) => `An address on <${detail.tag}> was removed because its scheme is not allowed.`,
+});
+
+const noDetail = z.object({});
+
+const iframeToLink = defineIssue({
+  kind: "iframe-to-link",
+  level: "row",
+  severity: "warning",
+  class: "Unsupported",
+  title: "Non-YouTube iframe turned into a link",
+  detail: noDetail,
+  message: () => "An embedded frame from another site was turned into a link.",
+});
+
+const markupRebuilt = defineIssue({
+  kind: "markup-rebuilt",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Markup rebuilt",
+  detail: noDetail,
+  message: () => "This Comment's markup was rebuilt. Check it closely.",
+});
+
+const youtubeWrapperEmpty = defineIssue({
+  kind: "youtube-wrapper-empty",
+  level: "row",
+  severity: "warning",
+  class: "Missing from export",
+  title: "Empty YouTube wrapper",
+  detail: noDetail,
+  message: () => "An empty YouTube wrapper was removed. The video was not in the export.",
+});
+
+const unsafeStyleRemoved = defineIssue({
+  kind: "unsafe-style-removed",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Unsafe style removed",
+  detail: z.object({ tag: z.string().min(1), property: z.string().min(1) }),
+  message: (detail: { tag: string; property: string }) =>
+    `A ${detail.property} style on <${detail.tag}> was removed because its value could load remote content or run code.`,
+});
+
+export const catalogue = [
+  whitespaceTrimmed,
+  editorLeftovers,
+  attributeRemoved,
+  tagUnwrapped,
+  styleUnparseable,
+  tagRemoved,
+  linkSchemeRemoved,
+  iframeToLink,
+  markupRebuilt,
+  youtubeWrapperEmpty,
+  unsafeStyleRemoved,
+] as const;
+
+export const issueKinds = [
+  whitespaceTrimmed.kind,
+  editorLeftovers.kind,
+  attributeRemoved.kind,
+  tagUnwrapped.kind,
+  styleUnparseable.kind,
+  tagRemoved.kind,
+  linkSchemeRemoved.kind,
+  iframeToLink.kind,
+  markupRebuilt.kind,
+  youtubeWrapperEmpty.kind,
+  unsafeStyleRemoved.kind,
+] as const;
 export type IssueKind = (typeof issueKinds)[number];
-
-function messageFor<Detail>(entry: CatalogueEntry<Detail>, detail: unknown): string {
-  return entry.message(entry.detail.parse(detail));
-}
 
 export function renderIssueMessage(kind: IssueKind, detail: unknown): string {
   const entry = catalogue.find((candidate) => candidate.kind === kind);
   if (!entry) throw new Error(`Unknown Import issue kind: ${kind}`);
-  return messageFor(entry, detail);
+  const parsed = entry.detail.parse(detail);
+  return (entry.message as (value: typeof parsed) => string)(parsed);
 }

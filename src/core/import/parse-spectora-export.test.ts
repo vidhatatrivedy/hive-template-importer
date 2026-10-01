@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderIssueMessage } from "@/core/import/catalogue";
+import writeXlsxFile from "write-excel-file/node";
+import { catalogue, renderIssueMessage } from "@/core/import/catalogue";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
-import { sanitiseCommentHtml } from "@/core/sanitise";
+import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import {
   countEditableTree,
   editableTreeSchema,
@@ -318,6 +319,135 @@ describe("parseSpectoraExport", () => {
     expect(dateOnly.draft.suggestedName).toBe("-2026-09-30");
   });
 
+  it("raises one unsafe-style-removed for a url(, expression( or @import style, and an attribute-removed warning for onerror", async () => {
+    const texts = [
+      `<p style="background: url(https://evil.test/x)">t</p>`,
+      `<p style="background-color: expression(alert(1))">t</p>`,
+      `<p style="color: red @import 'x'">t</p>`,
+      `<p style="color:u&#114;l(x)">t</p>`,
+      `<img src="x" onerror="alert(1)">`,
+      `<p style="position: fixed">t</p>`,
+    ];
+    const result = await parseSpectoraExport(await workbookWithCommentText(texts), "synthetic.xls");
+    expect(result.ok).toBe(true);
+    const { draft } = result;
+
+    const unsafeRows = [
+      { row: 2, property: "background" },
+      { row: 3, property: "background-color" },
+      { row: 4, property: "color" },
+      { row: 5, property: "color" },
+    ];
+    for (const { row, property } of unsafeRows) {
+      const issues = draft.issues.filter((issue) => issue.sourceRow === row && issue.kind === "unsafe-style-removed");
+      expect(issues, `row ${row}`).toEqual([
+        expect.objectContaining({
+          sourceRow: row,
+          detail: { tag: "p", property },
+        }),
+      ]);
+      expect(issues[0]?.cuts).toHaveLength(1);
+      expect(draft.issues.filter((issue) => issue.sourceRow === row && issue.kind === "editor-leftovers")).toEqual([]);
+    }
+    expect(renderIssueMessage("unsafe-style-removed", { tag: "p", property: "background" })).toBe(
+      "A background style on <p> was removed because its value could load remote content or run code.",
+    );
+    expect(catalogueEntry("unsafe-style-removed")).toMatchObject({ severity: "warning", class: "Changed" });
+
+    const onerror = draft.issues.filter((issue) => issue.sourceRow === 6 && issue.kind === "attribute-removed");
+    expect(onerror).toEqual([expect.objectContaining({ detail: { tag: "img", attribute: "onerror" } })]);
+    expect(onerror[0]?.cuts).toHaveLength(1);
+    expect(draft.issues.filter((issue) => issue.sourceRow === 6 && issue.kind === "editor-leftovers")).toEqual([]);
+    expect(renderIssueMessage("attribute-removed", { tag: "img", attribute: "onerror" })).toBe(
+      "The onerror attribute was removed from <img>.",
+    );
+    expect(catalogueEntry("attribute-removed")).toMatchObject({ severity: "warning", class: "Changed" });
+
+    const routine = draft.issues.filter((issue) => issue.sourceRow === 7);
+    expect(routine.map((issue) => issue.kind)).toEqual(["editor-leftovers"]);
+    expect(routine[0]).toMatchObject({ detail: { count: 1 } });
+    expect(routine[0]?.cuts.map((cut) => cut.kind)).toEqual(["css-property-removed"]);
+    expect(catalogueEntry("editor-leftovers")).toMatchObject({ severity: "notice", class: "Changed" });
+  });
+
+  it("puts every sanitiser cut on exactly one Import issue for that Comment", async () => {
+    for (const fixture of HTML_FIXTURES) {
+      const draft = await draftOf(fixture.file);
+      const column = draft.run.headers.indexOf("Comment Text");
+      expect(
+        draft.issues.filter((issue) => issue.kind === "unsafe-style-removed"),
+        fixture.file,
+      ).toEqual([]);
+
+      const parsed = importDraftSchema.safeParse(draft);
+      expect(parsed.success, parsed.success ? fixture.file : JSON.stringify(parsed.error.issues)).toBe(true);
+
+      for (const row of draft.sourceRows) {
+        const raw = row.cells[column];
+        const text = typeof raw === "string" ? raw : "";
+        const cuts = sanitiseCommentHtml(text).cuts;
+        const rowIssues = draft.issues.filter((issue) => issue.sourceRow === row.rowNumber);
+        const label = `${fixture.file} row ${row.rowNumber}`;
+
+        expect(byStart(rowIssues.flatMap((issue) => issue.cuts)), label).toEqual(byStart(cuts.map(evidenceOf)));
+
+        const bundle = cuts.filter(isBundledCut);
+        const leftovers = rowIssues.filter((issue) => issue.kind === "editor-leftovers");
+        expect(leftovers, label).toHaveLength(bundle.length === 0 ? 0 : 1);
+        if (bundle.length > 0) {
+          expect(leftovers[0]?.cuts, label).toEqual(bundle.map(evidenceOf));
+          expect(leftovers[0]?.detail, label).toEqual({ count: bundle.length });
+        }
+
+        for (const cut of cuts) {
+          const owners = rowIssues.filter((issue) =>
+            issue.cuts.some((logged) => logged.start === cut.start && logged.end === cut.end && logged.kind === cut.kind),
+          );
+          expect(owners, `${label} ${cut.kind}@${cut.start}`).toHaveLength(1);
+          expect(owners[0]?.kind, `${label} ${cut.kind}@${cut.start}`).toBe(issueKindFor(cut));
+          if (!isBundledCut(cut)) expect(owners[0]?.cuts, `${label} ${cut.kind}`).toHaveLength(1);
+        }
+
+        for (const issue of rowIssues) {
+          if (!HTML_ISSUE_KINDS.has(issue.kind)) expect(issue.cuts, `${label} ${issue.kind}`).toEqual([]);
+          expect(renderIssueMessage(issue.kind, issue.detail).trim().length, `${label} ${issue.kind}`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("gives each HTML issue kind its severity, class and a message from its detail", () => {
+    const rows = [
+      ["editor-leftovers", "notice", "Changed", { count: 2 }, "2 editor leftovers were removed from this Comment."],
+      ["attribute-removed", "warning", "Changed", { tag: "img", attribute: "onerror" }, "The onerror attribute was removed from <img>."],
+      ["tag-unwrapped", "notice", "Changed", { tag: "font" }, "A <font> tag was removed and its text was kept."],
+      ["style-unparseable", "notice", "Changed", { tag: "p" }, "A style attribute on <p> could not be parsed and was removed."],
+      ["tag-removed", "warning", "Changed", { tag: "script" }, "A <script> tag was removed along with its content."],
+      ["link-scheme-removed", "warning", "Changed", { tag: "a" }, "An address on <a> was removed because its scheme is not allowed."],
+      ["iframe-to-link", "warning", "Unsupported", {}, "An embedded frame from another site was turned into a link."],
+      ["markup-rebuilt", "warning", "Changed", {}, "This Comment's markup was rebuilt. Check it closely."],
+      [
+        "youtube-wrapper-empty",
+        "warning",
+        "Missing from export",
+        {},
+        "An empty YouTube wrapper was removed. The video was not in the export.",
+      ],
+      [
+        "unsafe-style-removed",
+        "warning",
+        "Changed",
+        { tag: "p", property: "background" },
+        "A background style on <p> was removed because its value could load remote content or run code.",
+      ],
+    ] as const;
+    for (const [kind, severity, issueClass, detail, message] of rows) {
+      expect(catalogueEntry(kind), kind).toMatchObject({ level: "row", severity, class: issueClass });
+      expect(renderIssueMessage(kind, detail), kind).toBe(message);
+    }
+    expect(renderIssueMessage("editor-leftovers", { count: 1 })).toBe("1 editor leftover was removed from this Comment.");
+  });
+
   it("keeps an Item name that recurs under different Sections as separate Items", async () => {
     const draft = await draftOf("Room-by-Room Residential Template-2026-09-30.xls");
     const master = draft.tree.sections.find((section) => section.name === "Master Bedroom");
@@ -337,6 +467,76 @@ function readFixture(file: string): Buffer {
 async function draftOf(file: string): Promise<ImportDraft> {
   const result = await parseSpectoraExport(readFixture(file), file);
   return result.draft;
+}
+
+/** Tokens the catalogue treats as a dangerous style value, matched against the cut's source span. */
+const UNSAFE_STYLE = /url\(|expression\(|@import/i;
+
+const HTML_ISSUE_KINDS = new Set<string>([
+  "editor-leftovers",
+  "attribute-removed",
+  "tag-unwrapped",
+  "style-unparseable",
+  "tag-removed",
+  "link-scheme-removed",
+  "iframe-to-link",
+  "markup-rebuilt",
+  "youtube-wrapper-empty",
+  "unsafe-style-removed",
+]);
+
+/** Routine editor leftovers and CSS removals share one notice. Dangerous CSS does not. */
+function isBundledCut(cut: Cut): boolean {
+  if (cut.kind === "editor-leftover") return true;
+  if (cut.kind !== "css-property-removed") return false;
+  return cut.context.unsafeValue !== true && !UNSAFE_STYLE.test(cut.removedText);
+}
+
+function issueKindFor(cut: Cut): string {
+  if (isBundledCut(cut)) return "editor-leftovers";
+  if (cut.kind === "css-property-removed") return "unsafe-style-removed";
+  if (cut.kind === "youtube-wrapper-emptied") return "youtube-wrapper-empty";
+  return cut.kind;
+}
+
+function evidenceOf(cut: Cut) {
+  return {
+    start: cut.start,
+    end: cut.end,
+    kind: cut.kind,
+    removedText: cut.removedText,
+    replacement: cut.replacement ?? null,
+  };
+}
+
+function byStart<T extends { start: number }>(cuts: T[]): T[] {
+  return [...cuts].sort((left, right) => left.start - right.start);
+}
+
+function catalogueEntry(kind: string) {
+  const entry = catalogue.find((candidate) => candidate.kind === kind);
+  if (!entry) throw new Error(`No catalogue entry for ${kind}`);
+  return entry;
+}
+
+async function workbookWithCommentText(texts: readonly string[]): Promise<Uint8Array> {
+  const commentText = HEADERS.indexOf("Comment Text");
+  const commentType = HEADERS.indexOf("Comment Type (info, limit, defect)");
+  const answerType = HEADERS.indexOf("Answer Type (boolean, checkbox, date, number, range, text)");
+  const rows = [
+    [...HEADERS],
+    ...texts.map((text, index) => {
+      const row = HEADERS.map(() => "");
+      row[0] = "Section";
+      row[1] = "Item";
+      row[2] = `Comment ${index + 1}`;
+      row[commentText] = text;
+      row[commentType] = "info";
+      row[answerType] = "boolean";
+      return row;
+    }),
+  ];
+  return writeXlsxFile(rows).toBuffer();
 }
 
 function commentFields(comment: Comment) {

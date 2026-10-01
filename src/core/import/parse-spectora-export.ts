@@ -1,6 +1,6 @@
 import { decodeHTML } from "entities";
 import readXlsxFile from "read-excel-file/node";
-import { sanitiseCommentHtml } from "@/core/sanitise";
+import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import type { Comment, ImportDraft, Item, Section } from "@/core/import/schemas";
 
 export type ParseResult = { ok: true; draft: ImportDraft };
@@ -76,7 +76,9 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     const sectionName = trimmedName(cells[indexes.sectionName], COLUMNS.sectionName, rowNumber, issues);
     const itemName = trimmedName(cells[indexes.itemName], COLUMNS.itemName, rowNumber, issues);
     const commentName = trimmedName(cells[indexes.commentName], COLUMNS.commentName, rowNumber, issues);
-    const comment = buildComment(cells, indexes, rowNumber, commentName);
+    const text = sanitiseCommentHtml(commentText(cells[indexes.commentText]));
+    issues.push(...issuesFromCuts(text.cuts, rowNumber));
+    const comment = buildComment(cells, indexes, rowNumber, commentName, text.html);
 
     if (!currentSection || currentSection.name !== sectionName) {
       currentSection = { name: sectionName, items: [] };
@@ -124,14 +126,14 @@ function headerIndex(headers: readonly string[], header: string): number {
   return index;
 }
 
-function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, name: string): Comment {
+function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, name: string, textHtml: string): Comment {
   const commentType = matchAllowedValue(cells[indexes.commentType], COMMENT_TYPES, "info");
   const answerType = matchAllowedValue(cells[indexes.answerType], ANSWER_TYPES, "boolean");
   const defaults = defaultsOf(answerType, cells[indexes.defaultValue]);
   return {
     sourceRow: rowNumber,
     name,
-    textHtml: sanitiseCommentHtml(commentText(cells[indexes.commentText])).html,
+    textHtml,
     commentType,
     category: categoryOf(cells[indexes.category]),
     recommendation: recommendationOf(cells[indexes.recommendation]),
@@ -239,6 +241,83 @@ function storedCell(value: unknown): Cell {
 
 function isBlankCell(value: Cell): boolean {
   return value === null || (typeof value === "string" && value.trim() === "");
+}
+
+/**
+ * `url(`, `expression(` or `@import` in the source span. The sanitiser also sets
+ * `context.unsafeValue` when those tokens only appear after decoding (entities, escapes, comments).
+ */
+const UNSAFE_STYLE = /url\(|expression\(|@import/i;
+
+function isUnsafeStyle(cut: Cut): boolean {
+  return cut.kind === "css-property-removed" && (cut.context.unsafeValue === true || UNSAFE_STYLE.test(cut.removedText));
+}
+
+/** Editor leftovers and routine CSS removals share one notice per Comment. */
+function isBundled(cut: Cut): boolean {
+  return cut.kind === "editor-leftover" || (cut.kind === "css-property-removed" && !isUnsafeStyle(cut));
+}
+
+function issuesFromCuts(cuts: readonly Cut[], sourceRow: number): ImportDraft["issues"] {
+  const issues: ImportDraft["issues"] = [];
+  const bundled = cuts.filter(isBundled);
+  if (bundled.length > 0) {
+    issues.push({
+      kind: "editor-leftovers",
+      sourceRow,
+      detail: { count: bundled.length },
+      cuts: bundled.map(evidenceCut),
+    });
+  }
+  for (const cut of cuts) {
+    if (isBundled(cut)) continue;
+    issues.push(issueForCut(cut, sourceRow));
+  }
+  return issues;
+}
+
+function issueForCut(cut: Cut, sourceRow: number): ImportDraft["issues"][number] {
+  const cuts = [evidenceCut(cut)];
+  const tag = cut.context.tag;
+  switch (cut.kind) {
+    case "css-property-removed":
+      return { kind: "unsafe-style-removed", sourceRow, detail: { tag, property: cutField(cut, "property") }, cuts };
+    case "attribute-removed":
+      return { kind: "attribute-removed", sourceRow, detail: { tag, attribute: cutField(cut, "attribute") }, cuts };
+    case "style-unparseable":
+    case "tag-unwrapped":
+    case "tag-removed":
+    case "link-scheme-removed":
+      return { kind: cut.kind, sourceRow, detail: { tag }, cuts };
+    case "iframe-to-link":
+      return { kind: "iframe-to-link", sourceRow, detail: {}, cuts };
+    case "youtube-wrapper-emptied":
+      return { kind: "youtube-wrapper-empty", sourceRow, detail: {}, cuts };
+    case "markup-rebuilt":
+      return { kind: "markup-rebuilt", sourceRow, detail: {}, cuts };
+    case "editor-leftover":
+      throw new Error("Editor leftovers are bundled into one issue");
+    default: {
+      const kind: never = cut.kind;
+      throw new Error(`No Import issue for cut kind ${kind}`);
+    }
+  }
+}
+
+function cutField(cut: Cut, field: "attribute" | "property"): string {
+  const value = cut.context[field];
+  if (!value) throw new Error(`Cut ${cut.kind} at ${cut.start}–${cut.end} has no ${field}`);
+  return value;
+}
+
+function evidenceCut(cut: Cut): ImportDraft["issues"][number]["cuts"][number] {
+  return {
+    start: cut.start,
+    end: cut.end,
+    kind: cut.kind,
+    removedText: cut.removedText,
+    replacement: cut.replacement ?? null,
+  };
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
