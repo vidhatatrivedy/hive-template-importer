@@ -274,13 +274,17 @@ function requestSave(state: EditorState): EditorState {
 }
 
 function saveConfirmed(state: EditorState): EditorState {
-  if (state.mode === "read-only" || state.save.status !== "confirm") return state;
-  return { ...state, save: { status: "saving" } };
+  return exitConfirm(state, { status: "saving" });
 }
 
 function saveCancelled(state: EditorState): EditorState {
-  if (state.save.status !== "confirm") return state;
-  return { ...state, save: { status: "idle" } };
+  return exitConfirm(state, { status: "idle" });
+}
+
+/** Confirm and cancel both leave the notice. A read-only Version never entered it, and neither action moves one. */
+function exitConfirm(state: EditorState, save: SaveState): EditorState {
+  if (state.mode === "read-only" || state.save.status !== "confirm") return state;
+  return { ...state, save };
 }
 
 function columnOf(level: NodeRef["level"]): Column {

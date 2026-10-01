@@ -25,40 +25,53 @@ export type PrepareSaveResult =
  * Imported text is already sanitised, so this matches `prepareSave`'s `changes` without sanitising every Comment.
  */
 export function textChanges(tree: EditableTree, base: EditableTree): TextChange[] {
+  const stored = textHtmlById(base);
+  const changes: TextChange[] = [];
+  for (const [sectionIndex, section] of tree.sections.entries()) {
+    for (const [itemIndex, item] of section.items.entries()) {
+      for (const [commentIndex, comment] of item.comments.entries()) {
+        const previous = comment.id !== undefined ? stored.get(comment.id) : undefined;
+        if (previous === comment.textHtml) continue;
+        const change = textChangeIfCut(
+          [sectionIndex, itemIndex, commentIndex],
+          comment.name,
+          comment.sourceRow,
+          sanitiseCommentHtml(comment.textHtml),
+        );
+        if (change) changes.push(change);
+      }
+    }
+  }
+  return changes;
+}
+
+function textHtmlById(tree: EditableTree): Map<string, string> {
   const stored = new Map<string, string>();
-  for (const section of base.sections) {
+  for (const section of tree.sections) {
     for (const item of section.items) {
       for (const comment of item.comments) {
         if (comment.id !== undefined) stored.set(comment.id, comment.textHtml);
       }
     }
   }
+  return stored;
+}
 
-  const changes: TextChange[] = [];
-  for (let sectionIndex = 0; sectionIndex < tree.sections.length; sectionIndex++) {
-    const section = tree.sections[sectionIndex];
-    if (!section) continue;
-    for (let itemIndex = 0; itemIndex < section.items.length; itemIndex++) {
-      const item = section.items[itemIndex];
-      if (!item) continue;
-      for (let commentIndex = 0; commentIndex < item.comments.length; commentIndex++) {
-        const comment = item.comments[commentIndex];
-        if (!comment) continue;
-        const previous = comment.id !== undefined ? stored.get(comment.id) : undefined;
-        if (previous === comment.textHtml) continue;
-        const text = sanitiseCommentHtml(comment.textHtml);
-        if (text.cuts.length === 0) continue;
-        changes.push({
-          path: [sectionIndex, itemIndex, commentIndex],
-          name: comment.name.trim(),
-          sourceRow: comment.sourceRow,
-          cuts: text.cuts,
-          summary: summariseCuts(text.cuts),
-        });
-      }
-    }
-  }
-  return changes;
+/** A TextChange when `text` has cuts. The name is trimmed the same way Save stores it. */
+function textChangeIfCut(
+  path: [number, number, number],
+  name: string,
+  sourceRow: number | null,
+  text: { cuts: Cut[] },
+): TextChange | undefined {
+  if (text.cuts.length === 0) return undefined;
+  return {
+    path,
+    name: name.trim(),
+    sourceRow,
+    cuts: text.cuts,
+    summary: summariseCuts(text.cuts),
+  };
 }
 
 /**
@@ -105,15 +118,8 @@ function prepareComment(
 ): Comment {
   const name = trimmedName(comment.name, "comment", path, blank);
   const text = sanitiseCommentHtml(comment.textHtml);
-  if (text.cuts.length > 0) {
-    changes.push({
-      path,
-      name,
-      sourceRow: comment.sourceRow,
-      cuts: text.cuts,
-      summary: summariseCuts(text.cuts),
-    });
-  }
+  const change = textChangeIfCut(path, name, comment.sourceRow, text);
+  if (change) changes.push(change);
   return {
     sourceRow: comment.sourceRow,
     name,

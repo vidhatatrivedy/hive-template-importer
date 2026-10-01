@@ -1057,6 +1057,20 @@ describe("editorReducer: pre-Save notice", () => {
     expect(located(saving).comment?.textHtml).toBe(textHtml);
   });
 
+  it("leaves a read-only Version on the notice when Save is confirmed or cancelled", () => {
+    const opened = open();
+    const edited = editorReducer(opened, {
+      type: "setComment",
+      id: requireCommentId(opened),
+      patch: { textHtml: "<script>alert(1)</script>" },
+    });
+    const confirming = editorReducer(edited, { type: "saveRequested" });
+    const viewing = { ...confirming, mode: "read-only" as const };
+
+    expect(editorReducer(viewing, { type: "saveConfirmed" })).toBe(viewing);
+    expect(editorReducer(viewing, { type: "saveCancelled" })).toBe(viewing);
+  });
+
   it("reports the same cuts for one edited Residential Comment as sanitising every Comment", () => {
     const opened = open();
     const commentId = requireCommentId(opened);

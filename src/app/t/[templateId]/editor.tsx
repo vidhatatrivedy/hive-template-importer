@@ -164,6 +164,7 @@ export function Editor({
 
   async function runSave() {
     if (saveLock.current || !canSave) return;
+    // The reducer decides invalid, confirm, or saving. Only saving is sent.
     const next = editorReducer(state, { type: "saveRequested" });
     dispatch({ type: "saveRequested" });
     if (next.save.status !== "saving") return;
@@ -178,8 +179,8 @@ export function Editor({
     await commitSave(baseNumber, working);
   }
 
-  function openConfirmedChange(path: TextChange["path"]) {
-    const comment = state.tree.sections[path[0]]?.items[path[1]]?.comments[path[2]];
+  function selectListedComment(path: TextChange["path"]) {
+    const { comment } = nodesOnPath(state.tree, path);
     if (comment?.id) dispatch({ type: "select", ref: { level: "comment", id: comment.id } });
     dispatch({ type: "saveCancelled" });
   }
@@ -501,7 +502,7 @@ export function Editor({
           changes={state.save.changes}
           onSave={() => void acceptSave()}
           onCancel={() => dispatch({ type: "saveCancelled" })}
-          onOpen={openConfirmedChange}
+          onSelect={selectListedComment}
         />
       ) : null}
     </div>
@@ -689,6 +690,8 @@ function CommentDetail({
   );
 }
 
+const REMOVED_ON_SAVE = "When saved, this will be removed:";
+
 /** Rendered Comment text, or the HTML source beside a live preview of what Save would store. */
 function CommentText({
   comment,
@@ -711,7 +714,7 @@ function CommentText({
     () => (showSource ? sanitiseCommentHtml(comment.textHtml) : null),
     [showSource, comment.textHtml],
   );
-  const cuts = preview && preview.cuts.length > 0 ? summariseCuts(preview.cuts) : [];
+  const cutLines = preview ? summariseCuts(preview.cuts) : [];
   const plain = !comment.textHtml.includes("<");
 
   return (
@@ -728,7 +731,7 @@ function CommentText({
           </button>
         </div>
       )}
-      {showSource && preview ? (
+      {preview ? (
         <div className="grid grid-cols-2 gap-3">
           <textarea
             ref={sourceRef}
@@ -741,11 +744,11 @@ function CommentText({
           />
           <div className="min-w-0">
             <CommentHtml html={preview.html} sourceRow={comment.sourceRow} />
-            {cuts.length > 0 ? (
+            {cutLines.length > 0 ? (
               <div className="mt-3 text-neutral-500">
-                <p>When saved, this will be removed:</p>
+                <p>{REMOVED_ON_SAVE}</p>
                 <ul className="mt-1 list-disc pl-4">
-                  {cuts.map((line) => (
+                  {cutLines.map((line) => (
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
@@ -765,17 +768,17 @@ function TextChangeDialog({
   changes,
   onSave,
   onCancel,
-  onOpen,
+  onSelect,
 }: {
   tree: EditableTree;
   changes: readonly TextChange[];
   onSave: () => void;
   onCancel: () => void;
-  onOpen: (path: TextChange["path"]) => void;
+  onSelect: (path: TextChange["path"]) => void;
 }) {
   return (
     <ConfirmDialog
-      message="When saved, this will be removed:"
+      message={REMOVED_ON_SAVE}
       confirmLabel="Save anyway"
       cancelLabel="Keep editing"
       onConfirm={onSave}
@@ -787,7 +790,7 @@ function TextChangeDialog({
             <button
               type="button"
               className="w-full rounded-md px-2 py-1.5 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-              onClick={() => onOpen(change.path)}
+              onClick={() => onSelect(change.path)}
             >
               <span className="text-neutral-900 dark:text-white">{changeTitle(tree, change)}</span>
               <ul className="mt-1 text-neutral-500">
@@ -803,10 +806,19 @@ function TextChangeDialog({
   );
 }
 
+function nodesOnPath(tree: EditableTree, path: TextChange["path"]) {
+  const section = tree.sections[path[0]];
+  const item = section?.items[path[1]];
+  const comment = item?.comments[path[2]];
+  return { section, item, comment };
+}
+
 function changeTitle(tree: EditableTree, change: TextChange): string {
-  const section = tree.sections[change.path[0]];
-  const item = section?.items[change.path[1]];
-  return `${section?.name.trim() || "Section"} › ${item?.name.trim() || "Item"} › ${change.name || "Comment"}`;
+  const { section, item } = nodesOnPath(tree, change.path);
+  const sectionName = section?.name.trim() || "Section";
+  const itemName = item?.name.trim() || "Item";
+  const commentName = change.name || "Comment";
+  return `${sectionName} › ${itemName} › ${commentName}`;
 }
 
 function RecommendationField({

@@ -109,17 +109,6 @@ export function UnsavedGuardProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [unsaved]);
 
-  useEffect(() => {
-    if (!pending) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      settle(false);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [pending, settle]);
-
   const value = useMemo(() => ({ unsaved, report }), [unsaved, report]);
 
   return (
