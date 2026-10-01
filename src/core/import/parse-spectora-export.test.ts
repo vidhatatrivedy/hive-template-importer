@@ -835,6 +835,9 @@ describe("parseSpectoraExport", () => {
     expect(renderIssueMessage("extra-sheet", { sheets: ["Notes", "Photos"] })).toBe(
       'The sheets "Notes" and "Photos" weren\'t read. Only the first sheet was imported.',
     );
+    expect(renderIssueMessage("extra-sheet", { sheets: ["Notes", "Photos", "Appendix"] })).toBe(
+      'The sheets "Notes", "Photos" and "Appendix" weren\'t read. Only the first sheet was imported.',
+    );
   });
 
   it("does not flag the shape of a real Spectora export", async () => {
@@ -944,12 +947,12 @@ const DEFAULT_CELLS: Record<string, string> = {
   "answer type": "boolean",
 };
 
-function headerKey(header: string): string {
-  return header.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim();
-}
-
 function withoutHint(header: string): string {
   return header.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+function headerKey(header: string): string {
+  return withoutHint(header.trim().toLowerCase());
 }
 
 function rowFor(

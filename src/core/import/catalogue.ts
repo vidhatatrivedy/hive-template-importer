@@ -58,10 +58,7 @@ const extraSheet = defineIssue({
   message: (detail: { sheets: string[] }) => {
     const quoted = detail.sheets.map((sheet) => `"${sheet}"`);
     if (quoted.length === 1) return `The sheet ${quoted[0]} wasn't read. Only the first sheet was imported.`;
-    const list =
-      quoted.length === 2
-        ? `${quoted[0]} and ${quoted[1]}`
-        : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+    const list = `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
     return `The sheets ${list} weren't read. Only the first sheet was imported.`;
   },
 });

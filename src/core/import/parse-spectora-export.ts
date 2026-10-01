@@ -18,7 +18,7 @@ const COLUMNS = {
   recommendation: "Recommendation (from list)",
   answerType: "Answer Type (boolean, checkbox, date, number, range, text)",
   defaultValue: "Default Value",
-} as const;
+} as const satisfies Record<string, (typeof EXPECTED_HEADERS)[number]>;
 
 /** Normalised plain-text columns. Comment Text is owned by the sanitiser and is not decoded. */
 const DECODED_COLUMNS = [
@@ -49,6 +49,10 @@ type Cell = string | number | boolean | null;
 type AnswerType = (typeof ANSWER_TYPES)[number];
 type Category = -1 | 0 | 1;
 type ColumnIndexes = Record<keyof typeof COLUMNS, number>;
+type ParsedHeader = (typeof COLUMNS)[keyof typeof COLUMNS];
+
+/** No matching header in this file. Read through `cellAt`, which treats it as an empty cell. */
+const MISSING_COLUMN = -1;
 
 /**
  * Turns a Spectora HTML Text export into an Import draft.
@@ -101,7 +105,7 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     sourceRows.push({ rowNumber, cells });
     for (const column of DECODED_COLUMNS) {
       const columnIndex = indexes[column];
-      if (columnIndex < 0) continue;
+      if (columnIndex === MISSING_COLUMN) continue;
       if (decodeCell(cellAt(cells, columnIndex)).decoded) valuesDecoded += 1;
     }
 
@@ -269,11 +273,24 @@ function matchHeaders(data: readonly (readonly unknown[] | undefined)[], headers
     unknown.push({ header, column: index + 1 });
   }
 
-  const indexes = {} as ColumnIndexes;
-  for (const [key, header] of Object.entries(COLUMNS) as [keyof typeof COLUMNS, string][]) {
-    indexes[key] = indexByExpected.get(header) ?? -1;
-  }
-  return { indexes, found, unknown };
+  return { indexes: columnIndexes(indexByExpected), found, unknown };
+}
+
+function columnIndexes(indexByExpected: ReadonlyMap<string, number>): ColumnIndexes {
+  const indexOf = (header: ParsedHeader) => indexByExpected.get(header) ?? MISSING_COLUMN;
+  return {
+    sectionName: indexOf(COLUMNS.sectionName),
+    itemName: indexOf(COLUMNS.itemName),
+    commentName: indexOf(COLUMNS.commentName),
+    commentText: indexOf(COLUMNS.commentText),
+    commentType: indexOf(COLUMNS.commentType),
+    category: indexOf(COLUMNS.category),
+    choiceOptions: indexOf(COLUMNS.choiceOptions),
+    unitOptions: indexOf(COLUMNS.unitOptions),
+    recommendation: indexOf(COLUMNS.recommendation),
+    answerType: indexOf(COLUMNS.answerType),
+    defaultValue: indexOf(COLUMNS.defaultValue),
+  };
 }
 
 function missingRequired(matched: HeaderMatch): string[] {
@@ -316,13 +333,16 @@ function columnHasContent(
   return false;
 }
 
+/** Trailing parenthetical on a Spectora header, such as `(info, limit, defect)`. */
+const TRAILING_HINT = /\s*\([^)]*\)\s*$/;
+
 function matchesExpectedHeader(fileHeader: string, expected: string): boolean {
   const file = fileHeader.trim().toLowerCase();
   return file === expected.trim().toLowerCase() || file === withoutHint(expected);
 }
 
 function withoutHint(header: string): string {
-  return header.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return header.trim().toLowerCase().replace(TRAILING_HINT, "").trim();
 }
 
 function isBlankHeader(header: string): boolean {
@@ -330,7 +350,7 @@ function isBlankHeader(header: string): boolean {
 }
 
 function columnLabel(header: string): string {
-  return header.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return header.replace(TRAILING_HINT, "").trim();
 }
 
 function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, name: string, textHtml: string): Comment {
@@ -353,7 +373,7 @@ function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, 
 }
 
 function cellAt(cells: Cell[], index: number): Cell {
-  if (index < 0 || index >= cells.length) return null;
+  if (index === MISSING_COLUMN || index >= cells.length) return null;
   return cells[index] ?? null;
 }
 

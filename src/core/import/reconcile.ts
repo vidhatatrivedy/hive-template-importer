@@ -394,7 +394,10 @@ function matchesAny(header: string, expected: readonly string[]): boolean {
   return expected.some((candidate) => matchesExpectedHeader(header, candidate));
 }
 
-/** A file header matches Spectora's verbatim header, or that header without its parenthetical hint. */
+/**
+ * Own copy of the parser's header rule, so reconcile does not call the parser.
+ * A file header matches Spectora's verbatim header, or that header without its parenthetical hint.
+ */
 function matchesExpectedHeader(fileHeader: string, expected: string): boolean {
   const file = fileHeader.trim().toLowerCase();
   return file === expected.trim().toLowerCase() || file === withoutHint(expected);
