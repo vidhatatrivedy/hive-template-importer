@@ -35,8 +35,12 @@ export const catalogue = [whitespaceTrimmed] as const;
 export const issueKinds = [whitespaceTrimmed.kind] as const;
 export type IssueKind = (typeof issueKinds)[number];
 
+function messageFor<Detail>(entry: CatalogueEntry<Detail>, detail: unknown): string {
+  return entry.message(entry.detail.parse(detail));
+}
+
 export function renderIssueMessage(kind: IssueKind, detail: unknown): string {
   const entry = catalogue.find((candidate) => candidate.kind === kind);
   if (!entry) throw new Error(`Unknown Import issue kind: ${kind}`);
-  return entry.message(entry.detail.parse(detail) as never);
+  return messageFor(entry, detail);
 }

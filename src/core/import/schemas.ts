@@ -86,7 +86,7 @@ const sourceRowSchema = z.object({
 
 function sameWidth(
   value: { run: { headers: string[] }; sourceRows: { rowNumber: number; cells: unknown[] }[] },
-  ctx: { addIssue: (issue: { code: "custom"; message: string; path: (string | number)[] }) => void },
+  ctx: z.core.$RefinementCtx,
 ) {
   const width = value.run.headers.length;
   for (const [index, row] of value.sourceRows.entries()) {
@@ -108,12 +108,10 @@ export const importEvidenceSchema = z
   })
   .superRefine(sameWidth);
 
-export const importDraftSchema = importEvidenceSchema
-  .extend({
-    suggestedName: z.string().min(1),
-    tree: editableTreeSchema,
-  })
-  .superRefine(sameWidth);
+export const importDraftSchema = importEvidenceSchema.extend({
+  suggestedName: z.string().min(1),
+  tree: editableTreeSchema,
+});
 
 export type EditableTree = z.infer<typeof editableTreeSchema>;
 export type Section = z.infer<typeof sectionSchema>;
@@ -122,3 +120,15 @@ export type Comment = z.infer<typeof commentSchema>;
 export type ImportIssue = z.infer<typeof importIssueSchema>;
 export type ImportEvidence = z.infer<typeof importEvidenceSchema>;
 export type ImportDraft = z.infer<typeof importDraftSchema>;
+
+export function countEditableTree(tree: EditableTree): { sections: number; items: number; comments: number } {
+  let items = 0;
+  let comments = 0;
+  for (const section of tree.sections) {
+    items += section.items.length;
+    for (const item of section.items) {
+      comments += item.comments.length;
+    }
+  }
+  return { sections: tree.sections.length, items, comments };
+}

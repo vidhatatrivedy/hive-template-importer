@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { parseSpectoraExport } from "../src/core/import/parse-spectora-export";
+import { countEditableTree, parseSpectoraExport } from "../src/core/import";
 
 const FIXTURE_DIR = path.resolve("fixtures/spectora");
 
@@ -10,21 +10,17 @@ async function main() {
     .filter((file) => file.endsWith(".xls"))
     .sort();
 
-  const rows = [];
+  const rows: { file: string; rowsRead: number; comments: number; sections: number; items: number }[] = [];
   for (const file of files) {
     const bytes = fs.readFileSync(path.join(FIXTURE_DIR, file));
     const result = await parseSpectoraExport(bytes, file);
-    const comments = result.draft.tree.sections.reduce(
-      (sum, section) => sum + section.items.reduce((inner, item) => inner + item.comments.length, 0),
-      0,
-    );
-    const items = result.draft.tree.sections.reduce((sum, section) => sum + section.items.length, 0);
+    const counts = countEditableTree(result.draft.tree);
     rows.push({
       file,
       rowsRead: result.draft.run.rowsRead,
-      comments,
-      sections: result.draft.tree.sections.length,
-      items,
+      comments: counts.comments,
+      sections: counts.sections,
+      items: counts.items,
     });
   }
 

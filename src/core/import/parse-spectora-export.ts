@@ -38,6 +38,8 @@ const ANSWER_TYPES = ["boolean", "checkbox", "number", "range", "text", "date"] 
 
 type Cell = string | number | boolean | null;
 type AnswerType = (typeof ANSWER_TYPES)[number];
+type Category = -1 | 0 | 1;
+type ColumnIndexes = Record<keyof typeof COLUMNS, number>;
 
 /**
  * Turns a Spectora HTML Text export into an Import draft.
@@ -68,12 +70,12 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     const rowNumber = index + 1;
     sourceRows.push({ rowNumber, cells });
     for (const column of DECODED_COLUMNS) {
-      if (decodingChanged(cells[indexes[column]])) valuesDecoded += 1;
+      if (decodeCell(cells[indexes[column]]).decoded) valuesDecoded += 1;
     }
 
-    const sectionName = trimmedName(cells[indexes.sectionName], "Section Name", rowNumber, issues);
-    const itemName = trimmedName(cells[indexes.itemName], "Item Name", rowNumber, issues);
-    const commentName = trimmedName(cells[indexes.commentName], "Comment Name", rowNumber, issues);
+    const sectionName = trimmedName(cells[indexes.sectionName], COLUMNS.sectionName, rowNumber, issues);
+    const itemName = trimmedName(cells[indexes.itemName], COLUMNS.itemName, rowNumber, issues);
+    const commentName = trimmedName(cells[indexes.commentName], COLUMNS.commentName, rowNumber, issues);
     const comment = buildComment(cells, indexes, rowNumber, commentName);
 
     if (!currentSection || currentSection.name !== sectionName) {
@@ -107,25 +109,24 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
   return { ok: true, draft };
 }
 
-function columnIndexes(headers: string[]): Record<keyof typeof COLUMNS, number> {
-  const indexes = {} as Record<keyof typeof COLUMNS, number>;
+function columnIndexes(headers: string[]): ColumnIndexes {
+  const indexes = {} as ColumnIndexes;
   for (const [key, header] of Object.entries(COLUMNS) as [keyof typeof COLUMNS, string][]) {
-    const want = header.trim().toLowerCase();
-    const index = headers.findIndex((cell) => cell.trim().toLowerCase() === want);
-    if (index < 0) throw new Error(`Missing column: ${header}`);
-    indexes[key] = index;
+    indexes[key] = headerIndex(headers, header);
   }
   return indexes;
 }
 
-function buildComment(
-  cells: Cell[],
-  indexes: Record<keyof typeof COLUMNS, number>,
-  rowNumber: number,
-  name: string,
-): Comment {
-  const commentType = vocabulary(cells[indexes.commentType], COMMENT_TYPES, "info");
-  const answerType = vocabulary(cells[indexes.answerType], ANSWER_TYPES, "boolean");
+function headerIndex(headers: readonly string[], header: string): number {
+  const want = header.trim().toLowerCase();
+  const index = headers.findIndex((cell) => cell.trim().toLowerCase() === want);
+  if (index < 0) throw new Error(`Missing column: ${header}`);
+  return index;
+}
+
+function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, name: string): Comment {
+  const commentType = matchAllowedValue(cells[indexes.commentType], COMMENT_TYPES, "info");
+  const answerType = matchAllowedValue(cells[indexes.answerType], ANSWER_TYPES, "boolean");
   const defaults = defaultsOf(answerType, cells[indexes.defaultValue]);
   return {
     sourceRow: rowNumber,
@@ -155,17 +156,23 @@ function commentText(value: Cell): string {
   return typeof value === "string" ? value : "";
 }
 
-function vocabulary<T extends string>(value: Cell, allowed: readonly T[], fallback: T): T {
+function matchAllowedValue<T extends string>(value: Cell, allowed: readonly T[], fallback: T): T {
   const text = decodeCell(value).text.trim().toLowerCase();
-  return allowed.find((entry) => entry === text) ?? fallback;
+  const match = allowed.find((entry) => entry === text);
+  return match ?? fallback;
 }
 
-function categoryOf(value: Cell): -1 | 0 | 1 | null {
-  if (typeof value === "number") return value === -1 || value === 0 || value === 1 ? value : null;
+function categoryOf(value: Cell): Category | null {
+  const numeric = categoryNumber(value);
+  if (numeric === -1 || numeric === 0 || numeric === 1) return numeric;
+  return null;
+}
+
+function categoryNumber(value: Cell): number | null {
+  if (typeof value === "number") return value;
   const text = decodeCell(value).text.trim();
   if (text === "") return null;
-  const numeric = Number(text);
-  return numeric === -1 || numeric === 0 || numeric === 1 ? numeric : null;
+  return Number(text);
 }
 
 function recommendationOf(value: Cell): string | null {
@@ -201,16 +208,13 @@ function decodeCell(value: Cell): { text: string; decoded: boolean } {
   return { text, decoded: text !== value };
 }
 
-function decodingChanged(value: Cell): boolean {
-  return typeof value === "string" && decodeHTML(value) !== value;
-}
-
 function suggestedName(filename: string): string {
   const withoutExtension = filename.replace(/\.[^.]+$/, "");
   const withoutDate = withoutExtension.replace(/ *-[ ]*\d{4}-\d{2}-\d{2}$/, "").trim();
   if (withoutDate !== "") return withoutDate;
   const fallback = withoutExtension.trim();
-  return fallback !== "" ? fallback : "Untitled Template";
+  if (fallback !== "") return fallback;
+  return "Untitled Template";
 }
 
 function headerText(value: unknown): string {
@@ -225,7 +229,7 @@ function align(row: readonly unknown[] | undefined, width: number): unknown[] {
   return cells;
 }
 
-/** The only change made to a raw cell: a Date becomes an ISO 8601 string. */
+/** A Date becomes an ISO 8601 string. Any other non-cell value is stringified. */
 function storedCell(value: unknown): Cell {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value.toISOString();

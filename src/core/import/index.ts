@@ -4,6 +4,7 @@ export { parseSpectoraExport } from "./parse-spectora-export";
 export type { ParseResult } from "./parse-spectora-export";
 export {
   commentSchema,
+  countEditableTree,
   editableTreeSchema,
   importDraftSchema,
   importEvidenceSchema,

@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 import { renderIssueMessage } from "@/core/import/catalogue";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
 import { sanitiseCommentHtml } from "@/core/sanitise";
-import { editableTreeSchema, importDraftSchema, type Comment, type EditableTree, type ImportDraft } from "@/core/import/schemas";
+import {
+  countEditableTree,
+  editableTreeSchema,
+  importDraftSchema,
+  type Comment,
+  type EditableTree,
+  type ImportDraft,
+} from "@/core/import/schemas";
 
 const FIXTURE_DIR = path.resolve(__dirname, "../../../fixtures/spectora");
 
@@ -131,22 +138,12 @@ function commentOn(draft: ImportDraft, sourceRow: number): Comment {
   return comment;
 }
 
-function treeCounts(tree: EditableTree) {
-  const items = tree.sections.reduce((sum, section) => sum + section.items.length, 0);
-  const comments = tree.sections.reduce(
-    (sum, section) => sum + section.items.reduce((inner, item) => inner + item.comments.length, 0),
-    0,
-  );
-  return { sections: tree.sections.length, items, comments };
-}
-
 describe("parseSpectoraExport", () => {
   it("parses each HTML fixture to the README's rows, sections and items", async () => {
     for (const fixture of HTML_FIXTURES) {
-      const bytes = fs.readFileSync(path.join(FIXTURE_DIR, fixture.file));
+      const bytes = readFixture(fixture.file);
       const result = await parseSpectoraExport(bytes, fixture.file);
       expect(result.ok, fixture.file).toBe(true);
-      if (!result.ok) continue;
 
       const { draft } = result;
       expect(draft.run.blankRows, fixture.file).toBe(0);
@@ -154,7 +151,7 @@ describe("parseSpectoraExport", () => {
       expect(draft.sourceRows, fixture.file).toHaveLength(fixture.rows);
       expect(draft.sourceRows[0]?.rowNumber, fixture.file).toBe(2);
 
-      const counts = treeCounts(draft.tree);
+      const counts = countEditableTree(draft.tree);
       expect(counts, fixture.file).toEqual({
         sections: fixture.sections,
         items: fixture.items,
@@ -170,10 +167,9 @@ describe("parseSpectoraExport", () => {
 
   it("records run metadata, the verbatim header and a suggested name without the export date", async () => {
     for (const fixture of HTML_FIXTURES) {
-      const bytes = fs.readFileSync(path.join(FIXTURE_DIR, fixture.file));
+      const bytes = readFixture(fixture.file);
       const result = await parseSpectoraExport(bytes, fixture.file);
       expect(result.ok).toBe(true);
-      if (!result.ok) continue;
 
       expect(result.draft.suggestedName, fixture.file).toBe(fixture.suggestedName);
       expect(result.draft.run, fixture.file).toMatchObject({
@@ -313,11 +309,13 @@ describe("parseSpectoraExport", () => {
   });
 
   it("falls back when the filename is only an extension or only an export date", async () => {
-    const bytes = fs.readFileSync(path.join(FIXTURE_DIR, "Radon Inspection-2026-09-30.xls"));
+    const bytes = readFixture("Radon Inspection-2026-09-30.xls");
     const untitled = await parseSpectoraExport(bytes, ".xls");
     const dateOnly = await parseSpectoraExport(bytes, "-2026-09-30.xls");
-    expect(untitled.ok && untitled.draft.suggestedName).toBe("Untitled Template");
-    expect(dateOnly.ok && dateOnly.draft.suggestedName).toBe("-2026-09-30");
+    expect(untitled.ok).toBe(true);
+    expect(untitled.draft.suggestedName).toBe("Untitled Template");
+    expect(dateOnly.ok).toBe(true);
+    expect(dateOnly.draft.suggestedName).toBe("-2026-09-30");
   });
 
   it("keeps an Item name that recurs under different Sections as separate Items", async () => {
@@ -332,10 +330,12 @@ describe("parseSpectoraExport", () => {
   });
 });
 
+function readFixture(file: string): Buffer {
+  return fs.readFileSync(path.join(FIXTURE_DIR, file));
+}
+
 async function draftOf(file: string): Promise<ImportDraft> {
-  const bytes = fs.readFileSync(path.join(FIXTURE_DIR, file));
-  const result = await parseSpectoraExport(bytes, file);
-  if (!result.ok) throw new Error(`${file} was rejected`);
+  const result = await parseSpectoraExport(readFixture(file), file);
   return result.draft;
 }
 
