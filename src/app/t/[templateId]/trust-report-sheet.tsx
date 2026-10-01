@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { issueClasses, issueSeverities, type IssueSeverity } from "@/core/import/catalogue";
 import { templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
+import {
+  trustSectionsView,
+  type ExternalAssetsView,
+  type MissingCountView,
+  type ReconciliationRowView,
+  type ReconciliationSectionView,
+  type TrustSectionsView,
+} from "@/app/trust-sections";
 import { trustSummaryView } from "@/app/trust-summary";
 import { glassSheetClass, labelClass, severityNoticeClass, severityWarningClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
@@ -27,6 +35,7 @@ export function TrustReportSheet({
 }) {
   const { summary } = loaded.report;
   const summaryView = trustSummaryView(loaded.report, latestNumber);
+  const sections = trustSectionsView(loaded.report);
   const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
 
   return (
@@ -108,7 +117,135 @@ export function TrustReportSheet({
             <p className={verdictClass}>✓ {summaryView.verdict}</p>
           )}
         </section>
+
+        <Reconciliation sections={sections.reconciliation} />
+        <ExternalAssets assets={sections.externalAssets} rowHref={rowHref} />
+        <KeptButNotUsed kept={sections.keptButNotUsed} />
+        <MissingFromExport missing={sections.missingFromExport} />
       </div>
     </aside>
+  );
+}
+
+function Reconciliation({ sections }: { sections: ReconciliationSectionView[] }) {
+  return (
+    <section className="flex flex-col gap-1">
+      <h3 className={labelClass}>Reconciliation by Section</h3>
+      {sections.map((section, index) => (
+        <details
+          key={`${section.row.name}-${index}`}
+          className="border-b border-black/[0.05] py-1 last:border-b-0 dark:border-white/[0.06]"
+        >
+          <summary className="cursor-pointer">
+            <ReconciliationRow row={section.row} />
+          </summary>
+          <div className="mt-1 flex flex-col pl-3">
+            {section.items.map((item, itemIndex) => (
+              <div key={`${item.name}-${itemIndex}`} className="py-1">
+                <ReconciliationRow row={item} />
+              </div>
+            ))}
+          </div>
+        </details>
+      ))}
+    </section>
+  );
+}
+
+function ReconciliationRow({ row }: { row: ReconciliationRowView }) {
+  return (
+    <>
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="min-w-0 text-neutral-900 dark:text-white">
+          {row.name}
+          {row.mark ? <span className="text-neutral-500"> · {row.mark}</span> : null}
+        </span>
+        <span className="shrink-0 text-neutral-900 dark:text-white">{row.status}</span>
+      </span>
+      <span className="block text-neutral-500">{row.counts}</span>
+    </>
+  );
+}
+
+function ExternalAssets({ assets, rowHref }: { assets: ExternalAssetsView; rowHref: (row: number) => string }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className={labelClass}>External assets</h3>
+      {assets.empty ? (
+        <p>{assets.empty}</p>
+      ) : (
+        <>
+          {assets.hosts.map((host) => (
+            <div key={host.host} className="flex flex-col gap-2">
+              <p className="font-medium text-neutral-900 dark:text-white">{host.host}</p>
+              <ul className="flex flex-col gap-2">
+                {host.urls.map((asset) => (
+                  <li key={asset.url} className="flex flex-col gap-0.5">
+                    <p className="break-all font-mono text-[11px] text-neutral-500">{asset.url}</p>
+                    {asset.sourceRows.length > 0 ? (
+                      <p>
+                        {asset.sourceRows.map((row, index) => (
+                          <span key={row}>
+                            {index > 0 ? ", " : null}
+                            <Link href={rowHref(row)} className="underline underline-offset-2">
+                              Source row {row}
+                            </Link>
+                          </span>
+                        ))}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {assets.note ? <p className="text-neutral-500">{assets.note}</p> : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+function KeptButNotUsed({ kept }: { kept: TrustSectionsView["keptButNotUsed"] }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className={labelClass}>Kept but not used</h3>
+      <ul className="flex flex-col gap-0.5">
+        {kept.columns.map((column) => (
+          <li key={column.column}>
+            {column.column}
+            <span className="text-neutral-500">
+              {" "}
+              · {column.rowsHoldingContent} {column.rowsHoldingContent === 1 ? "row" : "rows"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-neutral-500">{kept.note}</p>
+    </section>
+  );
+}
+
+function MissingFromExport({
+  missing,
+}: {
+  missing: { entries: string[]; counts: [MissingCountView, MissingCountView] };
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className={labelClass}>Missing from export</h3>
+      <ul className="flex flex-col gap-0.5">
+        {missing.entries.map((entry) => (
+          <li key={entry}>{entry}</li>
+        ))}
+      </ul>
+      <ul className="flex flex-col text-neutral-500">
+        {missing.counts.map((count) => (
+          <li key={count.title}>
+            {count.title} · {count.count}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
