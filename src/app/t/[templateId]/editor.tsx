@@ -7,6 +7,7 @@ import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 import {
   blankNames,
+  canChangeStructure,
   canMove,
   canSave as canSaveState,
   commentGroups,
@@ -88,7 +89,7 @@ export function Editor({
   const savingOrAwaiting = isSavingOrAwaiting(state);
   const canSave = canSaveState(state);
   const canDiscard = dirty && !savingOrAwaiting;
-  const editable = state.mode === "edit" && !savingOrAwaiting;
+  const editable = canChangeStructure(state);
   useReportUnsaved(dirty);
 
   useEffect(() => {

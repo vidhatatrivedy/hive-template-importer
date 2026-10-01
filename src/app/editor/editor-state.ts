@@ -7,6 +7,8 @@ export type Column = "sections" | "items" | "comments";
 
 export type NodeRef = { level: "section" | "item" | "comment"; id: string };
 
+export type Direction = "up" | "down";
+
 export type EditorSelection = {
   sectionId: string | null;
   itemId: string | null;
@@ -63,7 +65,7 @@ export type EditorAction =
   | { type: "addItem" }
   | { type: "addComment"; commentType: Comment["commentType"] }
   | { type: "delete"; ref: NodeRef }
-  | { type: "move"; ref: NodeRef; dir: "up" | "down" }
+  | { type: "move"; ref: NodeRef; dir: Direction }
   | { type: "rename"; ref: NodeRef; name: string }
   | { type: "setComment"; id: string; patch: CommentPatch }
   | { type: "saveRequested" }
@@ -143,7 +145,7 @@ export function deleteSectionPrompt(name: string, contents: { items: number; com
 }
 
 /** False at an end, at a type group's edge, or when nothing can be edited. */
-export function canMove(state: EditorState, ref: NodeRef, dir: "up" | "down"): boolean {
+export function canMove(state: EditorState, ref: NodeRef, dir: Direction): boolean {
   return move(state, ref, dir) !== state;
 }
 
@@ -296,32 +298,24 @@ function discard(state: EditorState): EditorState {
 function setComment(state: EditorState, id: string, patch: CommentPatch): EditorState {
   if (state.mode === "read-only") return state;
   if (state.save.status === "saving") return state;
-  for (let sectionIndex = 0; sectionIndex < state.tree.sections.length; sectionIndex++) {
-    const section = state.tree.sections[sectionIndex];
-    if (!section) continue;
-    for (let itemIndex = 0; itemIndex < section.items.length; itemIndex++) {
-      const item = section.items[itemIndex];
-      if (!item) continue;
-      const commentIndex = item.comments.findIndex((comment) => comment.id === id);
-      const current = item.comments[commentIndex];
-      if (!current) continue;
-      const next = applyCommentPatch(current, patch);
-      if (sameComment(current, next)) return state;
-      const comments = item.comments.slice();
-      comments[commentIndex] = next;
-      const items = section.items.slice();
-      items[itemIndex] = { ...item, comments };
-      const sections = state.tree.sections.slice();
-      sections[sectionIndex] = { ...section, items };
-      return { ...state, tree: { sections } };
-    }
-  }
-  return state;
+  const place = commentPlace(state.tree, id);
+  const current = place?.item.comments[place.commentIndex];
+  if (!place || !current) return state;
+  const next = applyCommentPatch(current, patch);
+  if (sameComment(current, next)) return state;
+  const comments = place.item.comments.slice();
+  comments[place.commentIndex] = next;
+  return { ...state, tree: replaceItem(state.tree, place, { ...place.item, comments }) };
 }
 
 /** Structure changes wait for an editable, settled state: nothing in flight and not a read-only Version. */
-function canChangeStructure(state: EditorState): boolean {
+export function canChangeStructure(state: EditorState): boolean {
   return state.mode === "edit" && !isSavingOrAwaiting(state);
+}
+
+/** The id the next added node takes. `withNewNode` moves the counter on. */
+function newId(state: EditorState): string {
+  return `tmp-${state.nextTmp}`;
 }
 
 function withNewNode(state: EditorState, tree: EditableTree, focus: Column, selection: EditorSelection, id: string) {
@@ -330,7 +324,7 @@ function withNewNode(state: EditorState, tree: EditableTree, focus: Column, sele
 
 function addSection(state: EditorState): EditorState {
   if (!canChangeStructure(state)) return state;
-  const id = `tmp-${state.nextTmp}`;
+  const id = newId(state);
   const tree = { sections: [...state.tree.sections, { id, name: "", items: [] }] };
   return withNewNode(state, tree, "sections", { sectionId: id, itemId: null, commentId: null }, id);
 }
@@ -341,7 +335,7 @@ function addItem(state: EditorState): EditorState {
   const sectionIndex = state.tree.sections.findIndex((section) => section.id === sectionId);
   const section = state.tree.sections[sectionIndex];
   if (!section || !sectionId) return state;
-  const id = `tmp-${state.nextTmp}`;
+  const id = newId(state);
   const tree = replaceSection(state.tree, sectionIndex, {
     ...section,
     items: [...section.items, { id, name: "", comments: [] }],
@@ -354,7 +348,7 @@ function addComment(state: EditorState, commentType: Comment["commentType"]): Ed
   const { sectionId, itemId } = state.selection;
   const place = itemPlace(state.tree, itemId);
   if (!place || !sectionId || !itemId) return state;
-  const id = `tmp-${state.nextTmp}`;
+  const id = newId(state);
   const comment: Comment = {
     id,
     sourceRow: null,
@@ -433,7 +427,7 @@ function deleteNode(state: EditorState, ref: NodeRef): EditorState {
  * Sections and Items swap with a neighbour. A Comment swaps with the nearest Comment of its own type
  * in its Item's stored list, so every other Comment keeps its stored place.
  */
-function move(state: EditorState, ref: NodeRef, dir: "up" | "down"): EditorState {
+function move(state: EditorState, ref: NodeRef, dir: Direction): EditorState {
   if (!canChangeStructure(state)) return state;
   const step = dir === "up" ? -1 : 1;
   if (ref.level === "section") {
