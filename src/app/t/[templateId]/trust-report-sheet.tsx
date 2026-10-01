@@ -11,6 +11,8 @@ const severityClass: Record<IssueSeverity, string> = {
   notice: severityNoticeClass,
 };
 
+const verdictClass = "font-medium text-neutral-900 dark:text-white";
+
 /** The Import Trust Report sheet. Renders the report data as it comes. */
 export function TrustReportSheet({
   templateId,
@@ -24,7 +26,7 @@ export function TrustReportSheet({
   loaded: LoadedTrustReport;
 }) {
   const { summary } = loaded.report;
-  const text = trustSummaryView(loaded.report, latestNumber);
+  const summaryView = trustSummaryView(loaded.report, latestNumber);
   const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
 
   return (
@@ -43,7 +45,7 @@ export function TrustReportSheet({
         </Link>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
-        {text.versionLabel ? <p className="text-neutral-500">{text.versionLabel}</p> : null}
+        {summaryView.versionLabel ? <p className="text-neutral-500">{summaryView.versionLabel}</p> : null}
 
         <section className="flex flex-col gap-2">
           <h3 className={labelClass}>Summary</h3>
@@ -63,9 +65,9 @@ export function TrustReportSheet({
               </abbr>
             </dd>
             <dt className="text-neutral-500">Size</dt>
-            <dd>{text.fileSize}</dd>
+            <dd>{summaryView.fileSize}</dd>
           </dl>
-          <p>{text.rowFlow}</p>
+          <p>{summaryView.rowFlow}</p>
           <p>
             {summary.sections} Sections · {summary.items} Items · {summary.comments} Comments
           </p>
@@ -84,12 +86,12 @@ export function TrustReportSheet({
             ))}
           </ul>
           <p>{summary.valuesDecoded} values decoded</p>
-          {text.failure ? (
+          {summaryView.failure ? (
             <div className="flex flex-col gap-1">
-              <p className="font-medium text-neutral-900 dark:text-white">{text.verdict}</p>
-              <p className="font-medium text-neutral-900 dark:text-white">{text.failure.message}</p>
+              <p className={verdictClass}>{summaryView.verdict}</p>
+              <p className={verdictClass}>{summaryView.failure.message}</p>
               <ul className="flex flex-col">
-                {text.failure.sourceRows.map((row, index) => (
+                {summaryView.failure.sourceRows.map((row, index) => (
                   <li key={row ?? `none-${index}`}>
                     {row === null ? (
                       <span className="text-neutral-500">A stored Comment with no Source row</span>
@@ -103,7 +105,7 @@ export function TrustReportSheet({
               </ul>
             </div>
           ) : (
-            <p className="font-medium text-neutral-900 dark:text-white">✓ {text.verdict}</p>
+            <p className={verdictClass}>✓ {summaryView.verdict}</p>
           )}
         </section>
       </div>
