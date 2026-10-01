@@ -73,6 +73,64 @@ const whitespaceTrimmed = defineIssue({
   message: (detail: { field: string }) => `Leading and trailing spaces were removed from ${detail.field}.`,
 });
 
+const vocabularyField = z.object({ field: z.string().min(1) });
+const categoryValue = z.union([z.literal(-1), z.literal(0), z.literal(1)]);
+
+const vocabularyNormalised = defineIssue({
+  kind: "vocabulary-normalised",
+  level: "row",
+  severity: "notice",
+  class: "Changed",
+  title: "Vocabulary normalised",
+  detail: vocabularyField,
+  message: (detail: { field: string }) => `${columnTitle(detail.field)} was re-cased or trimmed.`,
+});
+
+const commentTypeFallback = defineIssue({
+  kind: "comment-type-fallback",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Comment type not recognised",
+  detail: z.object({}),
+  message: () => "Comment Type was blank or not a known value, so it was stored as Informational.",
+});
+
+const answerTypeFallback = defineIssue({
+  kind: "answer-type-fallback",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Answer type not recognised",
+  detail: z.object({}),
+  message: () => "Answer Type was blank or not a known value, so it was stored as yes/no.",
+});
+
+const categoryMissing = defineIssue({
+  kind: "category-missing",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Category missing",
+  detail: z.object({}),
+  message: () => "This defect has no valid Category, so none was stored.",
+});
+
+const categoryOrphan = defineIssue({
+  kind: "category-orphan",
+  level: "row",
+  severity: "notice",
+  class: "Check",
+  title: "Category kept",
+  detail: z.object({ category: categoryValue }),
+  message: (detail: { category: -1 | 0 | 1 }) =>
+    `Category ${detail.category} was kept on an Informational or Limitation Comment.`,
+});
+
+function columnTitle(field: string): string {
+  return field.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
 const editorLeftovers = defineIssue({
   kind: "editor-leftovers",
   level: "row",
@@ -184,6 +242,11 @@ export const catalogue = [
   unknownColumn,
   extraSheet,
   whitespaceTrimmed,
+  vocabularyNormalised,
+  commentTypeFallback,
+  answerTypeFallback,
+  categoryMissing,
+  categoryOrphan,
   editorLeftovers,
   attributeRemoved,
   tagUnwrapped,
@@ -201,6 +264,11 @@ export const issueKinds = [
   unknownColumn.kind,
   extraSheet.kind,
   whitespaceTrimmed.kind,
+  vocabularyNormalised.kind,
+  commentTypeFallback.kind,
+  answerTypeFallback.kind,
+  categoryMissing.kind,
+  categoryOrphan.kind,
   editorLeftovers.kind,
   attributeRemoved.kind,
   tagUnwrapped.kind,

@@ -5,8 +5,11 @@ import { applyCuts, type Cut } from "@/core/sanitise";
 
 export type Cell = string | number | boolean | null;
 
-/** Import issue kinds, or the entity-decoding rule. A null explanation is an Unexplained difference. */
-export type DifferenceExplanation = { issues: IssueKind[] } | { rule: "entity-decoding" };
+/**
+ * Import issue kinds, or a named rule. A null explanation is an Unexplained difference.
+ * `category-dropped` is an invalid Category on an info or limit Comment, discarded with no issue.
+ */
+export type DifferenceExplanation = { issues: IssueKind[] } | { rule: "entity-decoding" | "category-dropped" };
 
 export type Difference = {
   column: string;
@@ -48,6 +51,10 @@ const ANSWER_TYPE = "Answer Type (boolean, checkbox, date, number, range, text)"
 const DEFAULT_VALUE = "Default Value";
 
 const NAME_COLUMNS = [SECTION_NAME, ITEM_NAME, COMMENT_NAME, RECOMMENDATION];
+
+/** Copied, not imported from the parser, so a parser bug cannot explain itself away. */
+const COMMENT_TYPES = ["info", "limit", "defect"] as const;
+const ANSWER_TYPES = ["boolean", "checkbox", "number", "range", "text", "date"] as const;
 
 /**
  * Written from the tree, but not compared. Ben's `f` defaults are still empty, and the
@@ -216,16 +223,127 @@ function fieldDifferences(
     if (matchesAny(column, SKIPPED_COLUMNS)) continue;
     const raw = index < source.cells.length ? (source.cells[index] ?? null) : null;
     const stored = storedCells[index] ?? null;
-    const difference = compareCell(column, raw, stored, issues);
+    const difference = compareCell(column, raw, stored, issues, storedCell(headers, storedCells, COMMENT_TYPE));
     if (difference) differences.push(difference);
   }
   return differences;
 }
 
-function compareCell(column: string, raw: Cell, stored: Cell, issues: readonly ImportIssue[]): Difference | null {
+function compareCell(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  issues: readonly ImportIssue[],
+  commentType: Cell,
+): Difference | null {
   if (matchesExpectedHeader(column, COMMENT_TEXT)) return commentTextDifference(column, raw, stored, issues);
   if (matchesAny(column, NAME_COLUMNS)) return nameDifference(column, raw, stored, issues);
+  if (matchesExpectedHeader(column, CATEGORY)) return categoryDifference(column, raw, stored, issues, commentType);
+  if (matchesExpectedHeader(column, COMMENT_TYPE)) {
+    return vocabularyDifference(column, raw, stored, issues, COMMENT_TYPES, "info", "comment-type-fallback");
+  }
+  if (matchesExpectedHeader(column, ANSWER_TYPE)) {
+    return vocabularyDifference(column, raw, stored, issues, ANSWER_TYPES, "boolean", "answer-type-fallback");
+  }
   return equalityDifference(column, raw, stored);
+}
+
+/**
+ * A known value whose visible text changed needs `vocabulary-normalised`.
+ * Unknown or blank needs the fallback issue, which replaces the re-case notice.
+ * Decoding alone is the entity-decoding rule. A non-string cell's string form is not a difference.
+ */
+function vocabularyDifference(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  issues: readonly ImportIssue[],
+  allowed: readonly string[],
+  fallback: string,
+  fallbackKind: IssueKind,
+): Difference | null {
+  if (typeof stored !== "string") return { column, raw, stored, explanation: null };
+
+  const decoded = cellText(raw);
+  const canonical = decoded.trim().toLowerCase();
+  if (allowed.includes(canonical)) {
+    if (stored !== canonical) return { column, raw, stored, explanation: null };
+    if (typeof raw === "string" && raw === stored) return null;
+    if (typeof raw === "string" && decoded === stored && decoded !== raw) {
+      return { column, raw, stored, explanation: { rule: "entity-decoding" } };
+    }
+    if (typeof raw !== "string" && decoded === stored) return null;
+    const explained = issues.some(
+      (issue) => issue.kind === "vocabulary-normalised" && matchesExpectedHeader(column, fieldOf(issue.detail) ?? ""),
+    );
+    return { column, raw, stored, explanation: explained ? { issues: ["vocabulary-normalised"] } : null };
+  }
+
+  if (stored !== fallback) return { column, raw, stored, explanation: null };
+  const explained = issues.some((issue) => issue.kind === fallbackKind);
+  return { column, raw, stored, explanation: explained ? { issues: [fallbackKind] } : null };
+}
+
+/**
+ * On a defect, a missing or invalid Category is a difference only `category-missing` explains,
+ * including a blank cell stored as null. On info or limit, a kept value is a difference only
+ * `category-orphan` explains, even when the number matches. `"0"`, `0` and `0.0` are the same
+ * Category and are not recorded. An invalid value on info or limit is dropped with no issue.
+ */
+function categoryDifference(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  issues: readonly ImportIssue[],
+  commentType: Cell,
+): Difference | null {
+  const numeric = validCategory(categoryNumber(raw));
+  if (commentType === "defect") {
+    if (numeric !== null) {
+      if (stored === numeric) return null;
+      return { column, raw, stored, explanation: null };
+    }
+    if (stored === null) {
+      const explained = issues.some((issue) => issue.kind === "category-missing");
+      return { column, raw, stored, explanation: explained ? { issues: ["category-missing"] } : null };
+    }
+    return { column, raw, stored, explanation: null };
+  }
+
+  if (commentType === "info" || commentType === "limit") {
+    if (numeric !== null) {
+      if (stored !== numeric) return { column, raw, stored, explanation: null };
+      const explained = issues.some((issue) => issue.kind === "category-orphan");
+      return { column, raw, stored, explanation: explained ? { issues: ["category-orphan"] } : null };
+    }
+    if (stored !== null) return { column, raw, stored, explanation: null };
+    if (isBlankCategory(raw)) return null;
+    return { column, raw, stored, explanation: { rule: "category-dropped" } };
+  }
+
+  return equalityDifference(column, raw, stored);
+}
+
+function categoryNumber(value: Cell): number | null {
+  if (typeof value === "number") return value;
+  const text = cellText(value).trim();
+  if (text === "") return null;
+  return Number(text);
+}
+
+function validCategory(numeric: number | null): -1 | 0 | 1 | null {
+  if (numeric === -1 || numeric === 0 || numeric === 1) return numeric;
+  return null;
+}
+
+function isBlankCategory(value: Cell): boolean {
+  return value === null || (typeof value === "string" && cellText(value).trim() === "");
+}
+
+function storedCell(headers: readonly string[], cells: readonly Cell[], header: string): Cell {
+  const index = columnIndex(headers, header);
+  if (index < 0 || index >= cells.length) return null;
+  return cells[index] ?? null;
 }
 
 function commentTextDifference(column: string, raw: Cell, stored: Cell, issues: readonly ImportIssue[]): Difference | null {

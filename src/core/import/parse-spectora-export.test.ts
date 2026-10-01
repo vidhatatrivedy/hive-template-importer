@@ -282,6 +282,124 @@ describe("parseSpectoraExport", () => {
     expect(responsibility.defaultText).toBeNull();
   });
 
+  it("stores odd Comment types, Answer types and Categories with a named fallback", async () => {
+    const draft = await vocabularyDraft();
+
+    expect(catalogueEntry("vocabulary-normalised")).toMatchObject({ level: "row", severity: "notice", class: "Changed" });
+    expect(catalogueEntry("comment-type-fallback")).toMatchObject({ level: "row", severity: "warning", class: "Changed" });
+    expect(catalogueEntry("answer-type-fallback")).toMatchObject({ level: "row", severity: "warning", class: "Changed" });
+    expect(catalogueEntry("category-missing")).toMatchObject({ level: "row", severity: "warning", class: "Changed" });
+    expect(catalogueEntry("category-orphan")).toMatchObject({ level: "row", severity: "notice", class: "Check" });
+    expect(renderIssueMessage("vocabulary-normalised", { field: COMMENT_TYPE })).toBe("Comment Type was re-cased or trimmed.");
+    expect(renderIssueMessage("comment-type-fallback", {})).toBe(
+      "Comment Type was blank or not a known value, so it was stored as Informational.",
+    );
+    expect(renderIssueMessage("answer-type-fallback", {})).toBe(
+      "Answer Type was blank or not a known value, so it was stored as yes/no.",
+    );
+    expect(renderIssueMessage("category-missing", {})).toBe("This defect has no valid Category, so none was stored.");
+    expect(renderIssueMessage("category-orphan", { category: 1 })).toBe(
+      "Category 1 was kept on an Informational or Limitation Comment.",
+    );
+
+    expect(storedFields(draft)).toEqual([
+      { name: "Odd defect", commentType: "defect", answerType: "boolean", category: 0 },
+      { name: "Unknown type", commentType: "info", answerType: "boolean", category: null },
+      { name: "Blank type", commentType: "info", answerType: "boolean", category: null },
+      { name: "Odd answer", commentType: "info", answerType: "text", category: null },
+      { name: "Unknown answer", commentType: "info", answerType: "boolean", category: null },
+      { name: "Blank answer", commentType: "info", answerType: "boolean", category: null },
+      { name: "No category", commentType: "defect", answerType: "boolean", category: null },
+      { name: "Invalid category", commentType: "defect", answerType: "boolean", category: null },
+      { name: "Info category", commentType: "info", answerType: "boolean", category: 1 },
+      { name: "Limit category", commentType: "limit", answerType: "boolean", category: -1 },
+      { name: "String zero", commentType: "defect", answerType: "boolean", category: 0 },
+      { name: "Decimal zero", commentType: "defect", answerType: "boolean", category: 0 },
+      { name: "Padded category", commentType: "defect", answerType: "boolean", category: 1 },
+      { name: "Dropped category", commentType: "info", answerType: "boolean", category: null },
+      { name: "Decoded type", commentType: "info", answerType: "boolean", category: null },
+      { name: "Decoded odd type", commentType: "info", answerType: "boolean", category: null },
+    ]);
+
+    expect(sourceCell(draft, "Odd defect", COMMENT_TYPE)).toBe(" Defect");
+    expect(sourceCell(draft, "String zero", CATEGORY)).toBe("0");
+    expect(sourceCell(draft, "Decimal zero", CATEGORY)).toBe("0.0");
+    expect(sourceCell(draft, "Padded category", CATEGORY)).toBe(" 1 ");
+    expect(sourceCell(draft, "Dropped category", CATEGORY)).toBe("high");
+    expect(sourceCell(draft, "Decoded type", COMMENT_TYPE)).toBe("&#105;nfo");
+    expect(sourceCell(draft, "Decoded odd type", COMMENT_TYPE)).toBe("&#73;nfo");
+
+    expect(vocabularyIssues(draft, "Odd defect")).toEqual([
+      issue(draft, "Odd defect", "vocabulary-normalised", { field: COMMENT_TYPE }),
+    ]);
+    expect(vocabularyIssues(draft, "Unknown type")).toEqual([issue(draft, "Unknown type", "comment-type-fallback", {})]);
+    expect(vocabularyIssues(draft, "Blank type")).toEqual([issue(draft, "Blank type", "comment-type-fallback", {})]);
+    expect(vocabularyIssues(draft, "Odd answer")).toEqual([
+      issue(draft, "Odd answer", "vocabulary-normalised", { field: ANSWER_TYPE }),
+    ]);
+    expect(vocabularyIssues(draft, "Unknown answer")).toEqual([issue(draft, "Unknown answer", "answer-type-fallback", {})]);
+    expect(vocabularyIssues(draft, "Blank answer")).toEqual([issue(draft, "Blank answer", "answer-type-fallback", {})]);
+    expect(vocabularyIssues(draft, "No category")).toEqual([issue(draft, "No category", "category-missing", {})]);
+    expect(vocabularyIssues(draft, "Invalid category")).toEqual([issue(draft, "Invalid category", "category-missing", {})]);
+    expect(vocabularyIssues(draft, "Info category")).toEqual([
+      issue(draft, "Info category", "category-orphan", { category: 1 }),
+    ]);
+    expect(vocabularyIssues(draft, "Limit category")).toEqual([
+      issue(draft, "Limit category", "category-orphan", { category: -1 }),
+    ]);
+    expect(vocabularyIssues(draft, "String zero")).toEqual([]);
+    expect(vocabularyIssues(draft, "Decimal zero")).toEqual([]);
+    expect(vocabularyIssues(draft, "Padded category")).toEqual([]);
+    expect(vocabularyIssues(draft, "Dropped category")).toEqual([]);
+    expect(vocabularyIssues(draft, "Decoded type")).toEqual([]);
+    expect(vocabularyIssues(draft, "Decoded odd type")).toEqual([
+      issue(draft, "Decoded odd type", "vocabulary-normalised", { field: COMMENT_TYPE }),
+    ]);
+  });
+
+  it("explains each vocabulary difference only while its issue remains", async () => {
+    const draft = await vocabularyDraft();
+    expectRoundTrip(draft);
+
+    const result = reconcile(draft, draft.tree);
+    expect(categoryDifferences(result.rows, sourceRow(draft, "String zero"))).toEqual([]);
+    expect(categoryDifferences(result.rows, sourceRow(draft, "Decimal zero"))).toEqual([]);
+    expect(categoryDifferences(result.rows, sourceRow(draft, "Padded category"))).toEqual([]);
+    expect(categoryDifferences(result.rows, sourceRow(draft, "Dropped category"))).toEqual([
+      {
+        column: CATEGORY,
+        raw: "high",
+        stored: null,
+        explanation: { rule: "category-dropped" },
+      },
+    ]);
+    expect(differencesOn(result.rows, sourceRow(draft, "Decoded type"), COMMENT_TYPE)).toEqual([
+      {
+        column: COMMENT_TYPE,
+        raw: "&#105;nfo",
+        stored: "info",
+        explanation: { rule: "entity-decoding" },
+      },
+    ]);
+
+    for (const flagged of FLAGGED) {
+      const rowNumber = sourceRow(draft, flagged.name);
+      expect(differencesOn(result.rows, rowNumber, flagged.difference.column), flagged.name).toContainEqual(flagged.difference);
+
+      const stripped = structuredClone(draft);
+      const index = stripped.issues.findIndex((issue) => issue.sourceRow === rowNumber && issue.kind === flagged.kind);
+      expect(index, flagged.name).toBeGreaterThanOrEqual(0);
+      stripped.issues.splice(index, 1);
+
+      const broken = reconcile(stripped, stripped.tree);
+      expect(broken.rows.find((row) => row.sourceRow === rowNumber)?.status, flagged.name).toBe("✗");
+      expect(differencesOn(broken.rows, rowNumber, flagged.difference.column), flagged.name).toContainEqual({
+        ...flagged.difference,
+        explanation: null,
+      });
+    }
+  });
+
   it("treats Ben's trailing-space Water Supply rows as one Item and records the trim", async () => {
     const draft = await draftOf("Ben Gromicko's Template for Home Inspections-2026-09-30.xls");
     const plumbing = draft.tree.sections.find((section) => section.name === "Plumbing");
@@ -882,7 +1000,14 @@ async function draftOf(file: string): Promise<ImportDraft> {
 const UNSAFE_STYLE = /url\(|expression\(|@import/i;
 
 /** Import issue kinds that do not come from a sanitiser cut, so they carry no evidence. */
-const KINDS_WITHOUT_CUTS = new Set<IssueKind>(["whitespace-trimmed"]);
+const KINDS_WITHOUT_CUTS = new Set<IssueKind>([
+  "whitespace-trimmed",
+  "vocabulary-normalised",
+  "comment-type-fallback",
+  "answer-type-fallback",
+  "category-missing",
+  "category-orphan",
+]);
 
 /** Routine editor leftovers and CSS removals share one notice. Dangerous CSS does not. */
 function isBundledCut(cut: Cut): boolean {
@@ -985,6 +1110,176 @@ function expectRoundTrip(draft: ImportDraft): void {
   const result = reconcile(draft, draft.tree);
   expect(result.unexplained).toBe(0);
   expect(result.verified).toBe(result.total);
+}
+
+const COMMENT_TYPE = "Comment Type (info, limit, defect)";
+const ANSWER_TYPE = "Answer Type (boolean, checkbox, date, number, range, text)";
+const CATEGORY = "Category (-1: Low, 0: Med, 1: High)";
+
+const VOCABULARY_KINDS = new Set<IssueKind>([
+  "vocabulary-normalised",
+  "comment-type-fallback",
+  "answer-type-fallback",
+  "category-missing",
+  "category-orphan",
+  "whitespace-trimmed",
+]);
+
+const FLAGGED = [
+  {
+    name: "Odd defect",
+    kind: "vocabulary-normalised",
+    difference: {
+      column: COMMENT_TYPE,
+      raw: " Defect",
+      stored: "defect",
+      explanation: { issues: ["vocabulary-normalised"] },
+    },
+  },
+  {
+    name: "Unknown type",
+    kind: "comment-type-fallback",
+    difference: {
+      column: COMMENT_TYPE,
+      raw: " Nope ",
+      stored: "info",
+      explanation: { issues: ["comment-type-fallback"] },
+    },
+  },
+  {
+    name: "Blank type",
+    kind: "comment-type-fallback",
+    difference: {
+      column: COMMENT_TYPE,
+      raw: null,
+      stored: "info",
+      explanation: { issues: ["comment-type-fallback"] },
+    },
+  },
+  {
+    name: "Odd answer",
+    kind: "vocabulary-normalised",
+    difference: {
+      column: ANSWER_TYPE,
+      raw: " TEXT",
+      stored: "text",
+      explanation: { issues: ["vocabulary-normalised"] },
+    },
+  },
+  {
+    name: "Unknown answer",
+    kind: "answer-type-fallback",
+    difference: {
+      column: ANSWER_TYPE,
+      raw: "maybe",
+      stored: "boolean",
+      explanation: { issues: ["answer-type-fallback"] },
+    },
+  },
+  {
+    name: "Blank answer",
+    kind: "answer-type-fallback",
+    difference: {
+      column: ANSWER_TYPE,
+      raw: null,
+      stored: "boolean",
+      explanation: { issues: ["answer-type-fallback"] },
+    },
+  },
+  {
+    name: "No category",
+    kind: "category-missing",
+    difference: { column: CATEGORY, raw: null, stored: null, explanation: { issues: ["category-missing"] } },
+  },
+  {
+    name: "Invalid category",
+    kind: "category-missing",
+    difference: { column: CATEGORY, raw: 2, stored: null, explanation: { issues: ["category-missing"] } },
+  },
+  {
+    name: "Info category",
+    kind: "category-orphan",
+    difference: { column: CATEGORY, raw: 1, stored: 1, explanation: { issues: ["category-orphan"] } },
+  },
+  {
+    name: "Limit category",
+    kind: "category-orphan",
+    difference: { column: CATEGORY, raw: -1, stored: -1, explanation: { issues: ["category-orphan"] } },
+  },
+  {
+    name: "Decoded odd type",
+    kind: "vocabulary-normalised",
+    difference: {
+      column: COMMENT_TYPE,
+      raw: "&#73;nfo",
+      stored: "info",
+      explanation: { issues: ["vocabulary-normalised"] },
+    },
+  },
+] as const;
+
+async function vocabularyDraft(): Promise<ImportDraft> {
+  return expectDraft(
+    await parseSpectoraExport(
+      await workbook(HEADERS, [
+        rowFor(HEADERS, { "comment name": "Odd defect", "comment type": " Defect", category: 0 }),
+        rowFor(HEADERS, { "comment name": "Unknown type", "comment type": " Nope " }),
+        rowFor(HEADERS, { "comment name": "Blank type", "comment type": null }),
+        rowFor(HEADERS, { "comment name": "Odd answer", "answer type": " TEXT" }),
+        rowFor(HEADERS, { "comment name": "Unknown answer", "answer type": "maybe" }),
+        rowFor(HEADERS, { "comment name": "Blank answer", "answer type": null }),
+        rowFor(HEADERS, { "comment name": "No category", "comment type": "defect", category: null }),
+        rowFor(HEADERS, { "comment name": "Invalid category", "comment type": "defect", category: 2 }),
+        rowFor(HEADERS, { "comment name": "Info category", "comment type": "info", category: 1 }),
+        rowFor(HEADERS, { "comment name": "Limit category", "comment type": "limit", category: -1 }),
+        rowFor(HEADERS, { "comment name": "String zero", "comment type": "defect", category: "0" }),
+        rowFor(HEADERS, { "comment name": "Decimal zero", "comment type": "defect", category: "0.0" }),
+        rowFor(HEADERS, { "comment name": "Padded category", "comment type": "defect", category: " 1 " }),
+        rowFor(HEADERS, { "comment name": "Dropped category", "comment type": "info", category: "high" }),
+        rowFor(HEADERS, { "comment name": "Decoded type", "comment type": "&#105;nfo" }),
+        rowFor(HEADERS, { "comment name": "Decoded odd type", "comment type": "&#73;nfo" }),
+      ]),
+      "vocabulary.xls",
+    ),
+  );
+}
+
+function storedFields(draft: ImportDraft) {
+  return commentsIn(draft.tree).map((comment) => ({
+    name: comment.name,
+    commentType: comment.commentType,
+    answerType: comment.answerType,
+    category: comment.category,
+  }));
+}
+
+function sourceRow(draft: ImportDraft, name: string): number {
+  const row = commentsIn(draft.tree).find((comment) => comment.name === name)?.sourceRow;
+  if (row === undefined || row === null) throw new Error(`No Source row for ${name}`);
+  return row;
+}
+
+function sourceCell(draft: ImportDraft, name: string, header: string): string | number | boolean | null {
+  const rowNumber = sourceRow(draft, name);
+  const index = draft.run.headers.indexOf(header);
+  return draft.sourceRows.find((row) => row.rowNumber === rowNumber)?.cells[index] ?? null;
+}
+
+function vocabularyIssues(draft: ImportDraft, name: string) {
+  const rowNumber = sourceRow(draft, name);
+  return draft.issues.filter((issue) => issue.sourceRow === rowNumber && VOCABULARY_KINDS.has(issue.kind));
+}
+
+function issue(draft: ImportDraft, name: string, kind: IssueKind, detail: unknown) {
+  return { kind, sourceRow: sourceRow(draft, name), detail, cuts: [] };
+}
+
+function differencesOn(rows: { sourceRow: number | null; differences: { column: string }[] }[], sourceRowNumber: number, column: string) {
+  return rows.find((row) => row.sourceRow === sourceRowNumber)?.differences.filter((difference) => difference.column === column) ?? [];
+}
+
+function categoryDifferences(rows: { sourceRow: number | null; differences: { column: string }[] }[], sourceRowNumber: number) {
+  return differencesOn(rows, sourceRowNumber, CATEGORY);
 }
 
 function commentFields(comment: Comment) {

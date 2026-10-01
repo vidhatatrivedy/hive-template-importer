@@ -114,7 +114,7 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     const commentName = trimmedName(cellAt(cells, indexes.commentName), COLUMNS.commentName, rowNumber, issues);
     const text = sanitiseCommentHtml(commentText(cellAt(cells, indexes.commentText)));
     issues.push(...issuesFromCuts(text.cuts, rowNumber));
-    const comment = buildComment(cells, indexes, rowNumber, commentName, text.html);
+    const comment = buildComment(cells, indexes, rowNumber, commentName, text.html, issues);
 
     if (!currentSection || currentSection.name !== sectionName) {
       currentSection = { name: sectionName, items: [] };
@@ -353,16 +353,41 @@ function columnLabel(header: string): string {
   return header.replace(TRAILING_HINT, "").trim();
 }
 
-function buildComment(cells: Cell[], indexes: ColumnIndexes, rowNumber: number, name: string, textHtml: string): Comment {
-  const commentType = matchAllowedValue(cellAt(cells, indexes.commentType), COMMENT_TYPES, "info");
-  const answerType = matchAllowedValue(cellAt(cells, indexes.answerType), ANSWER_TYPES, "boolean");
+function buildComment(
+  cells: Cell[],
+  indexes: ColumnIndexes,
+  rowNumber: number,
+  name: string,
+  textHtml: string,
+  issues: ImportDraft["issues"],
+): Comment {
+  const commentType = vocabularyValue(
+    cellAt(cells, indexes.commentType),
+    indexes.commentType,
+    COMMENT_TYPES,
+    "info",
+    COLUMNS.commentType,
+    "comment-type-fallback",
+    rowNumber,
+    issues,
+  );
+  const answerType = vocabularyValue(
+    cellAt(cells, indexes.answerType),
+    indexes.answerType,
+    ANSWER_TYPES,
+    "boolean",
+    COLUMNS.answerType,
+    "answer-type-fallback",
+    rowNumber,
+    issues,
+  );
   const defaults = defaultsOf(answerType, cellAt(cells, indexes.defaultValue));
   return {
     sourceRow: rowNumber,
     name,
     textHtml,
     commentType,
-    category: categoryOf(cellAt(cells, indexes.category)),
+    category: categoryValue(cellAt(cells, indexes.category), indexes.category, commentType, rowNumber, issues),
     recommendation: recommendationOf(cellAt(cells, indexes.recommendation)),
     answerType,
     defaultBoolean: defaults.defaultBoolean,
@@ -390,14 +415,63 @@ function commentText(value: Cell): string {
   return typeof value === "string" ? value : "";
 }
 
-function matchAllowedValue<T extends string>(value: Cell, allowed: readonly T[], fallback: T): T {
-  const text = decodeCell(value).text.trim().toLowerCase();
-  const match = allowed.find((entry) => entry === text);
-  return match ?? fallback;
+/**
+ * Decode, trim, lowercase. A known value that changed on screen gets `vocabulary-normalised`.
+ * An unknown or blank value gets the fallback issue instead of that notice. A missing column
+ * falls back quietly: the file-level missing-column issue already names it.
+ * A number or boolean is read as its string form and that conversion is not flagged.
+ */
+function vocabularyValue<T extends string>(
+  value: Cell,
+  columnIndex: number,
+  allowed: readonly T[],
+  fallback: T,
+  field: string,
+  fallbackKind: "comment-type-fallback" | "answer-type-fallback",
+  rowNumber: number,
+  issues: ImportDraft["issues"],
+): T {
+  if (columnIndex === MISSING_COLUMN) return fallback;
+  const decoded = decodeCell(value);
+  const match = allowed.find((entry) => entry === decoded.text.trim().toLowerCase());
+  if (!match) {
+    issues.push({ kind: fallbackKind, sourceRow: rowNumber, detail: {}, cuts: [] });
+    return fallback;
+  }
+  if (typeof value === "string" && decoded.text !== match) {
+    issues.push({ kind: "vocabulary-normalised", sourceRow: rowNumber, detail: { field }, cuts: [] });
+  }
+  return match;
 }
 
-function categoryOf(value: Cell): Category | null {
-  const numeric = categoryNumber(value);
+/**
+ * Read numerically: `"0"`, `0` and `0.0` are 0, and that string form is not flagged.
+ * A missing column stays empty without a row issue.
+ */
+function categoryValue(
+  value: Cell,
+  columnIndex: number,
+  commentType: (typeof COMMENT_TYPES)[number],
+  rowNumber: number,
+  issues: ImportDraft["issues"],
+): Category | null {
+  if (columnIndex === MISSING_COLUMN) return null;
+  const numeric = validCategory(categoryNumber(value));
+  if (commentType === "defect") {
+    if (numeric === null) {
+      issues.push({ kind: "category-missing", sourceRow: rowNumber, detail: {}, cuts: [] });
+      return null;
+    }
+    return numeric;
+  }
+  if (numeric !== null) {
+    issues.push({ kind: "category-orphan", sourceRow: rowNumber, detail: { category: numeric }, cuts: [] });
+    return numeric;
+  }
+  return null;
+}
+
+function validCategory(numeric: number | null): Category | null {
   if (numeric === -1 || numeric === 0 || numeric === 1) return numeric;
   return null;
 }
