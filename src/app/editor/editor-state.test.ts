@@ -10,7 +10,11 @@ import {
   editorReducer,
   initialEditorState,
   isDirty,
+  canMove,
+  commentGroups,
+  deleteSectionPrompt,
   locate,
+  sectionContents,
   type EditorMode,
   type EditorState,
 } from "@/app/editor/editor-state";
@@ -613,6 +617,269 @@ function renameComment(source: EditableTree, commentId: string, name: string): E
     })),
   };
 }
+
+describe("editorReducer: structure", () => {
+  it("adds a Section at the end, empty and unnamed, selects it and puts its name in focus", () => {
+    const added = editorReducer(open(), { type: "addSection" });
+    const last = added.tree.sections.at(-1);
+
+    expect(added.tree.sections).toHaveLength(tree.sections.length + 1);
+    expect(last).toEqual({ id: "tmp-1", name: "", items: [] });
+    expect(added.selection).toEqual({ sectionId: "tmp-1", itemId: null, commentId: null });
+    expect(added.focus).toBe("sections");
+    expect(added.focusName).toBe("tmp-1");
+    expect(isDirty(added)).toBe(true);
+  });
+
+  it("adds an Item at the end of the selected Section with no Comments, and numbers each new node apart", () => {
+    const cooling = editorReducer(open(), { type: "select", ref: { level: "section", id: idOf(tree, "Cooling") } });
+    const added = editorReducer(editorReducer(cooling, { type: "addItem" }), { type: "addItem" });
+    const items = located(added).section?.items ?? [];
+
+    expect(items).toHaveLength(5);
+    expect(items.at(-2)).toEqual({ id: "tmp-1", name: "", comments: [] });
+    expect(items.at(-1)).toEqual({ id: "tmp-2", name: "", comments: [] });
+    expect(added.selection).toEqual({ sectionId: idOf(tree, "Cooling"), itemId: "tmp-2", commentId: null });
+    expect(added.focus).toBe("items");
+    expect(added.focusName).toBe("tmp-2");
+  });
+
+  it("adds a Comment of the given type at the end of the selected Item, so it shows last in its group, with no Category", () => {
+    const picked = editorReducer(open(), {
+      type: "select",
+      ref: { level: "item", id: idOf(tree, "Cooling", "Cooling Equipment") },
+    });
+    const added = editorReducer(picked, { type: "addComment", commentType: "defect" });
+    const item = located(added).item;
+
+    expect(item?.comments).toHaveLength(15);
+    expect(item?.comments.at(-1)).toEqual({
+      id: "tmp-1",
+      sourceRow: null,
+      name: "",
+      textHtml: "",
+      commentType: "defect",
+      category: null,
+      recommendation: null,
+      answerType: "boolean",
+      defaultBoolean: null,
+      defaultText: null,
+      choiceOptions: [],
+      unitOptions: [],
+    });
+    const defects = commentGroups(item?.comments ?? []).find((group) => group.label === "Deficiencies");
+    expect(defects?.comments.at(-1)?.id).toBe("tmp-1");
+    expect(added.selection.commentId).toBe("tmp-1");
+    expect(added.focus).toBe("comments");
+    expect(added.focusName).toBe("tmp-1");
+  });
+
+  it("adds nothing when there is no parent to add to", () => {
+    const empty = initialEditorState({ versionId: "blank-1", number: 1, tree: { sections: [] }, row: null });
+    expect(editorReducer(empty, { type: "addItem" })).toBe(empty);
+    expect(editorReducer(empty, { type: "addComment", commentType: "info" })).toBe(empty);
+
+    const section = editorReducer(empty, { type: "addSection" });
+    expect(editorReducer(section, { type: "addComment", commentType: "info" })).toBe(section);
+  });
+
+  it("builds a blank Template from nothing: a Section, an Item and a Comment", () => {
+    const empty = initialEditorState({ versionId: "blank-1", number: 1, tree: { sections: [] }, row: null });
+    const built = [
+      { type: "addSection" } as const,
+      { type: "rename", ref: { level: "section", id: "tmp-1" }, name: "Roof" } as const,
+      { type: "addItem" } as const,
+      { type: "rename", ref: { level: "item", id: "tmp-2" }, name: "Coverings" } as const,
+      { type: "addComment", commentType: "info" } as const,
+      { type: "setComment", id: "tmp-3", patch: { name: "Material" } } as const,
+    ].reduce(editorReducer, empty);
+
+    expect(built.tree.sections).toHaveLength(1);
+    expect(built.tree.sections[0]?.name).toBe("Roof");
+    expect(built.tree.sections[0]?.items[0]?.name).toBe("Coverings");
+    expect(built.tree.sections[0]?.items[0]?.comments[0]?.name).toBe("Material");
+    expect(blankNames(built.tree)).toEqual([]);
+    expect(editorReducer(built, { type: "saveRequested" }).save).toEqual({ status: "saving" });
+  });
+
+  it("renames a Section and an Item in place, and typing the old name back is clean", () => {
+    const sectionId = idOf(tree, "Cooling");
+    const itemId = idOf(tree, "Cooling", "Cooling Equipment");
+    const renamed = editorReducer(
+      editorReducer(open(), { type: "rename", ref: { level: "section", id: sectionId }, name: "Air conditioning" }),
+      { type: "rename", ref: { level: "item", id: itemId }, name: "Units" },
+    );
+
+    expect(renamed.tree.sections.find((section) => section.id === sectionId)?.name).toBe("Air conditioning");
+    expect(renamed.tree.sections.find((section) => section.id === sectionId)?.items[0]?.name).toBe("Units");
+    expect(isDirty(renamed)).toBe(true);
+
+    const back = editorReducer(
+      editorReducer(renamed, { type: "rename", ref: { level: "section", id: sectionId }, name: "Cooling" }),
+      { type: "rename", ref: { level: "item", id: itemId }, name: "Cooling Equipment" },
+    );
+    expect(isDirty(back)).toBe(false);
+  });
+
+  it("deletes a Section with everything in it and selects the next Section", () => {
+    const sectionId = idOf(tree, "Cooling");
+    const picked = editorReducer(open(), { type: "select", ref: { level: "section", id: sectionId } });
+    const deleted = editorReducer(picked, { type: "delete", ref: { level: "section", id: sectionId } });
+
+    expect(deleted.tree.sections).toHaveLength(tree.sections.length - 1);
+    expect(deleted.tree.sections.some((section) => section.id === sectionId)).toBe(false);
+    expect(blankNames(deleted.tree)).toEqual([]);
+    expect(located(deleted).section?.name).toBe("Plumbing");
+    expect(located(deleted).item).not.toBeNull();
+    expect(isDirty(deleted)).toBe(true);
+  });
+
+  it("deleting the last Item selects the previous one, and deleting the only one selects nothing at that level", () => {
+    const itemId = idOf(tree, "Cooling", "Distribution System");
+    const picked = editorReducer(open(), { type: "select", ref: { level: "item", id: itemId } });
+    const deleted = editorReducer(picked, { type: "delete", ref: { level: "item", id: itemId } });
+    expect(located(deleted).item?.name).toBe("Normal Operating Controls");
+
+    const empty = initialEditorState({ versionId: "blank-1", number: 1, tree: { sections: [] }, row: null });
+    const one = editorReducer(editorReducer(empty, { type: "addSection" }), { type: "addItem" });
+    const none = editorReducer(one, { type: "delete", ref: { level: "item", id: "tmp-2" } });
+    expect(none.selection).toEqual({ sectionId: "tmp-1", itemId: null, commentId: null });
+  });
+
+  it("deleting a Comment selects the next one in display order, across groups", () => {
+    const item = idOf(tree, "Cooling", "Cooling Equipment");
+    const picked = editorReducer(open(), { type: "select", ref: { level: "item", id: item } });
+    // Display order: info 149, 151, 153, 155; limit 150; defects 148, 152, …
+    const seer = commentIdAt(tree, 155);
+    const deleted = editorReducer(
+      editorReducer(picked, { type: "select", ref: { level: "comment", id: seer } }),
+      { type: "delete", ref: { level: "comment", id: seer } },
+    );
+
+    expect(located(deleted).item?.comments).toHaveLength(13);
+    expect(located(deleted).comment?.sourceRow).toBe(150);
+
+    const vegetation = commentIdAt(tree, 161);
+    const last = editorReducer(
+      editorReducer(picked, { type: "select", ref: { level: "comment", id: vegetation } }),
+      { type: "delete", ref: { level: "comment", id: vegetation } },
+    );
+    expect(located(last).comment?.sourceRow).toBe(160);
+
+    const elsewhere = editorReducer(picked, { type: "delete", ref: { level: "comment", id: vegetation } });
+    expect(elsewhere.selection).toEqual(picked.selection);
+  });
+
+  it("adding a node and deleting it again is clean", () => {
+    const added = editorReducer(open(), { type: "addComment", commentType: "limit" });
+    expect(isDirty(added)).toBe(true);
+    const removed = editorReducer(added, { type: "delete", ref: { level: "comment", id: "tmp-1" } });
+    expect(isDirty(removed)).toBe(false);
+  });
+
+  it("counts a Section's Items and Comments for the delete prompt", () => {
+    expect(sectionContents(tree, idOf(tree, "Roof"))).toEqual({ items: 5, comments: 35 });
+    expect(sectionContents(tree, idOf(tree, "Cooling"))).toEqual({ items: 3, comments: 24 });
+    expect(sectionContents(tree, "missing")).toBeNull();
+    expect(deleteSectionPrompt("Roof", { items: 5, comments: 35 })).toBe("Delete Roof and its 5 Items, 35 Comments?");
+    expect(deleteSectionPrompt("Roof", { items: 1, comments: 1 })).toBe("Delete Roof and its 1 Item, 1 Comment?");
+  });
+
+  it("swaps Sections and Items with a neighbour, does nothing at an end, and up then down is clean", () => {
+    const cooling = idOf(tree, "Cooling");
+    const up = editorReducer(open(), { type: "move", ref: { level: "section", id: cooling }, dir: "up" });
+    expect(up.tree.sections.map((section) => section.name).slice(3, 6)).toEqual([
+      "Basement, Foundation, Crawlspace & Structure",
+      "Cooling",
+      "Heating",
+    ]);
+    expect(isDirty(up)).toBe(true);
+    expect(isDirty(editorReducer(up, { type: "move", ref: { level: "section", id: cooling }, dir: "down" }))).toBe(
+      false,
+    );
+
+    const first = { level: "section", id: idOf(tree, "Inspection Details") } as const;
+    expect(editorReducer(open(), { type: "move", ref: first, dir: "up" }).tree).toBe(tree);
+    expect(canMove(open(), first, "up")).toBe(false);
+    expect(canMove(open(), first, "down")).toBe(true);
+
+    const lastItem = { level: "item", id: idOf(tree, "Cooling", "Distribution System") } as const;
+    expect(editorReducer(open(), { type: "move", ref: lastItem, dir: "down" }).tree).toBe(tree);
+    const itemUp = editorReducer(open(), { type: "move", ref: lastItem, dir: "up" });
+    expect(itemUp.tree.sections.find((section) => section.id === cooling)?.items.map((item) => item.name)).toEqual([
+      "Cooling Equipment",
+      "Distribution System",
+      "Normal Operating Controls",
+    ]);
+  });
+
+  it("moving a defect up skips over the info and limitation Comments between them, and nothing else moves", () => {
+    const itemId = idOf(tree, "Cooling", "Cooling Equipment");
+    const rowsOf = (state: EditorState) =>
+      located(editorReducer(state, { type: "select", ref: { level: "item", id: itemId } })).item?.comments.map(
+        (comment) => comment.sourceRow,
+      );
+    const groupsOf = (state: EditorState) =>
+      commentGroups(
+        located(editorReducer(state, { type: "select", ref: { level: "item", id: itemId } })).item?.comments ?? [],
+      ).map((group) => [group.label, group.comments.map((comment) => comment.sourceRow)]);
+
+    const moved = editorReducer(open(), {
+      type: "move",
+      ref: { level: "comment", id: commentIdAt(tree, 152) },
+      dir: "up",
+    });
+
+    expect(rowsOf(moved)).toEqual([152, 149, 150, 151, 148, 153, 154, 155, 156, 157, 158, 159, 160, 161]);
+    expect(groupsOf(moved)).toEqual([
+      ["Informational", [149, 151, 153, 155]],
+      ["Limitations", [150]],
+      ["Deficiencies", [152, 148, 154, 156, 157, 158, 159, 160, 161]],
+    ]);
+
+    const back = editorReducer(moved, {
+      type: "move",
+      ref: { level: "comment", id: commentIdAt(tree, 152) },
+      dir: "down",
+    });
+    expect(isDirty(back)).toBe(false);
+  });
+
+  it("does nothing when a Comment is already at its group's edge", () => {
+    const opened = open();
+    const firstDefect = { level: "comment", id: commentIdAt(tree, 148) } as const;
+    const onlyLimit = { level: "comment", id: commentIdAt(tree, 150) } as const;
+    const lastInfo = { level: "comment", id: commentIdAt(tree, 155) } as const;
+
+    expect(editorReducer(opened, { type: "move", ref: firstDefect, dir: "up" })).toBe(opened);
+    expect(editorReducer(opened, { type: "move", ref: onlyLimit, dir: "up" })).toBe(opened);
+    expect(editorReducer(opened, { type: "move", ref: onlyLimit, dir: "down" })).toBe(opened);
+    expect(editorReducer(opened, { type: "move", ref: lastInfo, dir: "down" })).toBe(opened);
+    expect(canMove(opened, lastInfo, "down")).toBe(false);
+    expect(canMove(opened, lastInfo, "up")).toBe(true);
+  });
+
+  it("changes no structure in read-only mode or while Save is in flight", () => {
+    const readOnly = open(null, "read-only");
+    const sectionRef = { level: "section", id: idOf(tree, "Cooling") } as const;
+    for (const action of [
+      { type: "addSection" },
+      { type: "addItem" },
+      { type: "addComment", commentType: "info" },
+      { type: "delete", ref: sectionRef },
+      { type: "move", ref: sectionRef, dir: "up" },
+      { type: "rename", ref: sectionRef, name: "Renamed" },
+    ] as const) {
+      expect(editorReducer(readOnly, action)).toBe(readOnly);
+    }
+
+    const edited = editorReducer(open(), { type: "rename", ref: sectionRef, name: "Renamed" });
+    const saving = editorReducer(edited, { type: "saveRequested" });
+    expect(saving.save.status).toBe("saving");
+    expect(editorReducer(saving, { type: "addSection" })).toBe(saving);
+    expect(editorReducer(saving, { type: "delete", ref: sectionRef })).toBe(saving);
+  });
+});
 
 describe("editorReducer on Ben", () => {
   let ben: EditableTree;

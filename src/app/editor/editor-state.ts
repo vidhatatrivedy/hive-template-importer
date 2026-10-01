@@ -47,6 +47,8 @@ export type EditorState = {
    * adopted when that Save succeeds, on Load latest, or on Discard.
    */
   held: EditorBase | null;
+  /** The number in the next added node's `tmp-` id. Never reused, so a new node can't take an old one's id. */
+  nextTmp: number;
 };
 
 /** Fields a Comment can be edited through. Ids, Source rows and unit options stay put. */
@@ -57,6 +59,12 @@ export type EditorAction =
   | { type: "select"; ref: NodeRef }
   | { type: "focus"; column: Column }
   | { type: "selectRow"; row: number }
+  | { type: "addSection" }
+  | { type: "addItem" }
+  | { type: "addComment"; commentType: Comment["commentType"] }
+  | { type: "delete"; ref: NodeRef }
+  | { type: "move"; ref: NodeRef; dir: "up" | "down" }
+  | { type: "rename"; ref: NodeRef; name: string }
   | { type: "setComment"; id: string; patch: CommentPatch }
   | { type: "saveRequested" }
   | { type: "saveSucceeded"; number: number }
@@ -72,12 +80,21 @@ const COMMENT_GROUPS = [
   { type: "defect", label: "Deficiencies" },
 ] as const;
 
-/** Comments grouped Informational, then Limitations, then Deficiencies, each group in stored order. */
-export function commentGroups(comments: readonly Comment[]): { label: string; comments: Comment[] }[] {
+export type CommentGroup = { type: Comment["commentType"]; label: string; comments: Comment[] };
+
+/**
+ * Comments grouped Informational, then Limitations, then Deficiencies, each group in stored order.
+ * Empty groups are left out unless `includeEmpty`, which the editor uses so every group has its "+ New".
+ */
+export function commentGroups(
+  comments: readonly Comment[],
+  { includeEmpty = false }: { includeEmpty?: boolean } = {},
+): CommentGroup[] {
   return COMMENT_GROUPS.map((group) => ({
+    type: group.type,
     label: group.label,
     comments: comments.filter((comment) => comment.commentType === group.type),
-  })).filter((group) => group.comments.length > 0);
+  })).filter((group) => includeEmpty || group.comments.length > 0);
 }
 
 export function locate(
@@ -104,9 +121,30 @@ export function initialEditorState(
     focusName: null,
     save: { status: "idle" },
     held: null,
+    nextTmp: 1,
   };
   if (row !== null) return editorReducer(state, { type: "selectRow", row });
   return selectFirst(state);
+}
+
+/** How many Items and Comments a Section holds, for the prompt before deleting it. Null when there is no such Section. */
+export function sectionContents(tree: EditableTree, id: string): { items: number; comments: number } | null {
+  const section = tree.sections.find((candidate) => candidate.id === id);
+  if (!section) return null;
+  const comments = section.items.reduce((total, item) => total + item.comments.length, 0);
+  return { items: section.items.length, comments };
+}
+
+/** "Delete Roof and its 4 Items, 37 Comments?" */
+export function deleteSectionPrompt(name: string, contents: { items: number; comments: number }): string {
+  const items = `${contents.items} ${contents.items === 1 ? "Item" : "Items"}`;
+  const comments = `${contents.comments} ${contents.comments === 1 ? "Comment" : "Comments"}`;
+  return `Delete ${name} and its ${items}, ${comments}?`;
+}
+
+/** False at an end, at a type group's edge, or when nothing can be edited. */
+export function canMove(state: EditorState, ref: NodeRef, dir: "up" | "down"): boolean {
+  return move(state, ref, dir) !== state;
 }
 
 /** True when the working tree differs from the saved Version by value, ids included. */
@@ -163,6 +201,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return state.focus === action.column ? state : { ...state, focus: action.column };
     case "selectRow":
       return selectRow(state, action.row);
+    case "addSection":
+      return addSection(state);
+    case "addItem":
+      return addItem(state);
+    case "addComment":
+      return addComment(state, action.commentType);
+    case "delete":
+      return deleteNode(state, action.ref);
+    case "move":
+      return move(state, action.ref, action.dir);
+    case "rename":
+      return rename(state, action.ref, action.name);
     case "setComment":
       return setComment(state, action.id, action.patch);
     case "saveRequested":
@@ -267,6 +317,196 @@ function setComment(state: EditorState, id: string, patch: CommentPatch): Editor
     }
   }
   return state;
+}
+
+/** Structure changes wait for an editable, settled state: nothing in flight and not a read-only Version. */
+function canChangeStructure(state: EditorState): boolean {
+  return state.mode === "edit" && !isSavingOrAwaiting(state);
+}
+
+function withNewNode(state: EditorState, tree: EditableTree, focus: Column, selection: EditorSelection, id: string) {
+  return { ...state, tree, focus, selection, focusName: id, rowMiss: null, nextTmp: state.nextTmp + 1 };
+}
+
+function addSection(state: EditorState): EditorState {
+  if (!canChangeStructure(state)) return state;
+  const id = `tmp-${state.nextTmp}`;
+  const tree = { sections: [...state.tree.sections, { id, name: "", items: [] }] };
+  return withNewNode(state, tree, "sections", { sectionId: id, itemId: null, commentId: null }, id);
+}
+
+function addItem(state: EditorState): EditorState {
+  if (!canChangeStructure(state)) return state;
+  const sectionId = state.selection.sectionId;
+  const sectionIndex = state.tree.sections.findIndex((section) => section.id === sectionId);
+  const section = state.tree.sections[sectionIndex];
+  if (!section || !sectionId) return state;
+  const id = `tmp-${state.nextTmp}`;
+  const tree = replaceSection(state.tree, sectionIndex, {
+    ...section,
+    items: [...section.items, { id, name: "", comments: [] }],
+  });
+  return withNewNode(state, tree, "items", { sectionId, itemId: id, commentId: null }, id);
+}
+
+function addComment(state: EditorState, commentType: Comment["commentType"]): EditorState {
+  if (!canChangeStructure(state)) return state;
+  const { sectionId, itemId } = state.selection;
+  const place = itemPlace(state.tree, itemId);
+  if (!place || !sectionId || !itemId) return state;
+  const id = `tmp-${state.nextTmp}`;
+  const comment: Comment = {
+    id,
+    sourceRow: null,
+    name: "",
+    textHtml: "",
+    commentType,
+    category: null,
+    recommendation: null,
+    answerType: "boolean",
+    defaultBoolean: null,
+    defaultText: null,
+    choiceOptions: [],
+    unitOptions: [],
+  };
+  const tree = replaceItem(state.tree, place, { ...place.item, comments: [...place.item.comments, comment] });
+  return withNewNode(state, tree, "comments", { sectionId, itemId, commentId: id }, id);
+}
+
+function rename(state: EditorState, ref: NodeRef, name: string): EditorState {
+  if (ref.level === "comment") return setComment(state, ref.id, { name });
+  if (!canChangeStructure(state)) return state;
+  if (ref.level === "section") {
+    const index = state.tree.sections.findIndex((section) => section.id === ref.id);
+    const section = state.tree.sections[index];
+    if (!section || section.name === name) return state;
+    return { ...state, tree: replaceSection(state.tree, index, { ...section, name }) };
+  }
+  const place = itemPlace(state.tree, ref.id);
+  if (!place || place.item.name === name) return state;
+  return { ...state, tree: replaceItem(state.tree, place, { ...place.item, name }) };
+}
+
+/**
+ * Removes the node with everything under it. A selected node gives way to its next sibling in
+ * display order, else the previous one, else nothing at that level.
+ */
+function deleteNode(state: EditorState, ref: NodeRef): EditorState {
+  if (!canChangeStructure(state)) return state;
+  if (ref.level === "section") {
+    const index = state.tree.sections.findIndex((section) => section.id === ref.id);
+    if (index < 0) return state;
+    const sections = state.tree.sections.filter((_, other) => other !== index);
+    const tree = { sections };
+    if (state.selection.sectionId !== ref.id) return { ...state, tree };
+    const next = sections[index] ?? sections[index - 1];
+    const nextId = nodeId(next);
+    const selection = next && nextId ? selectionInSection(nextId, next) : emptySelection();
+    return { ...state, tree, selection, rowMiss: null };
+  }
+  if (ref.level === "item") {
+    const place = itemPlace(state.tree, ref.id);
+    if (!place) return state;
+    const items = place.section.items.filter((_, other) => other !== place.itemIndex);
+    const tree = replaceSection(state.tree, place.sectionIndex, { ...place.section, items });
+    if (state.selection.itemId !== ref.id) return { ...state, tree };
+    const next = items[place.itemIndex] ?? items[place.itemIndex - 1] ?? null;
+    const selection = {
+      sectionId: state.selection.sectionId,
+      itemId: nodeId(next),
+      commentId: next ? nodeId(firstDisplayed(next.comments)) : null,
+    };
+    return { ...state, tree, selection, rowMiss: null };
+  }
+  const place = commentPlace(state.tree, ref.id);
+  if (!place) return state;
+  const comments = place.item.comments.filter((comment) => comment.id !== ref.id);
+  const tree = replaceItem(state.tree, place, { ...place.item, comments });
+  if (state.selection.commentId !== ref.id) return { ...state, tree };
+  const displayed = commentGroups(place.item.comments).flatMap((group) => group.comments);
+  const at = displayed.findIndex((comment) => comment.id === ref.id);
+  const next = displayed[at + 1] ?? displayed[at - 1] ?? null;
+  return { ...state, tree, selection: { ...state.selection, commentId: nodeId(next) }, rowMiss: null };
+}
+
+/**
+ * Sections and Items swap with a neighbour. A Comment swaps with the nearest Comment of its own type
+ * in its Item's stored list, so every other Comment keeps its stored place.
+ */
+function move(state: EditorState, ref: NodeRef, dir: "up" | "down"): EditorState {
+  if (!canChangeStructure(state)) return state;
+  const step = dir === "up" ? -1 : 1;
+  if (ref.level === "section") {
+    const index = state.tree.sections.findIndex((section) => section.id === ref.id);
+    if (index < 0) return state;
+    const sections = swapped(state.tree.sections, index, index + step);
+    return sections ? { ...state, tree: { sections } } : state;
+  }
+  if (ref.level === "item") {
+    const place = itemPlace(state.tree, ref.id);
+    if (!place) return state;
+    const items = swapped(place.section.items, place.itemIndex, place.itemIndex + step);
+    if (!items) return state;
+    return { ...state, tree: replaceSection(state.tree, place.sectionIndex, { ...place.section, items }) };
+  }
+  const place = commentPlace(state.tree, ref.id);
+  if (!place) return state;
+  const comments = place.item.comments;
+  const type = comments[place.commentIndex]?.commentType;
+  let other = place.commentIndex + step;
+  while (other >= 0 && other < comments.length && comments[other]?.commentType !== type) other += step;
+  const next = swapped(comments, place.commentIndex, other);
+  return next ? { ...state, tree: replaceItem(state.tree, place, { ...place.item, comments: next }) } : state;
+}
+
+/** A copy with the two entries swapped, or null when `other` is out of range. */
+function swapped<T>(list: readonly T[], index: number, other: number): T[] | null {
+  const a = list[index];
+  const b = list[other];
+  if (a === undefined || b === undefined || other < 0) return null;
+  const next = list.slice();
+  next[index] = b;
+  next[other] = a;
+  return next;
+}
+
+type ItemPlace = { sectionIndex: number; section: Section; itemIndex: number; item: Item };
+
+function itemPlace(tree: EditableTree, id: string | null): ItemPlace | null {
+  if (id === null) return null;
+  for (let sectionIndex = 0; sectionIndex < tree.sections.length; sectionIndex++) {
+    const section = tree.sections[sectionIndex];
+    if (!section) continue;
+    const itemIndex = section.items.findIndex((item) => item.id === id);
+    const item = section.items[itemIndex];
+    if (item) return { sectionIndex, section, itemIndex, item };
+  }
+  return null;
+}
+
+function commentPlace(tree: EditableTree, id: string): (ItemPlace & { commentIndex: number }) | null {
+  for (let sectionIndex = 0; sectionIndex < tree.sections.length; sectionIndex++) {
+    const section = tree.sections[sectionIndex];
+    if (!section) continue;
+    for (let itemIndex = 0; itemIndex < section.items.length; itemIndex++) {
+      const item = section.items[itemIndex];
+      const commentIndex = item?.comments.findIndex((comment) => comment.id === id) ?? -1;
+      if (item && commentIndex >= 0) return { sectionIndex, section, itemIndex, item, commentIndex };
+    }
+  }
+  return null;
+}
+
+function replaceSection(tree: EditableTree, index: number, section: Section): EditableTree {
+  const sections = tree.sections.slice();
+  sections[index] = section;
+  return { sections };
+}
+
+function replaceItem(tree: EditableTree, place: ItemPlace, item: Item): EditableTree {
+  const items = place.section.items.slice();
+  items[place.itemIndex] = item;
+  return replaceSection(tree, place.sectionIndex, { ...place.section, items });
 }
 
 function applyCommentPatch(comment: Comment, patch: CommentPatch): Comment {

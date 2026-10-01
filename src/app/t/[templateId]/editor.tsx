@@ -7,18 +7,23 @@ import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 import {
   blankNames,
+  canMove,
   canSave as canSaveState,
   commentGroups,
+  deleteSectionPrompt,
   editorReducer,
   initialEditorState,
   isDirty,
   isSavingOrAwaiting,
   locate,
+  sectionContents,
   type Column,
+  type EditorAction,
   type EditorState,
+  type NodeRef,
 } from "@/app/editor/editor-state";
 import { templateHref } from "@/app/template-view";
-import { confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
+import { confirmChoice, confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, labelClass, primaryButtonClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
@@ -74,8 +79,8 @@ export function Editor({
   const loadedVersion = useRef(versionId);
   const loadedRow = useRef(row);
   const router = useRouter();
-  /** Row buttons of every level, by node id, for scrolling a selection or a blank name into view. */
-  const [rowNodes] = useState(() => new Map<string, HTMLButtonElement>());
+  /** Rows of every level, by node id, for scrolling a selection or a blank name into view. */
+  const [rowNodes] = useState(() => new Map<string, HTMLElement>());
   const nameInput = useRef<HTMLInputElement>(null);
   /** Stops a second Save before the reducer has moved to `saving`. */
   const saveLock = useRef(false);
@@ -83,6 +88,7 @@ export function Editor({
   const savingOrAwaiting = isSavingOrAwaiting(state);
   const canSave = canSaveState(state);
   const canDiscard = dirty && !savingOrAwaiting;
+  const editable = state.mode === "edit" && !savingOrAwaiting;
   useReportUnsaved(dirty);
 
   useEffect(() => {
@@ -95,6 +101,23 @@ export function Editor({
     if (!canDiscard) return;
     if (!(await confirmDiscard())) return;
     dispatch({ type: "discard" });
+  }
+
+  /** Deletes straight away, except a Section with Items in it, which asks first. Discard is the undo. */
+  async function runDelete(ref: NodeRef) {
+    if (ref.level === "section") {
+      const contents = sectionContents(state.tree, ref.id);
+      const name = state.tree.sections.find((candidate) => candidate.id === ref.id)?.name.trim() || "this Section";
+      if (contents && contents.items > 0) {
+        const accepted = await confirmChoice({
+          message: deleteSectionPrompt(name, contents),
+          confirmLabel: "Delete",
+          cancelLabel: "Keep",
+        });
+        if (!accepted) return;
+      }
+    }
+    dispatch({ type: "delete", ref });
   }
 
   async function runSave() {
@@ -143,7 +166,7 @@ export function Editor({
     rowNodes.get(commentId)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [row, rowNodes, state.rowMiss, state.selection.commentId]);
 
-  // A Comment's name is edited in the detail; a Section's or Item's row is the closest thing to a name field.
+  // A Comment's name is edited in the detail; a selected Section's or Item's row is its name field.
   useEffect(() => {
     const id = state.focusName;
     if (!id) return;
@@ -228,11 +251,37 @@ export function Editor({
           collapsed={isCollapsed("sections", state.focus)}
           stripText={section?.name ?? ""}
           onFocus={() => focusColumn("sections")}
+          actions={
+            editable ? (
+              <NodeActions
+                noun="Section"
+                state={state}
+                selected={section?.id ? { level: "section", id: section.id } : null}
+                canAdd
+                onAdd={() => dispatch({ type: "addSection" })}
+                dispatch={dispatch}
+                onDelete={(ref) => void runDelete(ref)}
+              />
+            ) : null
+          }
         >
           <ul>
             {state.tree.sections.map((candidate) => {
               const id = candidate.id;
               if (!id) return null;
+              if (editable && id === state.selection.sectionId) {
+                return (
+                  <li key={id}>
+                    <NameRow
+                      label="Section name"
+                      name={candidate.name}
+                      blank={blank.has(id)}
+                      inputRef={rowRef(rowNodes, id)}
+                      onName={(name) => dispatch({ type: "rename", ref: { level: "section", id }, name })}
+                    />
+                  </li>
+                );
+              }
               return (
                 <li key={id}>
                   <RowButton
@@ -253,11 +302,40 @@ export function Editor({
           collapsed={isCollapsed("items", state.focus)}
           stripText={item?.name ?? ""}
           onFocus={() => focusColumn("items")}
+          actions={
+            editable ? (
+              <NodeActions
+                noun="Item"
+                state={state}
+                selected={item?.id ? { level: "item", id: item.id } : null}
+                canAdd={section !== null}
+                onAdd={() => dispatch({ type: "addItem" })}
+                dispatch={dispatch}
+                onDelete={(ref) => void runDelete(ref)}
+              />
+            ) : null
+          }
         >
           <ul>
             {section?.items.map((candidate) => {
               const id = candidate.id;
               if (!id) return null;
+              const count = <CommentCount count={candidate.comments.length} />;
+              if (editable && id === state.selection.itemId) {
+                return (
+                  <li key={id}>
+                    <NameRow
+                      label="Item name"
+                      name={candidate.name}
+                      blank={blank.has(id)}
+                      inputRef={rowRef(rowNodes, id)}
+                      onName={(name) => dispatch({ type: "rename", ref: { level: "item", id }, name })}
+                    >
+                      {count}
+                    </NameRow>
+                  </li>
+                );
+              }
               return (
                 <li key={id}>
                   <RowButton
@@ -267,12 +345,7 @@ export function Editor({
                     onClick={() => dispatch({ type: "select", ref: { level: "item", id } })}
                   >
                     <RowName name={candidate.name} blank={blank.has(id)} />
-                    <span
-                      className="shrink-0 tabular-nums text-neutral-400"
-                      aria-label={`${candidate.comments.length} Comments`}
-                    >
-                      {candidate.comments.length}
-                    </span>
+                    {count}
                   </RowButton>
                 </li>
               );
@@ -284,11 +357,31 @@ export function Editor({
           collapsed={isCollapsed("comments", state.focus)}
           stripText={comment?.name ?? ""}
           onFocus={() => focusColumn("comments")}
+          actions={
+            editable ? (
+              <NodeActions
+                noun="Comment"
+                state={state}
+                selected={comment?.id ? { level: "comment", id: comment.id } : null}
+                dispatch={dispatch}
+                onDelete={(ref) => void runDelete(ref)}
+              />
+            ) : null
+          }
         >
-          {item
-            ? commentGroups(item.comments).map((group) => (
+          {item || editable
+            ? commentGroups(item?.comments ?? [], { includeEmpty: editable }).map((group) => (
                 <div key={group.label}>
-                  <h3 className={`${labelClass} px-3 pt-2 pb-1`}>{group.label}</h3>
+                  <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1">
+                    <h3 className={labelClass}>{group.label}</h3>
+                    {editable ? (
+                      <AddButton
+                        label={`New ${TYPE_LABEL[group.type]} Comment`}
+                        disabled={item === null}
+                        onClick={() => dispatch({ type: "addComment", commentType: group.type })}
+                      />
+                    ) : null}
+                  </div>
                   <ul>
                     {group.comments.map((candidate) => {
                       const id = candidate.id;
@@ -519,12 +612,14 @@ function EditorColumn({
   collapsed,
   stripText,
   onFocus,
+  actions,
   children,
 }: {
   title: string;
   collapsed: boolean;
   stripText: string;
   onFocus: () => void;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   if (collapsed) {
@@ -544,7 +639,10 @@ function EditorColumn({
   }
   return (
     <section className="flex min-h-0 w-56 shrink-0 flex-col border-r border-black/[0.05] dark:border-white/[0.06]">
-      <h2 className={`${labelClass} px-3 py-2`}>{title}</h2>
+      <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3">
+        <h2 className={labelClass}>{title}</h2>
+        {actions}
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </section>
   );
@@ -582,6 +680,132 @@ function RowButton({
   );
 }
 
+/** The column header's controls: "+ New" (when the column adds nodes), and move and delete for its selected node. */
+function NodeActions({
+  noun,
+  state,
+  selected,
+  canAdd,
+  onAdd,
+  dispatch,
+  onDelete,
+}: {
+  noun: "Section" | "Item" | "Comment";
+  state: EditorState;
+  selected: NodeRef | null;
+  canAdd?: boolean;
+  onAdd?: () => void;
+  dispatch: (action: EditorAction) => void;
+  onDelete: (ref: NodeRef) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      {selected ? (
+        <>
+          <IconButton
+            label={`Move ${noun} up`}
+            disabled={!canMove(state, selected, "up")}
+            onClick={() => dispatch({ type: "move", ref: selected, dir: "up" })}
+          >
+            ↑
+          </IconButton>
+          <IconButton
+            label={`Move ${noun} down`}
+            disabled={!canMove(state, selected, "down")}
+            onClick={() => dispatch({ type: "move", ref: selected, dir: "down" })}
+          >
+            ↓
+          </IconButton>
+          <IconButton label={`Delete ${noun}`} onClick={() => onDelete(selected)}>
+            ✕
+          </IconButton>
+        </>
+      ) : null}
+      {onAdd ? <AddButton label={`New ${noun}`} disabled={!canAdd} onClick={onAdd} /> : null}
+    </div>
+  );
+}
+
+function AddButton({ label, disabled, onClick }: { label: string; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="shrink-0 rounded px-1 text-[11px] text-neutral-500 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40 dark:hover:text-white"
+    >
+      + New
+    </button>
+  );
+}
+
+function IconButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-5 w-5 items-center justify-center rounded text-[11px] text-neutral-500 hover:bg-black/[0.04] hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-30 dark:hover:bg-white/[0.06] dark:hover:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The selected Section's or Item's row: its name, renamed in place. */
+function NameRow({
+  label,
+  name,
+  blank,
+  inputRef,
+  onName,
+  children,
+}: {
+  label: string;
+  name: string;
+  blank: boolean;
+  inputRef: Ref<HTMLInputElement>;
+  onName: (name: string) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={`flex w-full items-center gap-2 px-3 py-0.5 ${rowActiveClass}`}>
+      <input
+        ref={inputRef}
+        aria-label={label}
+        aria-invalid={blank || undefined}
+        placeholder={blank ? BLANK_NAME : "Name"}
+        value={name}
+        onChange={(event) => onName(event.currentTarget.value)}
+        className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 -mx-1 outline-none placeholder:text-neutral-400 focus:border-black/20 aria-invalid:border-red-500/60 aria-invalid:placeholder:text-red-600 dark:focus:border-white/25 dark:aria-invalid:placeholder:text-red-400"
+      />
+      {children}
+    </div>
+  );
+}
+
+function CommentCount({ count }: { count: number }) {
+  return (
+    <span className="shrink-0 tabular-nums text-neutral-400" aria-label={`${count} Comments`}>
+      {count}
+    </span>
+  );
+}
+
 const BLANK_NAME = "Name is empty.";
 
 /** A row's name, or the blank-name error in its place once a Save has been refused for it. */
@@ -590,7 +814,7 @@ function RowName({ name, blank }: { name: string; blank: boolean }) {
   return <span className="min-w-0 flex-1 truncate">{name}</span>;
 }
 
-function rowRef(nodes: Map<string, HTMLButtonElement>, id: string): (node: HTMLButtonElement | null) => void {
+function rowRef(nodes: Map<string, HTMLElement>, id: string): (node: HTMLElement | null) => void {
   return (node) => {
     if (node) nodes.set(id, node);
     else nodes.delete(id);
