@@ -64,6 +64,52 @@ const extraSheet = defineIssue({
   },
 });
 
+const rawOnlyContent = defineIssue({
+  kind: "raw-only-content",
+  level: "file",
+  severity: "notice",
+  class: "Unsupported",
+  title: "Raw-only content",
+  detail: z.object({
+    column: z.string().min(1),
+    rows: z.array(z.number().int().positive()).min(1),
+  }),
+  message: (detail: { column: string; rows: number[] }) => {
+    if (detail.column === "Default photos") {
+      const count = detail.rows.length;
+      const comments = count === 1 ? "1 Comment has" : `${count} Comments have`;
+      return `${comments} default photos; kept in the Source row, not shown in the editor.`;
+    }
+    return `${detail.column} has content on ${formatRows(detail.rows)}; kept in the Source row, not shown in the editor.`;
+  },
+});
+
+const customEstimates = defineIssue({
+  kind: "custom-estimates",
+  level: "file",
+  severity: "warning",
+  class: "Unsupported",
+  title: "Custom estimates",
+  detail: z.object({ rows: z.array(z.number().int().positive()).min(1) }),
+  message: (detail: { rows: number[] }) =>
+    detail.rows.length === 1
+      ? `A custom estimate on row ${detail.rows[0]} was kept in the Source row, not shown in the editor.`
+      : `Custom estimates on ${formatRowList(detail.rows)} were kept in the Source row, not shown in the editor.`,
+});
+
+const stockEstimates = defineIssue({
+  kind: "stock-estimates",
+  level: "file",
+  severity: "notice",
+  class: "Unsupported",
+  title: "Stock estimates",
+  detail: z.object({ count: z.number().int().positive() }),
+  message: (detail: { count: number }) =>
+    detail.count === 1
+      ? "Spectora's stock estimate on 1 Comment; not imported."
+      : `Spectora's stock estimate on all ${detail.count} Comments; not imported.`,
+});
+
 const whitespaceTrimmed = defineIssue({
   kind: "whitespace-trimmed",
   level: "row",
@@ -94,6 +140,11 @@ function formatSpan(firstRow: number, lastRow: number): string {
 
 function formatRowList(rows: readonly number[]): string {
   return `rows ${joinClauses(rows.map(String))}`;
+}
+
+function formatRows(rows: readonly number[]): string {
+  if (rows.length === 1) return `row ${rows[0]}`;
+  return formatRowList(rows);
 }
 
 function joinClauses(parts: readonly string[]): string {
@@ -373,6 +424,9 @@ export const catalogue = [
   expectedColumnMissing,
   unknownColumn,
   extraSheet,
+  rawOnlyContent,
+  customEstimates,
+  stockEstimates,
   whitespaceTrimmed,
   vocabularyNormalised,
   booleanDefaultNormalised,
@@ -403,6 +457,9 @@ export const issueKinds = [
   expectedColumnMissing.kind,
   unknownColumn.kind,
   extraSheet.kind,
+  rawOnlyContent.kind,
+  customEstimates.kind,
+  stockEstimates.kind,
   whitespaceTrimmed.kind,
   vocabularyNormalised.kind,
   booleanDefaultNormalised.kind,

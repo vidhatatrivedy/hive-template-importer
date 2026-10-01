@@ -89,6 +89,7 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
   const indexes = matched.indexes;
   const sourceRows: ImportDraft["sourceRows"] = [];
   const issues: ImportDraft["issues"] = fileShapeIssues(matched, sheets.map((entry) => entry.sheet));
+  const fileIssueCount = issues.length;
   const sections: Section[] = [];
   let currentSection: Section | undefined;
   let currentItem: Item | undefined;
@@ -128,6 +129,7 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
     }
     currentItem.comments.push(comment);
   }
+  issues.splice(fileIssueCount, 0, ...contentIssues(headers, sourceRows));
   issues.push(...structureIssues(sections));
 
   const draft: ImportDraft = {
@@ -322,6 +324,103 @@ function fileShapeIssues(matched: HeaderMatch, sheetNames: readonly string[]): I
     });
   }
   return issues;
+}
+
+/** Kept in the Source row. Order and Last Modified are never flagged; estimates have their own issues. */
+const RAW_ONLY_COLUMNS = [
+  'Default Value 2 (for "range" types)',
+  'Default Unit Type (for "number" and "range" types)',
+  "Default Location",
+  "Locked",
+  "Simple Format",
+  "Disable Photos",
+  "Uses",
+] as const;
+
+const DEFAULT_PHOTO_COLUMNS = EXPECTED_HEADERS.filter((header) => header.startsWith("Default Photo"));
+const ESTIMATE_MIN = "Default Estimate Min";
+const ESTIMATE_MAX = "Default Estimate Max";
+const USES = "Uses";
+const STOCK_ESTIMATE_MIN = 10;
+const STOCK_ESTIMATE_MAX = 1000;
+
+function contentIssues(headers: readonly string[], sourceRows: ImportDraft["sourceRows"]): ImportIssue[] {
+  const issues: ImportIssue[] = [];
+  for (const header of RAW_ONLY_COLUMNS) {
+    const column = headerIndex(headers, header);
+    if (column < 0) continue;
+    const rows = rowsWithContent(sourceRows, column, header === USES);
+    if (rows.length === 0) continue;
+    issues.push(rawOnlyIssue(columnLabel(header), rows));
+  }
+
+  const photoColumns = DEFAULT_PHOTO_COLUMNS.map((header) => headerIndex(headers, header)).filter((column) => column >= 0);
+  if (photoColumns.length > 0) {
+    const rows = sourceRows
+      .filter((row) => photoColumns.some((column) => !isBlankCell(row.cells[column] ?? null)))
+      .map((row) => row.rowNumber);
+    if (rows.length > 0) issues.push(rawOnlyIssue("Default photos", rows));
+  }
+
+  const estimates = estimateIssue(headers, sourceRows);
+  if (estimates) issues.push(estimates);
+  return issues;
+}
+
+function rawOnlyIssue(column: string, rows: number[]): ImportIssue {
+  return { kind: "raw-only-content", sourceRow: null, detail: { column, rows }, cuts: [] };
+}
+
+function rowsWithContent(sourceRows: ImportDraft["sourceRows"], column: number, uses: boolean): number[] {
+  return sourceRows
+    .filter((row) => {
+      const value = row.cells[column] ?? null;
+      if (uses) return !isUsesDefault(value);
+      return !isBlankCell(value);
+    })
+    .map((row) => row.rowNumber);
+}
+
+/** Null is the default. Uses is also default at 0, including the string `"0"`. */
+function isUsesDefault(value: Cell): boolean {
+  return isBlankCell(value) || value === 0 || value === "0";
+}
+
+function estimateIssue(headers: readonly string[], sourceRows: ImportDraft["sourceRows"]): ImportIssue | null {
+  const minColumn = headerIndex(headers, ESTIMATE_MIN);
+  const maxColumn = headerIndex(headers, ESTIMATE_MAX);
+  if (minColumn < 0 && maxColumn < 0) return null;
+
+  const stock: number[] = [];
+  const custom: number[] = [];
+  for (const row of sourceRows) {
+    const min = minColumn < 0 ? null : (row.cells[minColumn] ?? null);
+    const max = maxColumn < 0 ? null : (row.cells[maxColumn] ?? null);
+    if (isStockEstimate(min, max)) stock.push(row.rowNumber);
+    else if (isCustomEstimate(min, max)) custom.push(row.rowNumber);
+  }
+  if (custom.length > 0) return { kind: "custom-estimates", sourceRow: null, detail: { rows: custom }, cuts: [] };
+  if (stock.length > 0) return { kind: "stock-estimates", sourceRow: null, detail: { count: stock.length }, cuts: [] };
+  return null;
+}
+
+function isStockEstimate(min: Cell, max: Cell): boolean {
+  return sameNumber(min, STOCK_ESTIMATE_MIN) && sameNumber(max, STOCK_ESTIMATE_MAX);
+}
+
+function isCustomEstimate(min: Cell, max: Cell): boolean {
+  const minCustom = !isBlankCell(min) && !sameNumber(min, STOCK_ESTIMATE_MIN);
+  const maxCustom = !isBlankCell(max) && !sameNumber(max, STOCK_ESTIMATE_MAX);
+  return minCustom || maxCustom;
+}
+
+/** A number and its decimal string form are the same estimate. `"10.0"` is not `"10"`. */
+function sameNumber(value: Cell, expected: number): boolean {
+  return value === expected || value === String(expected);
+}
+
+function headerIndex(headers: readonly string[], expected: string): number {
+  return headers.findIndex((header) => matchesExpectedHeader(header, expected));
 }
 
 function columnHasContent(

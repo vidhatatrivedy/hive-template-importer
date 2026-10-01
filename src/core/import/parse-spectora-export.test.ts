@@ -1219,6 +1219,194 @@ describe("parseSpectoraExport", () => {
     }
   });
 
+  it("flags Spectora's stock estimate on every fixture, and groups Ben's default photos", async () => {
+    const ben = "Ben Gromicko's Template for Home Inspections-2026-09-30.xls";
+    const residentialTemplate = "Residential Template-2026-09-30.xls";
+    const rawOnlyByFile: Record<string, { column: string; rows: number[] }[]> = {
+      [ben]: [
+        {
+          column: "Default Location",
+          rows: [315, 321, 357, 656, 859, 869, 1131, 1140, 1142, 1150, 1171],
+        },
+        {
+          column: "Default photos",
+          rows: [38, 39, 213, 214, 217, 251, 351, 614, 619, 688, 837, 839, 847, 862, 974, 975, 978, 1128],
+        },
+      ],
+      [residentialTemplate]: [{ column: "Default Location", rows: [4] }],
+    };
+
+    for (const fixture of HTML_FIXTURES) {
+      const draft = await draftOf(fixture.file);
+      expect(draft.issues.filter((issue) => issue.kind === "stock-estimates"), fixture.file).toEqual([
+        { kind: "stock-estimates", sourceRow: null, detail: { count: fixture.rows }, cuts: [] },
+      ]);
+      expect(draft.issues.filter((issue) => issue.kind === "custom-estimates"), fixture.file).toEqual([]);
+      expect(draft.issues.filter((issue) => issue.kind === "raw-only-content"), fixture.file).toEqual(
+        (rawOnlyByFile[fixture.file] ?? []).map((detail) => ({
+          kind: "raw-only-content",
+          sourceRow: null,
+          detail,
+          cuts: [],
+        })),
+      );
+    }
+
+    expect(renderIssueMessage("stock-estimates", { count: 392 })).toBe(
+      "Spectora's stock estimate on all 392 Comments; not imported.",
+    );
+    expect(renderIssueMessage("stock-estimates", { count: 1 })).toBe(
+      "Spectora's stock estimate on 1 Comment; not imported.",
+    );
+    expect(
+      renderIssueMessage("raw-only-content", {
+        column: "Default photos",
+        rows: [38, 39, 213, 214, 217, 251, 351, 614, 619, 688, 837, 839, 847, 862, 974, 975, 978, 1128],
+      }),
+    ).toBe("18 Comments have default photos; kept in the Source row, not shown in the editor.");
+    expect(renderIssueMessage("raw-only-content", { column: "Default Location", rows: [4] })).toBe(
+      "Default Location has content on row 4; kept in the Source row, not shown in the editor.",
+    );
+    expect(catalogueEntry("raw-only-content")).toMatchObject({
+      level: "file",
+      severity: "notice",
+      class: "Unsupported",
+      title: "Raw-only content",
+    });
+    expect(catalogueEntry("stock-estimates")).toMatchObject({
+      level: "file",
+      severity: "notice",
+      class: "Unsupported",
+      title: "Stock estimates",
+    });
+    expect(catalogueEntry("custom-estimates")).toMatchObject({
+      level: "file",
+      severity: "warning",
+      class: "Unsupported",
+      title: "Custom estimates",
+    });
+  });
+
+  it("warns on custom estimates and does not also call the file stock", async () => {
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "comment name": "Stock", "default estimate min": "10", "default estimate max": "1000" }),
+          rowFor(HEADERS, { "comment name": "Blank" }),
+          rowFor(HEADERS, { "comment name": "Custom", "default estimate min": 25, "default estimate max": "400" }),
+          rowFor(HEADERS, { "comment name": "Min only", "default estimate min": 10 }),
+        ]),
+        "custom-estimates.xls",
+      ),
+    );
+
+    expect(draft.issues.filter((issue) => issue.kind === "custom-estimates")).toEqual([
+      { kind: "custom-estimates", sourceRow: null, detail: { rows: [4] }, cuts: [] },
+    ]);
+    expect(draft.issues.filter((issue) => issue.kind === "stock-estimates")).toEqual([]);
+    expect(renderIssueMessage("custom-estimates", { rows: [4] })).toBe(
+      "A custom estimate on row 4 was kept in the Source row, not shown in the editor.",
+    );
+    expect(renderIssueMessage("custom-estimates", { rows: [4, 8, 9] })).toBe(
+      "Custom estimates on rows 4, 8 and 9 were kept in the Source row, not shown in the editor.",
+    );
+    expectRoundTrip(draft);
+  });
+
+  it("groups default photos into one notice and leaves Order, Uses and Last Modified alone", async () => {
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, {
+            "comment name": "Photo",
+            "Default Photo 1": "https://cdn.spectora.com/default_photos/a.jpg",
+            Uses: 0,
+            "order": 5,
+            "last modified": "09/30/2026 03:42:57",
+          }),
+          rowFor(HEADERS, {
+            "comment name": "Caption",
+            "Default Photo 2 Caption": "Front",
+            "default value 2": "5-10",
+          }),
+          rowFor(HEADERS, { "comment name": "Counter", Uses: 3 }),
+        ]),
+        "default-photos.xls",
+      ),
+    );
+
+    expect(draft.issues.filter((issue) => issue.kind === "raw-only-content")).toEqual([
+      {
+        kind: "raw-only-content",
+        sourceRow: null,
+        detail: { column: "Default Value 2", rows: [3] },
+        cuts: [],
+      },
+      {
+        kind: "raw-only-content",
+        sourceRow: null,
+        detail: { column: "Uses", rows: [4] },
+        cuts: [],
+      },
+      {
+        kind: "raw-only-content",
+        sourceRow: null,
+        detail: { column: "Default photos", rows: [2, 3] },
+        cuts: [],
+      },
+    ]);
+    expect(renderIssueMessage("raw-only-content", { column: "Default photos", rows: [2] })).toBe(
+      "1 Comment has default photos; kept in the Source row, not shown in the editor.",
+    );
+    expect(renderIssueMessage("raw-only-content", { column: "Uses", rows: [4, 9] })).toBe(
+      "Uses has content on rows 4 and 9; kept in the Source row, not shown in the editor.",
+    );
+    expectRoundTrip(draft);
+  });
+
+  it("raises no estimate issue when the estimate columns are missing or blank", async () => {
+    const headers = HEADERS.filter((header) => header !== "Default Estimate Min" && header !== "Default Estimate Max");
+    const missing = expectDraft(
+      await parseSpectoraExport(
+        await workbook(headers, [rowFor(headers, { "comment name": "No estimates" })]),
+        "no-estimate-columns.xls",
+      ),
+    );
+    expect(missing.issues.filter((issue) => issue.kind === "stock-estimates" || issue.kind === "custom-estimates")).toEqual(
+      [],
+    );
+    expectRoundTrip(missing);
+
+    const blank = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "comment name": "Empty" }),
+          rowFor(HEADERS, { "comment name": "Also empty", "default estimate min": "  ", "default estimate max": null }),
+        ]),
+        "blank-estimates.xls",
+      ),
+    );
+    expect(blank.issues.filter((issue) => issue.kind === "stock-estimates" || issue.kind === "custom-estimates")).toEqual(
+      [],
+    );
+    expectRoundTrip(blank);
+
+    const stockAndBlank = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "comment name": "Stock", "default estimate min": 10, "default estimate max": 1000 }),
+          rowFor(HEADERS, { "comment name": "Empty" }),
+        ]),
+        "partial-stock.xls",
+      ),
+    );
+    expect(stockAndBlank.issues.filter((issue) => issue.kind === "stock-estimates")).toEqual([
+      { kind: "stock-estimates", sourceRow: null, detail: { count: 1 }, cuts: [] },
+    ]);
+    expect(stockAndBlank.issues.filter((issue) => issue.kind === "custom-estimates")).toEqual([]);
+    expectRoundTrip(stockAndBlank);
+  });
+
   it("keeps an Item name that recurs under different Sections as separate Items", async () => {
     const draft = await draftOf("Room-by-Room Residential Template-2026-09-30.xls");
     const master = draft.tree.sections.find((section) => section.name === "Master Bedroom");
