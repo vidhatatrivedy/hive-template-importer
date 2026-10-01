@@ -5,7 +5,7 @@ import writeXlsxFile from "write-excel-file/node";
 import { catalogue, renderIssueMessage, type IssueKind } from "@/core/import/catalogue";
 import { MAX_UPLOAD_BYTES, rejectionMessage } from "@/core/import/rejections";
 import { parseSpectoraExport, type ParseResult } from "@/core/import/parse-spectora-export";
-import { reconcile, toExportRows } from "@/core/import/reconcile";
+import { reconcile, toExportRows, type Cell, type ReconcileRow } from "@/core/import/reconcile";
 import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import {
   countEditableTree,
@@ -1259,7 +1259,7 @@ function sourceRow(draft: ImportDraft, name: string): number {
   return row;
 }
 
-function sourceCell(draft: ImportDraft, name: string, header: string): string | number | boolean | null {
+function sourceCell(draft: ImportDraft, name: string, header: string): Cell {
   const rowNumber = sourceRow(draft, name);
   const index = draft.run.headers.indexOf(header);
   return draft.sourceRows.find((row) => row.rowNumber === rowNumber)?.cells[index] ?? null;
@@ -1274,11 +1274,13 @@ function issue(draft: ImportDraft, name: string, kind: IssueKind, detail: unknow
   return { kind, sourceRow: sourceRow(draft, name), detail, cuts: [] };
 }
 
-function differencesOn(rows: { sourceRow: number | null; differences: { column: string }[] }[], sourceRowNumber: number, column: string) {
-  return rows.find((row) => row.sourceRow === sourceRowNumber)?.differences.filter((difference) => difference.column === column) ?? [];
+function differencesOn(rows: readonly ReconcileRow[], sourceRowNumber: number, column: string): ReconcileRow["differences"] {
+  const row = rows.find((candidate) => candidate.sourceRow === sourceRowNumber);
+  if (!row) return [];
+  return row.differences.filter((difference) => difference.column === column);
 }
 
-function categoryDifferences(rows: { sourceRow: number | null; differences: { column: string }[] }[], sourceRowNumber: number) {
+function categoryDifferences(rows: readonly ReconcileRow[], sourceRowNumber: number): ReconcileRow["differences"] {
   return differencesOn(rows, sourceRowNumber, CATEGORY);
 }
 

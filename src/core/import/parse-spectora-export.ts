@@ -361,26 +361,26 @@ function buildComment(
   textHtml: string,
   issues: ImportDraft["issues"],
 ): Comment {
-  const commentType = vocabularyValue(
-    cellAt(cells, indexes.commentType),
-    indexes.commentType,
-    COMMENT_TYPES,
-    "info",
-    COLUMNS.commentType,
-    "comment-type-fallback",
+  const commentType = vocabularyValue({
+    value: cellAt(cells, indexes.commentType),
+    columnIndex: indexes.commentType,
+    allowed: COMMENT_TYPES,
+    fallback: "info",
+    field: COLUMNS.commentType,
+    fallbackKind: "comment-type-fallback",
     rowNumber,
     issues,
-  );
-  const answerType = vocabularyValue(
-    cellAt(cells, indexes.answerType),
-    indexes.answerType,
-    ANSWER_TYPES,
-    "boolean",
-    COLUMNS.answerType,
-    "answer-type-fallback",
+  });
+  const answerType = vocabularyValue({
+    value: cellAt(cells, indexes.answerType),
+    columnIndex: indexes.answerType,
+    allowed: ANSWER_TYPES,
+    fallback: "boolean",
+    field: COLUMNS.answerType,
+    fallbackKind: "answer-type-fallback",
     rowNumber,
     issues,
-  );
+  });
   const defaults = defaultsOf(answerType, cellAt(cells, indexes.defaultValue));
   return {
     sourceRow: rowNumber,
@@ -421,16 +421,17 @@ function commentText(value: Cell): string {
  * falls back quietly: the file-level missing-column issue already names it.
  * A number or boolean is read as its string form and that conversion is not flagged.
  */
-function vocabularyValue<T extends string>(
-  value: Cell,
-  columnIndex: number,
-  allowed: readonly T[],
-  fallback: T,
-  field: string,
-  fallbackKind: "comment-type-fallback" | "answer-type-fallback",
-  rowNumber: number,
-  issues: ImportDraft["issues"],
-): T {
+function vocabularyValue<T extends string>(input: {
+  value: Cell;
+  columnIndex: number;
+  allowed: readonly T[];
+  fallback: T;
+  field: string;
+  fallbackKind: "comment-type-fallback" | "answer-type-fallback";
+  rowNumber: number;
+  issues: ImportDraft["issues"];
+}): T {
+  const { value, columnIndex, allowed, fallback, field, fallbackKind, rowNumber, issues } = input;
   if (columnIndex === MISSING_COLUMN) return fallback;
   const decoded = decodeCell(value);
   const match = allowed.find((entry) => entry === decoded.text.trim().toLowerCase());
@@ -456,19 +457,15 @@ function categoryValue(
   issues: ImportDraft["issues"],
 ): Category | null {
   if (columnIndex === MISSING_COLUMN) return null;
-  const numeric = validCategory(categoryNumber(value));
+  const category = validCategory(categoryNumber(value));
   if (commentType === "defect") {
-    if (numeric === null) {
-      issues.push({ kind: "category-missing", sourceRow: rowNumber, detail: {}, cuts: [] });
-      return null;
-    }
-    return numeric;
+    if (category !== null) return category;
+    issues.push({ kind: "category-missing", sourceRow: rowNumber, detail: {}, cuts: [] });
+    return null;
   }
-  if (numeric !== null) {
-    issues.push({ kind: "category-orphan", sourceRow: rowNumber, detail: { category: numeric }, cuts: [] });
-    return numeric;
-  }
-  return null;
+  if (category === null) return null;
+  issues.push({ kind: "category-orphan", sourceRow: rowNumber, detail: { category }, cuts: [] });
+  return category;
 }
 
 function validCategory(numeric: number | null): Category | null {

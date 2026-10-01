@@ -218,12 +218,13 @@ function fieldDifferences(
   issues: readonly ImportIssue[],
 ): Difference[] {
   const differences: Difference[] = [];
+  const commentType = cellForHeader(headers, storedCells, COMMENT_TYPE);
   for (let index = 0; index < headers.length; index += 1) {
     const column = headers[index] ?? "";
     if (matchesAny(column, SKIPPED_COLUMNS)) continue;
     const raw = index < source.cells.length ? (source.cells[index] ?? null) : null;
     const stored = storedCells[index] ?? null;
-    const difference = compareCell(column, raw, stored, issues, storedCell(headers, storedCells, COMMENT_TYPE));
+    const difference = compareCell(column, raw, stored, issues, commentType);
     if (difference) differences.push(difference);
   }
   return differences;
@@ -266,22 +267,26 @@ function vocabularyDifference(
 
   const decoded = cellText(raw);
   const canonical = decoded.trim().toLowerCase();
-  if (allowed.includes(canonical)) {
-    if (stored !== canonical) return { column, raw, stored, explanation: null };
-    if (typeof raw === "string" && raw === stored) return null;
-    if (typeof raw === "string" && decoded === stored && decoded !== raw) {
-      return { column, raw, stored, explanation: { rule: "entity-decoding" } };
-    }
-    if (typeof raw !== "string" && decoded === stored) return null;
-    const explained = issues.some(
-      (issue) => issue.kind === "vocabulary-normalised" && matchesExpectedHeader(column, fieldOf(issue.detail) ?? ""),
-    );
-    return { column, raw, stored, explanation: explained ? { issues: ["vocabulary-normalised"] } : null };
+  if (!allowed.includes(canonical)) {
+    if (stored !== fallback) return { column, raw, stored, explanation: null };
+    return { column, raw, stored, explanation: explanationForKind(issues, fallbackKind) };
   }
 
-  if (stored !== fallback) return { column, raw, stored, explanation: null };
-  const explained = issues.some((issue) => issue.kind === fallbackKind);
-  return { column, raw, stored, explanation: explained ? { issues: [fallbackKind] } : null };
+  if (stored !== canonical) return { column, raw, stored, explanation: null };
+
+  const normalised: Difference = {
+    column,
+    raw,
+    stored,
+    explanation: explanationForField(issues, "vocabulary-normalised", column),
+  };
+  if (typeof raw !== "string") {
+    if (decoded === stored) return null;
+    return normalised;
+  }
+  if (raw === stored) return null;
+  if (decoded === stored) return { column, raw, stored, explanation: { rule: "entity-decoding" } };
+  return normalised;
 }
 
 /**
@@ -304,8 +309,7 @@ function categoryDifference(
       return { column, raw, stored, explanation: null };
     }
     if (stored === null) {
-      const explained = issues.some((issue) => issue.kind === "category-missing");
-      return { column, raw, stored, explanation: explained ? { issues: ["category-missing"] } : null };
+      return { column, raw, stored, explanation: explanationForKind(issues, "category-missing") };
     }
     return { column, raw, stored, explanation: null };
   }
@@ -313,8 +317,7 @@ function categoryDifference(
   if (commentType === "info" || commentType === "limit") {
     if (numeric !== null) {
       if (stored !== numeric) return { column, raw, stored, explanation: null };
-      const explained = issues.some((issue) => issue.kind === "category-orphan");
-      return { column, raw, stored, explanation: explained ? { issues: ["category-orphan"] } : null };
+      return { column, raw, stored, explanation: explanationForKind(issues, "category-orphan") };
     }
     if (stored !== null) return { column, raw, stored, explanation: null };
     if (isBlankCategory(raw)) return null;
@@ -340,7 +343,7 @@ function isBlankCategory(value: Cell): boolean {
   return value === null || (typeof value === "string" && cellText(value).trim() === "");
 }
 
-function storedCell(headers: readonly string[], cells: readonly Cell[], header: string): Cell {
+function cellForHeader(headers: readonly string[], cells: readonly Cell[], header: string): Cell {
   const index = columnIndex(headers, header);
   if (index < 0 || index >= cells.length) return null;
   return cells[index] ?? null;
@@ -371,10 +374,7 @@ function nameDifference(column: string, raw: Cell, stored: Cell, issues: readonl
 
   const storedAsBlank = stored === null && trimmed === "";
   if ((storedText === trimmed || storedAsBlank) && trimmed !== decoded) {
-    const explained = issues.some(
-      (issue) => issue.kind === "whitespace-trimmed" && matchesExpectedHeader(column, fieldOf(issue.detail) ?? ""),
-    );
-    return { column, raw, stored, explanation: explained ? { issues: ["whitespace-trimmed"] } : null };
+    return { column, raw, stored, explanation: explanationForField(issues, "whitespace-trimmed", column) };
   }
 
   return { column, raw, stored, explanation: null };
@@ -497,6 +497,22 @@ function normalisedName(value: Cell): string {
 function fieldOf(detail: unknown): string | null {
   if (typeof detail !== "object" || detail === null || !("field" in detail)) return null;
   return typeof detail.field === "string" ? detail.field : null;
+}
+
+function explanationForKind(issues: readonly ImportIssue[], kind: IssueKind): DifferenceExplanation | null {
+  return issues.some((issue) => issue.kind === kind) ? { issues: [kind] } : null;
+}
+
+/** A field issue explains the difference only when its detail names this column. */
+function explanationForField(
+  issues: readonly ImportIssue[],
+  kind: IssueKind,
+  column: string,
+): DifferenceExplanation | null {
+  const explained = issues.some(
+    (issue) => issue.kind === kind && matchesExpectedHeader(column, fieldOf(issue.detail) ?? ""),
+  );
+  return explained ? { issues: [kind] } : null;
 }
 
 function cellAt(row: SourceRow, index: number): Cell {
