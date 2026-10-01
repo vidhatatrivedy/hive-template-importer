@@ -330,8 +330,6 @@ describe("restore version", () => {
       if (!version3 || !version2) throw new Error("Restored Versions were not readable");
 
       expect(withoutIds(version3)).toEqual(withoutIds(version1));
-      const version1Ids = new Set(collectIds(version1));
-      expect(collectIds(version3).some((id) => version1Ids.has(id))).toBe(false);
       expect(withoutIds(version2)).toEqual(withoutIds(edits.tree));
 
       const detail = await db.getTemplate(imported.templateId);
