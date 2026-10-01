@@ -1,4 +1,4 @@
-import type { Comment, EditableTree } from "@/core/import/schemas";
+import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 
 /** The column the inspector is working in. Columns to its left collapse. */
 export type Column = "sections" | "items" | "comments";
@@ -11,8 +11,15 @@ export type EditorSelection = {
   commentId: string | null;
 };
 
+/** The Version the editor was opened or last adopted against. */
+export type EditorBase = {
+  versionId: string;
+  number: number;
+  tree: EditableTree;
+};
+
 export type EditorState = {
-  base: { versionId: string; number: number; tree: EditableTree };
+  base: EditorBase;
   tree: EditableTree;
   selection: EditorSelection;
   focus: Column;
@@ -21,7 +28,7 @@ export type EditorState = {
 };
 
 export type EditorAction =
-  | { type: "serverVersion"; versionId: string; number: number; tree: EditableTree }
+  | ({ type: "serverVersion" } & EditorBase)
   | { type: "select"; ref: NodeRef }
   | { type: "focus"; column: Column }
   | { type: "selectRow"; row: number };
@@ -40,27 +47,33 @@ export function commentGroups(comments: readonly Comment[]): { label: string; co
   })).filter((group) => group.comments.length > 0);
 }
 
-export function initialEditorState(input: {
-  versionId: string;
-  number: number;
-  tree: EditableTree;
-  row: number | null;
-}): EditorState {
+export function locate(
+  tree: EditableTree,
+  selection: EditorSelection,
+): { section: Section | null; item: Item | null; comment: Comment | null } {
+  const section = tree.sections.find((candidate) => candidate.id === selection.sectionId) ?? null;
+  const item = section?.items.find((candidate) => candidate.id === selection.itemId) ?? null;
+  const comment = item?.comments.find((candidate) => candidate.id === selection.commentId) ?? null;
+  return { section, item, comment };
+}
+
+export function initialEditorState(input: EditorBase & { row: number | null }): EditorState {
+  const { row, ...base } = input;
   const state: EditorState = {
-    base: { versionId: input.versionId, number: input.number, tree: input.tree },
-    tree: input.tree,
-    selection: { sectionId: null, itemId: null, commentId: null },
+    base,
+    tree: base.tree,
+    selection: emptySelection(),
     focus: "sections",
     rowMiss: null,
   };
-  if (input.row !== null) return editorReducer(state, { type: "selectRow", row: input.row });
+  if (row !== null) return editorReducer(state, { type: "selectRow", row });
   return selectFirst(state);
 }
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "serverVersion":
-      return adopt(state, action.versionId, action.number, action.tree);
+      return adoptVersion(state, action);
     case "select":
       return select(state, action.ref);
     case "focus":
@@ -74,25 +87,29 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
   }
 }
 
+function emptySelection(): EditorSelection {
+  return { sectionId: null, itemId: null, commentId: null };
+}
+
+function focused(state: EditorState, focus: Column, selection: EditorSelection): EditorState {
+  return { ...state, focus, rowMiss: null, selection };
+}
+
 function selectFirst(state: EditorState): EditorState {
   const section = state.tree.sections[0];
   const sectionId = nodeId(section);
   if (!section || !sectionId) return state;
-  const item = section.items[0] ?? null;
-  const comment = item ? firstDisplayed(item.comments) : null;
-  return {
-    ...state,
-    selection: { sectionId, itemId: nodeId(item), commentId: nodeId(comment) },
-  };
+  return { ...state, selection: selectionInSection(sectionId, section) };
 }
 
-function adopt(state: EditorState, versionId: string, number: number, tree: EditableTree): EditorState {
+function adoptVersion(state: EditorState, next: EditorBase): EditorState {
   const path = indexPath(state.tree, state.selection);
+  const base = { versionId: next.versionId, number: next.number, tree: next.tree };
   return {
     ...state,
-    base: { versionId, number, tree },
-    tree,
-    selection: path ? selectionAt(tree, path) : { sectionId: null, itemId: null, commentId: null },
+    base,
+    tree: next.tree,
+    selection: path ? selectionAt(next.tree, path) : emptySelection(),
   };
 }
 
@@ -105,89 +122,96 @@ function select(state: EditorState, ref: NodeRef): EditorState {
 function selectSection(state: EditorState, id: string): EditorState {
   const section = state.tree.sections.find((candidate) => candidate.id === id);
   if (!section) return state;
-  const item = section.items[0] ?? null;
-  const comment = item ? firstDisplayed(item.comments) : null;
-  return {
-    ...state,
-    focus: "items",
-    rowMiss: null,
-    selection: { sectionId: id, itemId: nodeId(item), commentId: nodeId(comment) },
-  };
+  return focused(state, "items", selectionInSection(id, section));
 }
 
 function selectItem(state: EditorState, id: string): EditorState {
-  for (const section of state.tree.sections) {
-    const sectionId = nodeId(section);
-    const item = section.items.find((candidate) => candidate.id === id);
-    if (!sectionId || !item) continue;
-    const comment = firstDisplayed(item.comments);
-    return {
-      ...state,
-      focus: "comments",
-      rowMiss: null,
-      selection: { sectionId, itemId: id, commentId: nodeId(comment) },
-    };
-  }
-  return state;
+  const placed = findItem(state.tree, id);
+  if (!placed) return state;
+  return focused(state, "comments", {
+    sectionId: placed.sectionId,
+    itemId: id,
+    commentId: nodeId(firstDisplayed(placed.item.comments)),
+  });
 }
 
 function selectComment(state: EditorState, id: string): EditorState {
-  for (const section of state.tree.sections) {
-    const sectionId = nodeId(section);
-    if (!sectionId) continue;
-    for (const item of section.items) {
-      const itemId = nodeId(item);
-      if (!itemId || !item.comments.some((candidate) => candidate.id === id)) continue;
-      return {
-        ...state,
-        focus: "comments",
-        rowMiss: null,
-        selection: { sectionId, itemId, commentId: id },
-      };
-    }
-  }
-  return state;
+  const placed = findComment(state.tree, (comment) => comment.id === id);
+  if (!placed) return state;
+  return focused(state, "comments", {
+    sectionId: placed.sectionId,
+    itemId: placed.itemId,
+    commentId: id,
+  });
 }
 
 function selectRow(state: EditorState, row: number): EditorState {
-  for (const section of state.tree.sections) {
+  const placed = findComment(state.tree, (comment) => Boolean(nodeId(comment)) && comment.sourceRow === row);
+  const commentId = placed ? nodeId(placed.comment) : null;
+  if (!placed || !commentId) return state.rowMiss === row ? state : { ...state, rowMiss: row };
+  return focused(state, "comments", {
+    sectionId: placed.sectionId,
+    itemId: placed.itemId,
+    commentId,
+  });
+}
+
+/** The Section, its first Item, and that Item's first Comment in display order. */
+function selectionInSection(sectionId: string, section: Section): EditorSelection {
+  const item = section.items[0] ?? null;
+  const comment = item ? firstDisplayed(item.comments) : null;
+  return { sectionId, itemId: nodeId(item), commentId: nodeId(comment) };
+}
+
+function findItem(tree: EditableTree, id: string): { sectionId: string; item: Item } | null {
+  for (const section of tree.sections) {
+    const sectionId = nodeId(section);
+    if (!sectionId) continue;
+    const item = section.items.find((candidate) => candidate.id === id);
+    if (!item) continue;
+    return { sectionId, item };
+  }
+  return null;
+}
+
+function findComment(
+  tree: EditableTree,
+  matches: (comment: Comment) => boolean,
+): { sectionId: string; itemId: string; comment: Comment } | null {
+  for (const section of tree.sections) {
     const sectionId = nodeId(section);
     if (!sectionId) continue;
     for (const item of section.items) {
       const itemId = nodeId(item);
       if (!itemId) continue;
-      for (const comment of item.comments) {
-        const commentId = nodeId(comment);
-        if (!commentId || comment.sourceRow !== row) continue;
-        return {
-          ...state,
-          focus: "comments",
-          rowMiss: null,
-          selection: { sectionId, itemId, commentId },
-        };
-      }
+      const comment = item.comments.find(matches);
+      if (!comment) continue;
+      return { sectionId, itemId, comment };
     }
   }
-  return state.rowMiss === row ? state : { ...state, rowMiss: row };
+  return null;
 }
 
 type IndexPath = { section: number; item: number | null; comment: number | null };
 
 function indexPath(tree: EditableTree, selection: EditorSelection): IndexPath | null {
-  const section = tree.sections.findIndex((candidate) => candidate.id === selection.sectionId);
-  if (section < 0) return null;
-  if (selection.itemId === null) return { section, item: null, comment: null };
-  const items = tree.sections[section]?.items ?? [];
-  const item = items.findIndex((candidate) => candidate.id === selection.itemId);
-  if (item < 0) return { section, item: null, comment: null };
-  if (selection.commentId === null) return { section, item, comment: null };
-  const comment = items[item]?.comments.findIndex((candidate) => candidate.id === selection.commentId) ?? -1;
-  if (comment < 0) return { section, item, comment: null };
-  return { section, item, comment };
+  const sectionIndex = tree.sections.findIndex((candidate) => candidate.id === selection.sectionId);
+  if (sectionIndex < 0) return null;
+  if (selection.itemId === null) return { section: sectionIndex, item: null, comment: null };
+
+  const items = tree.sections[sectionIndex]?.items ?? [];
+  const itemIndex = items.findIndex((candidate) => candidate.id === selection.itemId);
+  if (itemIndex < 0) return { section: sectionIndex, item: null, comment: null };
+  if (selection.commentId === null) return { section: sectionIndex, item: itemIndex, comment: null };
+
+  const commentIndex =
+    items[itemIndex]?.comments.findIndex((candidate) => candidate.id === selection.commentId) ?? -1;
+  if (commentIndex < 0) return { section: sectionIndex, item: itemIndex, comment: null };
+  return { section: sectionIndex, item: itemIndex, comment: commentIndex };
 }
 
 function selectionAt(tree: EditableTree, path: IndexPath): EditorSelection {
-  if (tree.sections.length === 0) return { sectionId: null, itemId: null, commentId: null };
+  if (tree.sections.length === 0) return emptySelection();
   const section = tree.sections[clamp(path.section, 0, tree.sections.length - 1)];
   const sectionId = nodeId(section);
   if (!section || !sectionId || path.item === null || section.items.length === 0) {

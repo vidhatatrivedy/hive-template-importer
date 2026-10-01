@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useReducer, useRef, type ReactNode, type Ref } from "react";
-import type { Comment, EditableTree } from "@/core/import/schemas";
+import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 import {
   commentGroups,
   editorReducer,
   initialEditorState,
+  locate,
   type Column,
-  type EditorState,
 } from "@/app/editor/editor-state";
 import { templateHref } from "@/app/template-view";
 import { labelClass } from "@/app/ui/classes";
@@ -196,20 +196,47 @@ export function Editor({
             : null}
         </EditorColumn>
         <section className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-3">
-          {state.rowMiss !== null ? (
-            <p className="text-neutral-500">No Comment in this Version carries Source row {state.rowMiss}.</p>
-          ) : section && item && comment ? (
-            <CommentDetail
-              templateId={templateId}
-              versionsOpen={versionsOpen}
-              sectionName={section.name}
-              itemName={item.name}
-              comment={comment}
-            />
-          ) : null}
+          <CommentPane
+            rowMiss={state.rowMiss}
+            templateId={templateId}
+            versionsOpen={versionsOpen}
+            section={section}
+            item={item}
+            comment={comment}
+          />
         </section>
       </div>
     </div>
+  );
+}
+
+function CommentPane({
+  rowMiss,
+  templateId,
+  versionsOpen,
+  section,
+  item,
+  comment,
+}: {
+  rowMiss: number | null;
+  templateId: string;
+  versionsOpen: boolean;
+  section: Section | null;
+  item: Item | null;
+  comment: Comment | null;
+}) {
+  if (rowMiss !== null) {
+    return <p className="text-neutral-500">No Comment in this Version carries Source row {rowMiss}.</p>;
+  }
+  if (!section || !item || !comment) return null;
+  return (
+    <CommentDetail
+      templateId={templateId}
+      versionsOpen={versionsOpen}
+      sectionName={section.name}
+      itemName={item.name}
+      comment={comment}
+    />
   );
 }
 
@@ -396,13 +423,6 @@ function RowButton({
       {children}
     </button>
   );
-}
-
-function locate(tree: EditableTree, selection: EditorState["selection"]) {
-  const section = tree.sections.find((candidate) => candidate.id === selection.sectionId) ?? null;
-  const item = section?.items.find((candidate) => candidate.id === selection.itemId) ?? null;
-  const comment = item?.comments.find((candidate) => candidate.id === selection.commentId) ?? null;
-  return { section, item, comment };
 }
 
 function isCollapsed(column: Column, focus: Column): boolean {

@@ -3,7 +3,7 @@ import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
 import type { EditableTree } from "@/core/import/schemas";
-import { editorReducer, initialEditorState, type EditorState } from "@/app/editor/editor-state";
+import { editorReducer, initialEditorState, locate, type EditorState } from "@/app/editor/editor-state";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -184,10 +184,7 @@ describe("editorReducer", () => {
 });
 
 function located(state: EditorState) {
-  const section = state.tree.sections.find((candidate) => candidate.id === state.selection.sectionId) ?? null;
-  const item = section?.items.find((candidate) => candidate.id === state.selection.itemId) ?? null;
-  const comment = item?.comments.find((candidate) => candidate.id === state.selection.commentId) ?? null;
-  return { section, item, comment };
+  return locate(state.tree, state.selection);
 }
 
 function idOf(source: EditableTree, sectionName: string, itemName?: string): string {
