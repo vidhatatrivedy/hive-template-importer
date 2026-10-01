@@ -29,13 +29,30 @@ export function parseTemplateView(searchParams: TemplateSearchParams): TemplateV
   return { panes, row: parseRow(list(searchParams.row)[0]) };
 }
 
-export function templateHref(templateId: string, view: TemplateView): string {
+export type TemplateHrefOptions = {
+  /** When set, the path is the read-only Version view `/t/<id>/v/<n>`. */
+  version?: number;
+};
+
+export function templateHref(templateId: string, view: TemplateView, options?: TemplateHrefOptions): string {
   const params: string[] = [];
   const panes = PANE_ORDER.filter((pane) => view.panes.has(pane));
   if (panes.length > 0) params.push(`pane=${panes.join(",")}`);
   if (view.row !== null) params.push(`row=${view.row}`);
-  const path = `/t/${encodeURIComponent(templateId)}`;
+  const version = options?.version;
+  const path =
+    version === undefined
+      ? `/t/${encodeURIComponent(templateId)}`
+      : `/t/${encodeURIComponent(templateId)}/v/${version}`;
   return params.length > 0 ? `${path}?${params.join("&")}` : path;
+}
+
+/** Opens or closes Versions, keeping the Trust Report and the Source row. */
+export function withVersionsPane(view: TemplateView, open: boolean): TemplateView {
+  const panes = new Set(view.panes);
+  if (open) panes.add("versions");
+  else panes.delete("versions");
+  return { panes, row: view.row };
 }
 
 /** Opens or closes the Trust Report, keeping Versions. Closing drops `row`, which only the report reads. */

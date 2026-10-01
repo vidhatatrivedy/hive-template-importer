@@ -1057,6 +1057,42 @@ describe("editorReducer: pre-Save notice", () => {
     expect(located(saving).comment?.textHtml).toBe(textHtml);
   });
 
+  it("in read-only mode every edit and save action is a no-op, and selection and selectRow still work", () => {
+    const viewing = open(null, "read-only");
+    const sectionRef = { level: "section", id: idOf(tree, "Cooling") } as const;
+    const commentId = commentIdAt(tree, 149);
+
+    for (const action of [
+      { type: "addSection" },
+      { type: "addItem" },
+      { type: "addComment", commentType: "info" },
+      { type: "delete", ref: sectionRef },
+      { type: "move", ref: sectionRef, dir: "up" },
+      { type: "rename", ref: sectionRef, name: "Renamed" },
+      { type: "setComment", id: commentId, patch: { name: "Renamed" } },
+      { type: "option", id: commentId, op: "add" },
+      { type: "discard" },
+      { type: "saveRequested" },
+      { type: "saveConfirmed" },
+      { type: "saveCancelled" },
+      { type: "saveSucceeded", number: 2 },
+      { type: "saveFailed", error: { kind: "template-not-found" } },
+      { type: "loadLatest", number: 2 },
+    ] as const) {
+      expect(editorReducer(viewing, action)).toBe(viewing);
+    }
+
+    const selected = editorReducer(viewing, { type: "select", ref: sectionRef });
+    expect(located(selected).section?.name).toBe("Cooling");
+    expect(selected.focus).toBe("items");
+
+    const byRow = editorReducer(viewing, { type: "selectRow", row: 149 });
+    expect(located(byRow).comment?.name).toBe("Brand");
+    expect(located(byRow).comment?.sourceRow).toBe(149);
+    expect(byRow.focus).toBe("comments");
+    expect(byRow.rowMiss).toBeNull();
+  });
+
   it("leaves a read-only Version on the notice when Save is confirmed or cancelled", () => {
     const opened = open();
     const edited = editorReducer(opened, {

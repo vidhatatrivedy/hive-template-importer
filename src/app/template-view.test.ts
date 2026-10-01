@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseTemplateView, templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
+import {
+  parseTemplateView,
+  templateHref,
+  withTrustPane,
+  withVersionsPane,
+  type TemplateView,
+} from "@/app/template-view";
 
 const templateId = "6b1e0c3a-6e3d-4f3a-9c2e-1a2b3c4d5e6f";
 
@@ -44,6 +50,31 @@ describe("Template URLs", () => {
     );
     expect(templateHref(templateId, { panes: new Set(), row: 4 })).toBe(`/t/${templateId}?row=4`);
     expect(parseTemplateView({ pane: "", row: "" })).toEqual(empty);
+  });
+});
+
+describe("Version URLs", () => {
+  it("round-trips a Version number through parseTemplateView, keeps pane order trust,versions, and omits empty params", () => {
+    const view: TemplateView = {
+      panes: new Set(["versions", "trust"]),
+      row: 12,
+    };
+    const href = templateHref(templateId, view, { version: 3 });
+    expect(href).toBe(`/t/${templateId}/v/3?pane=trust,versions&row=12`);
+    expect(parseTemplateView(searchParamsFrom(href))).toEqual(view);
+    expect(templateHref(templateId, { panes: new Set(), row: null }, { version: 1 })).toBe(`/t/${templateId}/v/1`);
+    expect(templateHref(templateId, { panes: new Set(["versions"]), row: null }, { version: 2 })).toBe(
+      `/t/${templateId}/v/2?pane=versions`,
+    );
+  });
+
+  it("opens and closes Versions while keeping the Trust Report and the Source row", () => {
+    const view = parseTemplateView({ pane: "trust", row: "7" });
+    expect(templateHref(templateId, withVersionsPane(view, true), { version: 3 })).toBe(
+      `/t/${templateId}/v/3?pane=trust,versions&row=7`,
+    );
+    expect(templateHref(templateId, withVersionsPane(view, false))).toBe(`/t/${templateId}?pane=trust&row=7`);
+    expect(view).toEqual({ panes: new Set(["trust"]), row: 7 });
   });
 });
 

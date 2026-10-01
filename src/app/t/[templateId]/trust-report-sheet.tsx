@@ -29,13 +29,17 @@ export function TrustReportSheet({
   view,
   latestNumber,
   loaded,
+  version,
 }: {
   templateId: string;
   view: TemplateView;
   latestNumber: number;
   loaded: LoadedTrustReport;
+  /** Set on the read-only Version view, so row links stay on that Version. */
+  version?: number;
 }) {
-  const closeHref = templateHref(templateId, withTrustPane(view, false));
+  const hrefOptions = version === undefined ? undefined : { version };
+  const closeHref = templateHref(templateId, withTrustPane(view, false), hrefOptions);
 
   if (view.row !== null) {
     const rowView = sourceRowView(loaded.report, loaded.evidence, loaded.tree, view.row);
@@ -45,7 +49,7 @@ export function TrustReportSheet({
         closeHref={closeHref}
         heading={
           <GuardedLink
-            href={templateHref(templateId, { panes: view.panes, row: null })}
+            href={templateHref(templateId, { panes: view.panes, row: null }, hrefOptions)}
             className="underline underline-offset-2"
           >
             ← Trust Report
@@ -57,7 +61,8 @@ export function TrustReportSheet({
     );
   }
 
-  const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
+  const rowHref = (row: number) =>
+    templateHref(templateId, { ...withTrustPane(view, true), row }, hrefOptions);
   const { summary } = loaded.report;
   const summaryView = trustSummaryView(loaded.report, latestNumber);
   const { reconciliation, externalAssets, keptButNotUsed, missingFromExport } = trustSectionsView(loaded.report);

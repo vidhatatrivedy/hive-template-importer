@@ -101,7 +101,9 @@ export function Editor({
   versionsOpen,
   counts,
   mode = "edit",
+  hrefVersion = null,
   readOnlyFields = {},
+  banner = null,
   children,
 }: {
   templateId: string;
@@ -113,7 +115,10 @@ export function Editor({
   versionsOpen: boolean;
   counts: string;
   mode?: EditorMode;
+  /** Set on an old Version, so Source row links stay on `/v/<n>`. */
+  hrefVersion?: number | null;
   readOnlyFields?: Readonly<Record<number, ReadOnlyFields>>;
+  banner?: ReactNode;
   children: ReactNode;
 }) {
   const [state, dispatch] = useReducer(
@@ -255,6 +260,7 @@ export function Editor({
   const { section, item, comment } = locate(state.tree, state.selection);
   const focusColumn = (column: Column) => dispatch({ type: "focus", column });
   const indicator = saveIndicator(state);
+  const showEditing = state.mode === "edit";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -267,26 +273,29 @@ export function Editor({
           onFocus={focusColumn}
         />
         <p className="shrink-0 text-neutral-500 tabular-nums">{counts}</p>
-        {indicator ? (
+        {showEditing && indicator ? (
           <p aria-live="polite" className="shrink-0 text-neutral-500">
             {indicator}
           </p>
         ) : null}
-        <button
-          type="button"
-          className={`${primaryButtonClass} shrink-0`}
-          disabled={!canSave}
-          onClick={() => void runSave()}
-        >
-          Save
-        </button>
-        {canDiscard ? (
+        {showEditing ? (
+          <button
+            type="button"
+            className={`${primaryButtonClass} shrink-0`}
+            disabled={!canSave}
+            onClick={() => void runSave()}
+          >
+            Save
+          </button>
+        ) : null}
+        {showEditing && canDiscard ? (
           <button type="button" className={`${buttonClass} shrink-0`} onClick={() => void runDiscard()}>
             Discard
           </button>
         ) : null}
         {children}
       </header>
+      {banner}
       {notice ? (
         <div className="flex shrink-0 items-center gap-3 border-b border-black/[0.05] px-4 py-2 dark:border-white/[0.06]">
           <p role="alert" className="min-w-0 flex-1">
@@ -475,6 +484,7 @@ export function Editor({
             rowMiss={state.rowMiss}
             templateId={templateId}
             versionsOpen={versionsOpen}
+            hrefVersion={hrefVersion}
             section={section}
             item={item}
             comment={comment}
@@ -517,6 +527,7 @@ function CommentPane({
   rowMiss,
   templateId,
   versionsOpen,
+  hrefVersion,
   section,
   item,
   comment,
@@ -534,6 +545,7 @@ function CommentPane({
   rowMiss: number | null;
   templateId: string;
   versionsOpen: boolean;
+  hrefVersion: number | null;
   section: Section | null;
   item: Item | null;
   comment: Comment | null;
@@ -556,6 +568,7 @@ function CommentPane({
     <CommentDetail
       templateId={templateId}
       versionsOpen={versionsOpen}
+      hrefVersion={hrefVersion}
       sectionName={section.name}
       itemName={item.name}
       comment={comment}
@@ -576,6 +589,7 @@ function CommentPane({
 function CommentDetail({
   templateId,
   versionsOpen,
+  hrefVersion,
   sectionName,
   itemName,
   comment,
@@ -592,6 +606,7 @@ function CommentDetail({
 }: {
   templateId: string;
   versionsOpen: boolean;
+  hrefVersion: number | null;
   sectionName: string;
   itemName: string;
   comment: Comment;
@@ -614,7 +629,7 @@ function CommentDetail({
         </p>
         {comment.sourceRow !== null ? (
           <GuardedLink
-            href={commentSourceHref(templateId, versionsOpen, comment.sourceRow)}
+            href={commentSourceHref(templateId, versionsOpen, comment.sourceRow, hrefVersion)}
             className="shrink-0 underline underline-offset-2"
           >
             Source row {comment.sourceRow}
@@ -1622,10 +1637,19 @@ function isCollapsed(column: Column, focus: Column): boolean {
 }
 
 /** Source row view on this Template, keeping the Versions sheet open when it already is. */
-function commentSourceHref(templateId: string, versionsOpen: boolean, sourceRow: number): string {
+function commentSourceHref(
+  templateId: string,
+  versionsOpen: boolean,
+  sourceRow: number,
+  hrefVersion: number | null,
+): string {
   const panes = new Set<"trust" | "versions">(["trust"]);
   if (versionsOpen) panes.add("versions");
-  return templateHref(templateId, { panes, row: sourceRow });
+  return templateHref(
+    templateId,
+    { panes, row: sourceRow },
+    hrefVersion === null ? undefined : { version: hrefVersion },
+  );
 }
 
 function categoryLabel(category: Comment["category"]): string {
