@@ -18,11 +18,16 @@ export function AnswerTypeGlyph({ answerType }: { answerType: string }) {
 
 /** Comment type told apart by fill, never by colour. defect filled, limit grey, info outline. */
 export function CommentTypeDot({ commentType }: { commentType: string }) {
-  const fill =
-    commentType === "defect"
-      ? "bg-neutral-900 dark:bg-white"
-      : commentType === "limit"
-        ? "bg-neutral-500"
-        : "border border-neutral-400";
-  return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${fill}`} />;
+  return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${commentTypeFill(commentType)}`} />;
+}
+
+function commentTypeFill(commentType: string): string {
+  switch (commentType) {
+    case "defect":
+      return "bg-neutral-900 dark:bg-white";
+    case "limit":
+      return "bg-neutral-500";
+    default:
+      return "border border-neutral-400";
+  }
 }

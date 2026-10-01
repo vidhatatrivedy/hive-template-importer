@@ -18,6 +18,7 @@ describe("Template URLs", () => {
     expect(href).toBe(`/t/${templateId}?pane=trust,versions&row=12`);
     expect(parseTemplateView(searchParamsFrom(href))).toEqual(view);
     expect(templateHref(templateId, parseTemplateView({ pane: "trust,versions", row: "12" }))).toBe(href);
+    expect(templateHref(templateId, parseTemplateView({ pane: "versions,trust", row: "12" }))).toBe(href);
   });
 
   it("ignores unknown panes, non-integer rows and rows below 2", () => {
