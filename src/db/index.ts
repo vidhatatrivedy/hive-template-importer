@@ -12,11 +12,13 @@ import {
 import {
   deleteTemplateResultSchema,
   importTemplateResultSchema,
+  restoreVersionResultSchema,
   saveVersionResultSchema,
   templateDetailSchema,
   type DbRefusal,
   type DeleteTemplateResult,
   type ImportTemplateResult,
+  type RestoreVersionResult,
   type Result,
   type SaveVersionResult,
   type TemplateDetail,
@@ -26,6 +28,7 @@ export type {
   DbRefusal,
   DeleteTemplateResult,
   ImportTemplateResult,
+  RestoreVersionResult,
   Result,
   SaveVersionResult,
   TemplateDetail,
@@ -50,6 +53,7 @@ export interface Db {
     baseNumber: number,
     tree: EditableTree,
   ): Promise<Result<SaveVersionResult>>;
+  restoreVersion(versionId: string, baseNumber: number): Promise<Result<RestoreVersionResult>>;
   getTemplate(templateId: string): Promise<TemplateDetail | null>;
   getVersionTree(versionId: string): Promise<EditableTree | null>;
   getImportEvidence(importRunId: string): Promise<ImportEvidence | null>;
@@ -63,6 +67,7 @@ export function createDb(env: { url: string; serviceRoleKey: string }): Db {
     importTemplate: (draft, name) => importTemplate(client, draft, name),
     deleteTemplate: (templateId) => deleteTemplate(client, templateId),
     saveVersion: (templateId, baseNumber, tree) => saveVersion(client, templateId, baseNumber, tree),
+    restoreVersion: (versionId, baseNumber) => restoreVersion(client, versionId, baseNumber),
     getTemplate: (templateId) =>
       readOne(client, "get_template", { template_id: templateId }, templateDetailSchema),
     getVersionTree: (versionId) =>
@@ -117,6 +122,23 @@ async function saveVersion(
     throw error;
   }
   return { ok: true, value: saveVersionResultSchema.parse(data) };
+}
+
+async function restoreVersion(
+  client: SupabaseClient,
+  versionId: string,
+  baseNumber: number,
+): Promise<Result<RestoreVersionResult>> {
+  const { data, error } = await client.rpc("restore_version", {
+    version_id: versionId,
+    base_number: baseNumber,
+  });
+  if (error) {
+    const refusal = refusalFrom(error) ?? staleBaseFromVersionConflict(error, baseNumber);
+    if (refusal) return { ok: false, error: refusal };
+    throw error;
+  }
+  return { ok: true, value: restoreVersionResultSchema.parse(data) };
 }
 
 async function readOne<T>(

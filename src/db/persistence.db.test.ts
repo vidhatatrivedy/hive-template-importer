@@ -146,6 +146,7 @@ describe("persistence tracer", () => {
       { fn: "get_import_evidence", args: { import_run_id: UNKNOWN_ID } },
       { fn: "delete_template", args: { template_id: UNKNOWN_ID } },
       { fn: "save_version", args: { template_id: UNKNOWN_ID, base_number: 1, tree: { sections: [] } } },
+      { fn: "restore_version", args: { version_id: UNKNOWN_ID, base_number: 1 } },
     ];
     for (const call of calls) {
       const { data, error } = await anon.rpc(call.fn, call.args);
@@ -306,6 +307,94 @@ describe("save version", () => {
     } finally {
       await db.deleteTemplate(imported.templateId);
     }
+  });
+});
+
+describe("restore version", () => {
+  it("restores Version 1 as Version 3 and leaves Version 2 unchanged", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    try {
+      const version1 = await db.getVersionTree(imported.versionId);
+      if (!version1) throw new Error("Version 1 was not stored");
+      const edits = applySaveEdits(version1);
+      const saved = await db.saveVersion(imported.templateId, 1, edits.tree);
+      expect(saved).toEqual({ ok: true, value: expect.objectContaining({ number: 2 }) });
+      if (!saved.ok) return;
+
+      const restored = await db.restoreVersion(imported.versionId, 2);
+      expect(restored).toEqual({ ok: true, value: expect.objectContaining({ number: 3 }) });
+      if (!restored.ok) return;
+
+      const version3 = await db.getVersionTree(restored.value.versionId);
+      const version2 = await db.getVersionTree(saved.value.versionId);
+      if (!version3 || !version2) throw new Error("Restored Versions were not readable");
+
+      expect(withoutIds(version3)).toEqual(withoutIds(version1));
+      const version1Ids = new Set(collectIds(version1));
+      expect(collectIds(version3).some((id) => version1Ids.has(id))).toBe(false);
+      expect(withoutIds(version2)).toEqual(withoutIds(edits.tree));
+
+      const detail = await db.getTemplate(imported.templateId);
+      expect(detail?.versions.map((version) => ({
+        number: version.number,
+        origin: version.origin,
+        restoredFromNumber: version.restoredFromNumber,
+      }))).toEqual([
+        { number: 3, origin: "restore", restoredFromNumber: 1 },
+        { number: 2, origin: "save", restoredFromNumber: null },
+        { number: 1, origin: "import", restoredFromNumber: null },
+      ]);
+    } finally {
+      await db.deleteTemplate(imported.templateId);
+    }
+  });
+
+  it("restores the latest Version as an identical next Version", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    try {
+      const version1 = await db.getVersionTree(imported.versionId);
+      if (!version1) throw new Error("Version 1 was not stored");
+
+      const restored = await db.restoreVersion(imported.versionId, 1);
+      expect(restored).toEqual({ ok: true, value: expect.objectContaining({ number: 2 }) });
+      if (!restored.ok) return;
+
+      const version2 = await db.getVersionTree(restored.value.versionId);
+      if (!version2) throw new Error("Restored Version was not readable");
+      expect(withoutIds(version2)).toEqual(withoutIds(version1));
+
+      const detail = await db.getTemplate(imported.templateId);
+      expect(detail?.versions.find((version) => version.number === 2)).toMatchObject({
+        origin: "restore",
+        restoredFromNumber: 1,
+      });
+    } finally {
+      await db.deleteTemplate(imported.templateId);
+    }
+  });
+
+  it("refuses a Restore on a stale base and writes nothing", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    try {
+      const stored = await db.getVersionTree(imported.versionId);
+      if (!stored) throw new Error("Version 1 was not stored");
+      const saved = await db.saveVersion(imported.templateId, 1, stored);
+      expect(saved).toEqual({ ok: true, value: expect.objectContaining({ number: 2 }) });
+      if (!saved.ok) return;
+
+      const restored = await db.restoreVersion(imported.versionId, 1);
+      expect(restored).toEqual({ ok: false, error: { kind: "stale-base", latestNumber: 2 } });
+
+      const detail = await db.getTemplate(imported.templateId);
+      expect(detail?.versions.map((version) => version.number)).toEqual([2, 1]);
+    } finally {
+      await db.deleteTemplate(imported.templateId);
+    }
+  });
+
+  it("refuses a Restore of an unknown Version", async () => {
+    const restored = await db.restoreVersion(UNKNOWN_ID, 1);
+    expect(restored).toEqual({ ok: false, error: { kind: "template-not-found" } });
   });
 });
 

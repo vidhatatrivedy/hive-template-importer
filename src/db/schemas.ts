@@ -80,6 +80,12 @@ export const saveVersionResultSchema = z.object({
   number: z.number().int().positive(),
 });
 
+export const restoreVersionResultSchema = z.object({
+  versionId: z.uuid(),
+  number: z.number().int().positive(),
+});
+
 export type ImportTemplateResult = z.infer<typeof importTemplateResultSchema>;
 export type DeleteTemplateResult = z.infer<typeof deleteTemplateResultSchema>;
 export type SaveVersionResult = z.infer<typeof saveVersionResultSchema>;
+export type RestoreVersionResult = z.infer<typeof restoreVersionResultSchema>;
