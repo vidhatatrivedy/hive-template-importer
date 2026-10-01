@@ -76,10 +76,10 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
   const headers = headerRow.map(headerText);
   const missing = missingRequired(headers);
   if (missing.length > 0) return { ok: false, rejection: { kind: "missing-columns", missing } };
-  const indexes = columnIndexes(headers);
-  if (isPlainTextExport(sheet.data, headers.length, indexes)) {
+  if (isPlainTextExport(sheet.data, headers)) {
     return { ok: false, rejection: { kind: "plain-text-export" } };
   }
+  const indexes = columnIndexes(headers);
   const sourceRows: ImportDraft["sourceRows"] = [];
   const issues: ImportDraft["issues"] = [];
   const sections: Section[] = [];
@@ -89,7 +89,7 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
   let valuesDecoded = 0;
 
   for (let index = 1; index < sheet.data.length; index++) {
-    const cells = align(sheet.data[index], headers.length).map(storedCell);
+    const cells = alignedCells(sheet.data[index], headers.length);
     if (cells.every(isBlankCell)) {
       blankRows += 1;
       continue;
@@ -141,46 +141,45 @@ export async function parseSpectoraExport(bytes: Uint8Array, filename: string): 
 
 const NAME_AND_TEXT = ["sectionName", "itemName", "commentName", "commentText"] as const;
 const HTML_TAG = /<\/?[A-Za-z]/;
-const ENTITY_AT_START = /^&(?:#x[0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]*);/;
+/** Named (`&amp;`) or numeric (`&#38;`, `&#x26;`, `&#X26;`) character reference, including the semicolon. */
+const ENTITY_AT_START = /^&(?:#[xX][0-9a-fA-F]+|#\d+|[A-Za-z][A-Za-z0-9]*);/;
 
 /**
  * No Comment Text cell contains a tag, and a bare `&` (not the start of an entity)
  * appears in a name or Comment Text. Columns are found by header.
  */
-function isPlainTextExport(
-  data: readonly (readonly unknown[] | undefined)[],
-  width: number,
-  indexes: ColumnIndexes,
-): boolean {
-  let tagged = false;
+function isPlainTextExport(data: readonly (readonly unknown[] | undefined)[], headers: readonly string[]): boolean {
+  const width = headers.length;
+  const commentTextIndex = headerIndex(headers, COLUMNS.commentText);
+  const nameAndTextIndexes = NAME_AND_TEXT.map((column) => headerIndex(headers, COLUMNS[column]));
   let bareAmpersand = false;
   for (let index = 1; index < data.length; index++) {
-    const cells = align(data[index], width).map(storedCell);
-    if (HTML_TAG.test(cellString(cells[indexes.commentText]))) tagged = true;
-    for (const column of NAME_AND_TEXT) {
-      if (hasBareAmpersand(cellString(cells[indexes[column]]))) bareAmpersand = true;
+    const cells = alignedCells(data[index], width);
+    if (HTML_TAG.test(commentText(cells[commentTextIndex]))) return false;
+    for (const columnIndex of nameAndTextIndexes) {
+      if (hasBareAmpersand(commentText(cells[columnIndex]))) bareAmpersand = true;
     }
   }
-  return !tagged && bareAmpersand;
-}
-
-function cellString(value: Cell): string {
-  return typeof value === "string" ? value : "";
+  return bareAmpersand;
 }
 
 function hasBareAmpersand(text: string): boolean {
-  for (let index = 0; index < text.length; index++) {
-    if (text[index] !== "&") continue;
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== "&") {
+      index += 1;
+      continue;
+    }
     const entity = ENTITY_AT_START.exec(text.slice(index));
     if (!entity) return true;
-    index += entity[0].length - 1;
+    index += entity[0].length;
   }
   return false;
 }
 
 function hasNonBlankDataRow(data: readonly (readonly unknown[] | undefined)[], width: number): boolean {
   for (let index = 1; index < data.length; index++) {
-    if (!align(data[index], width).map(storedCell).every(isBlankCell)) return true;
+    if (!alignedCells(data[index], width).every(isBlankCell)) return true;
   }
   return false;
 }
@@ -316,6 +315,10 @@ function align(row: readonly unknown[] | undefined, width: number): unknown[] {
   const cells = (row ?? []).slice(0, width);
   while (cells.length < width) cells.push(null);
   return cells;
+}
+
+function alignedCells(row: readonly unknown[] | undefined, width: number): Cell[] {
+  return align(row, width).map(storedCell);
 }
 
 /** A Date becomes an ISO 8601 string. Any other non-cell value is stringified. */

@@ -543,6 +543,29 @@ describe("parseSpectoraExport", () => {
     expect(comment).toMatchObject({ name: "Shingles", textHtml: "No formatting here." });
   });
 
+  it("imports a tagless workbook whose only ampersands start character references, including &#X", async () => {
+    const row = HEADERS.map(() => "");
+    row[0] = "Doors &#x26; Windows";
+    row[1] = "Trim &amp; casing";
+    row[2] = "E &#38; F";
+    row[HEADERS.indexOf("Comment Text")] = "Price &#X41; each";
+    row[HEADERS.indexOf("Comment Type (info, limit, defect)")] = "info";
+    const draft = expectDraft(await parseSpectoraExport(await writeXlsxFile([HEADERS, row]).toBuffer(), "entities.xls"));
+    expect(draft.tree.sections[0]?.items[0]?.comments[0]?.textHtml).toBe("Price &#X41; each");
+  });
+
+  it("rejects plain text when an optional column is missing, and names a missing required column first", async () => {
+    const headers = ["Section Name", "Item Name", "Comment Name", "Comment Text", "Comment Type (info, limit, defect)"];
+    const plain = ["Roof", "Covering", "Shingles & Flashing", "No formatting here.", "info"];
+    const rejected = await parseSpectoraExport(await writeXlsxFile([headers, plain]).toBuffer(), "plain-no-category.xls");
+    expect(rejected).toEqual({ ok: false, rejection: { kind: "plain-text-export" } });
+
+    const missingItem = ["Section Name", "Comment Name", "Comment Text", "Comment Type (info, limit, defect)"];
+    const row = ["Roof & Gutters", "Shingles", "No formatting here.", "info"];
+    const result = await parseSpectoraExport(await writeXlsxFile([missingItem, row]).toBuffer(), "missing-item.xls");
+    expect(result).toEqual({ ok: false, rejection: { kind: "missing-columns", missing: ["Item Name"] } });
+  });
+
   it("rejects a workbook missing Comment Type and Item Name and names both", async () => {
     const headers = HEADERS.filter(
       (header) => header !== "Item Name" && header !== "Comment Type (info, limit, defect)",
@@ -609,15 +632,16 @@ function readFixture(file: string): Buffer {
   return fs.readFileSync(path.join(FIXTURE_DIR, file));
 }
 
-function expectDraft(result: ParseResult): ImportDraft {
-  if (!result.ok) throw new Error(`rejected: ${result.rejection.kind}`);
+function expectDraft(result: ParseResult, file?: string): ImportDraft {
+  if (!result.ok) {
+    const where = file === undefined ? "rejected" : `${file} was rejected`;
+    throw new Error(`${where}: ${result.rejection.kind}`);
+  }
   return result.draft;
 }
 
 async function draftOf(file: string): Promise<ImportDraft> {
-  const result = await parseSpectoraExport(readFixture(file), file);
-  if (!result.ok) throw new Error(`${file} was rejected: ${result.rejection.kind}`);
-  return result.draft;
+  return expectDraft(await parseSpectoraExport(readFixture(file), file), file);
 }
 
 /**

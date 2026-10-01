@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { catalogue, countEditableTree, parseSpectoraExport, reconcile } from "../src/core/import";
-import type { ImportDraft, ImportIssue, ParseResult } from "../src/core/import";
+import type { ImportDraft, ImportIssue, ParseResult, RejectionKind } from "../src/core/import";
 import type { IssueSeverity } from "../src/core/import/catalogue";
 
 const FIXTURE_DIR = path.resolve("fixtures/spectora");
@@ -18,7 +18,7 @@ export type VerifyRow = {
   warnings: number;
   notices: number;
   /** Rejection kind, or null when the file was imported. */
-  rejection: string | null;
+  rejection: RejectionKind | null;
 };
 
 const COLUMNS: [string, (row: VerifyRow) => string | number][] = [
