@@ -63,6 +63,7 @@ describe("Version URLs", () => {
     expect(href).toBe(`/t/${templateId}/v/3?pane=trust,versions&row=12`);
     expect(parseTemplateView(searchParamsFrom(href))).toEqual(view);
     expect(templateHref(templateId, { panes: new Set(), row: null }, { version: 1 })).toBe(`/t/${templateId}/v/1`);
+    expect(templateHref(templateId, { panes: new Set(), row: null }, { version: null })).toBe(`/t/${templateId}`);
     expect(templateHref(templateId, { panes: new Set(["versions"]), row: null }, { version: 2 })).toBe(
       `/t/${templateId}/v/2?pane=versions`,
     );

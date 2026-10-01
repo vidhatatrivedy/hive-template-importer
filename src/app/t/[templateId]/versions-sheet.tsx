@@ -25,11 +25,7 @@ export function VersionsSheet({
   detail: TemplateDetail;
   viewingNumber: number | null;
 }) {
-  const closeHref = templateHref(
-    templateId,
-    withVersionsPane(view, false),
-    viewingNumber === null ? undefined : { version: viewingNumber },
-  );
+  const closeHref = templateHref(templateId, withVersionsPane(view, false), { version: viewingNumber });
   const versions = detail.versions.slice().sort((left, right) => right.number - left.number);
   const rowView = { panes: view.panes, row: null };
 
@@ -52,7 +48,7 @@ export function VersionsSheet({
         {versions.map((version) => {
           const current = version.number === detail.latest.number;
           const viewing = viewingNumber === version.number;
-          const here = viewing || (viewingNumber === null && current);
+          const isThisPage = viewingNumber === null ? current : viewing;
           const href = current
             ? templateHref(templateId, rowView)
             : templateHref(templateId, rowView, { version: version.number });
@@ -60,8 +56,8 @@ export function VersionsSheet({
             <li key={version.id}>
               <GuardedLink
                 href={href}
-                aria-current={here ? "page" : undefined}
-                className={`flex flex-col gap-0.5 rounded-lg px-1.5 py-1.5 ${here ? rowActiveClass : rowIdleClass}`}
+                aria-current={isThisPage ? "page" : undefined}
+                className={`flex flex-col gap-0.5 rounded-lg px-1.5 py-1.5 ${isThisPage ? rowActiveClass : rowIdleClass}`}
               >
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="font-medium text-neutral-900 dark:text-white">Version {version.number}</span>

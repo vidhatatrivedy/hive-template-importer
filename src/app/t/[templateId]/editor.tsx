@@ -273,25 +273,27 @@ export function Editor({
           onFocus={focusColumn}
         />
         <p className="shrink-0 text-neutral-500 tabular-nums">{counts}</p>
-        {showEditing && indicator ? (
-          <p aria-live="polite" className="shrink-0 text-neutral-500">
-            {indicator}
-          </p>
-        ) : null}
         {showEditing ? (
-          <button
-            type="button"
-            className={`${primaryButtonClass} shrink-0`}
-            disabled={!canSave}
-            onClick={() => void runSave()}
-          >
-            Save
-          </button>
-        ) : null}
-        {showEditing && canDiscard ? (
-          <button type="button" className={`${buttonClass} shrink-0`} onClick={() => void runDiscard()}>
-            Discard
-          </button>
+          <>
+            {indicator ? (
+              <p aria-live="polite" className="shrink-0 text-neutral-500">
+                {indicator}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className={`${primaryButtonClass} shrink-0`}
+              disabled={!canSave}
+              onClick={() => void runSave()}
+            >
+              Save
+            </button>
+            {canDiscard ? (
+              <button type="button" className={`${buttonClass} shrink-0`} onClick={() => void runDiscard()}>
+                Discard
+              </button>
+            ) : null}
+          </>
         ) : null}
         {children}
       </header>
@@ -1645,11 +1647,7 @@ function commentSourceHref(
 ): string {
   const panes = new Set<"trust" | "versions">(["trust"]);
   if (versionsOpen) panes.add("versions");
-  return templateHref(
-    templateId,
-    { panes, row: sourceRow },
-    hrefVersion === null ? undefined : { version: hrefVersion },
-  );
+  return templateHref(templateId, { panes, row: sourceRow }, { version: hrefVersion });
 }
 
 function categoryLabel(category: Comment["category"]): string {

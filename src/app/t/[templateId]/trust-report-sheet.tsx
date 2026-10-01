@@ -29,16 +29,16 @@ export function TrustReportSheet({
   view,
   latestNumber,
   loaded,
-  version,
+  hrefVersion,
 }: {
   templateId: string;
   view: TemplateView;
   latestNumber: number;
   loaded: LoadedTrustReport;
-  /** Set on the read-only Version view, so row links stay on that Version. */
-  version?: number;
+  /** Set on an old Version, so row links stay on `/v/<n>`. Null is the latest Version. */
+  hrefVersion: number | null;
 }) {
-  const hrefOptions = version === undefined ? undefined : { version };
+  const hrefOptions = { version: hrefVersion };
   const closeHref = templateHref(templateId, withTrustPane(view, false), hrefOptions);
 
   if (view.row !== null) {

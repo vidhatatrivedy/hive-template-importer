@@ -30,8 +30,8 @@ export function parseTemplateView(searchParams: TemplateSearchParams): TemplateV
 }
 
 export type TemplateHrefOptions = {
-  /** When set, the path is the read-only Version view `/t/<id>/v/<n>`. */
-  version?: number;
+  /** A number selects the read-only path `/t/<id>/v/<n>`. Null is the latest Version, same as omitting it. */
+  version?: number | null;
 };
 
 export function templateHref(templateId: string, view: TemplateView, options?: TemplateHrefOptions): string {
@@ -39,12 +39,11 @@ export function templateHref(templateId: string, view: TemplateView, options?: T
   const panes = PANE_ORDER.filter((pane) => view.panes.has(pane));
   if (panes.length > 0) params.push(`pane=${panes.join(",")}`);
   if (view.row !== null) params.push(`row=${view.row}`);
+  const id = encodeURIComponent(templateId);
   const version = options?.version;
-  const path =
-    version === undefined
-      ? `/t/${encodeURIComponent(templateId)}`
-      : `/t/${encodeURIComponent(templateId)}/v/${version}`;
-  return params.length > 0 ? `${path}?${params.join("&")}` : path;
+  const path = typeof version === "number" ? `/t/${id}/v/${version}` : `/t/${id}`;
+  if (params.length === 0) return path;
+  return `${path}?${params.join("&")}`;
 }
 
 /** Opens or closes Versions, keeping the Trust Report and the Source row. */

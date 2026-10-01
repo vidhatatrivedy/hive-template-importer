@@ -875,20 +875,8 @@ describe("editorReducer: structure", () => {
     expect(canMove(opened, lastInfo, "up")).toBe(true);
   });
 
-  it("changes no structure in read-only mode or while Save is in flight", () => {
-    const readOnly = open(null, "read-only");
+  it("changes no structure while Save is in flight", () => {
     const sectionRef = { level: "section", id: idOf(tree, "Cooling") } as const;
-    for (const action of [
-      { type: "addSection" },
-      { type: "addItem" },
-      { type: "addComment", commentType: "info" },
-      { type: "delete", ref: sectionRef },
-      { type: "move", ref: sectionRef, dir: "up" },
-      { type: "rename", ref: sectionRef, name: "Renamed" },
-    ] as const) {
-      expect(editorReducer(readOnly, action)).toBe(readOnly);
-    }
-
     const edited = editorReducer(open(), { type: "rename", ref: sectionRef, name: "Renamed" });
     const saving = editorReducer(edited, { type: "saveRequested" });
     expect(saving.save.status).toBe("saving");

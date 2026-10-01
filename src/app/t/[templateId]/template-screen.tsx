@@ -35,7 +35,7 @@ export async function TemplateScreen({
   requestedVersion: number | null;
 }) {
   await connection();
-  const view = parseView(await searchParams);
+  const view = parseTemplateView(await searchParams);
   if (!z.uuid().safeParse(templateId).success) notFound();
 
   const db = getDb();
@@ -59,7 +59,7 @@ export async function TemplateScreen({
   if (!tree) notFound();
 
   const readOnly = requestedVersion !== null;
-  const hrefOptions = readOnly ? { version: viewed.number } : undefined;
+  const hrefVersion = readOnly ? viewed.number : null;
   const counts = formatVersionCounts(viewed.counts);
   const hasReport = template.creation === "import";
   const trustOpen = hasReport && view.panes.has("trust");
@@ -85,7 +85,7 @@ export async function TemplateScreen({
           versionsOpen={versionsOpen}
           counts={counts}
           mode={readOnly ? "read-only" : "edit"}
-          hrefVersion={readOnly ? viewed.number : null}
+          hrefVersion={hrefVersion}
           readOnlyFields={evidence ? readOnlyFields(evidence) : {}}
           banner={
             readOnly ? (
@@ -104,7 +104,7 @@ export async function TemplateScreen({
             ) : null}
             {hasReport ? (
               <GuardedLink
-                href={templateHref(template.id, withTrustPane(view, !trustOpen), hrefOptions)}
+                href={templateHref(template.id, withTrustPane(view, !trustOpen), { version: hrefVersion })}
                 aria-current={trustOpen ? "true" : undefined}
                 className={`${buttonClass} shrink-0 ${trustOpen ? "bg-black/[0.06] dark:bg-white/[0.1]" : ""}`}
               >
@@ -112,7 +112,7 @@ export async function TemplateScreen({
               </GuardedLink>
             ) : null}
             <GuardedLink
-              href={templateHref(template.id, withVersionsPane(view, !versionsOpen), hrefOptions)}
+              href={templateHref(template.id, withVersionsPane(view, !versionsOpen), { version: hrefVersion })}
               aria-current={versionsOpen ? "true" : undefined}
               className={`${buttonClass} shrink-0 ${versionsOpen ? "bg-black/[0.06] dark:bg-white/[0.1]" : ""}`}
             >
@@ -126,7 +126,7 @@ export async function TemplateScreen({
               templateId={template.id}
               view={view}
               detail={template}
-              viewingNumber={readOnly ? viewed.number : null}
+              viewingNumber={hrefVersion}
             />
           ) : null}
           {trust ? (
@@ -135,17 +135,13 @@ export async function TemplateScreen({
               view={view}
               latestNumber={latest.number}
               loaded={trust}
-              version={readOnly ? viewed.number : undefined}
+              hrefVersion={hrefVersion}
             />
           ) : null}
         </PaneHost>
       </div>
     </div>
   );
-}
-
-function parseView(searchParams: TemplateSearchParams): TemplateView {
-  return parseTemplateView(searchParams);
 }
 
 /**
