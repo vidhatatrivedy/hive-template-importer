@@ -2,12 +2,14 @@ import Link from "next/link";
 import { issueClasses, issueSeverities, type IssueSeverity } from "@/core/import/catalogue";
 import { templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
 import {
+  countPhrase,
   trustSectionsView,
+  type ExternalAssetHostView,
   type ExternalAssetsView,
-  type MissingCountView,
+  type KeptButNotUsedView,
+  type MissingFromExportView,
   type ReconciliationRowView,
   type ReconciliationSectionView,
-  type TrustSectionsView,
 } from "@/app/trust-sections";
 import { trustSummaryView } from "@/app/trust-summary";
 import { glassSheetClass, labelClass, severityNoticeClass, severityWarningClass } from "@/app/ui/classes";
@@ -35,7 +37,7 @@ export function TrustReportSheet({
 }) {
   const { summary } = loaded.report;
   const summaryView = trustSummaryView(loaded.report, latestNumber);
-  const sections = trustSectionsView(loaded.report);
+  const { reconciliation, externalAssets, keptButNotUsed, missingFromExport } = trustSectionsView(loaded.report);
   const rowHref = (row: number) => templateHref(templateId, { ...withTrustPane(view, true), row });
 
   return (
@@ -118,10 +120,10 @@ export function TrustReportSheet({
           )}
         </section>
 
-        <Reconciliation sections={sections.reconciliation} />
-        <ExternalAssets assets={sections.externalAssets} rowHref={rowHref} />
-        <KeptButNotUsed kept={sections.keptButNotUsed} />
-        <MissingFromExport missing={sections.missingFromExport} />
+        <Reconciliation sections={reconciliation} />
+        <ExternalAssets assets={externalAssets} rowHref={rowHref} />
+        <KeptButNotUsed kept={keptButNotUsed} />
+        <MissingFromExport missing={missingFromExport} />
       </div>
     </aside>
   );
@@ -167,7 +169,9 @@ function ReconciliationRow({ row }: { row: ReconciliationRowView }) {
   );
 }
 
-function ExternalAssets({ assets, rowHref }: { assets: ExternalAssetsView; rowHref: (row: number) => string }) {
+type SourceRowHref = (row: number) => string;
+
+function ExternalAssets({ assets, rowHref }: { assets: ExternalAssetsView; rowHref: SourceRowHref }) {
   return (
     <section className="flex flex-col gap-2">
       <h3 className={labelClass}>External assets</h3>
@@ -176,28 +180,7 @@ function ExternalAssets({ assets, rowHref }: { assets: ExternalAssetsView; rowHr
       ) : (
         <>
           {assets.hosts.map((host) => (
-            <div key={host.host} className="flex flex-col gap-2">
-              <p className="font-medium text-neutral-900 dark:text-white">{host.host}</p>
-              <ul className="flex flex-col gap-2">
-                {host.urls.map((asset) => (
-                  <li key={asset.url} className="flex flex-col gap-0.5">
-                    <p className="break-all font-mono text-[11px] text-neutral-500">{asset.url}</p>
-                    {asset.sourceRows.length > 0 ? (
-                      <p>
-                        {asset.sourceRows.map((row, index) => (
-                          <span key={row}>
-                            {index > 0 ? ", " : null}
-                            <Link href={rowHref(row)} className="underline underline-offset-2">
-                              Source row {row}
-                            </Link>
-                          </span>
-                        ))}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <ExternalAssetHost key={host.host} host={host} rowHref={rowHref} />
           ))}
           {assets.note ? <p className="text-neutral-500">{assets.note}</p> : null}
         </>
@@ -206,7 +189,39 @@ function ExternalAssets({ assets, rowHref }: { assets: ExternalAssetsView; rowHr
   );
 }
 
-function KeptButNotUsed({ kept }: { kept: TrustSectionsView["keptButNotUsed"] }) {
+function ExternalAssetHost({ host, rowHref }: { host: ExternalAssetHostView; rowHref: SourceRowHref }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="font-medium text-neutral-900 dark:text-white">{host.host}</p>
+      <ul className="flex flex-col gap-2">
+        {host.urls.map((asset) => (
+          <li key={asset.url} className="flex flex-col gap-0.5">
+            <p className="break-all font-mono text-[11px] text-neutral-500">{asset.url}</p>
+            <SourceRowLinks rows={asset.sourceRows} rowHref={rowHref} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SourceRowLinks({ rows, rowHref }: { rows: number[]; rowHref: SourceRowHref }) {
+  if (rows.length === 0) return null;
+  return (
+    <p>
+      {rows.map((row, index) => (
+        <span key={row}>
+          {index > 0 ? ", " : null}
+          <Link href={rowHref(row)} className="underline underline-offset-2">
+            Source row {row}
+          </Link>
+        </span>
+      ))}
+    </p>
+  );
+}
+
+function KeptButNotUsed({ kept }: { kept: KeptButNotUsedView }) {
   return (
     <section className="flex flex-col gap-2">
       <h3 className={labelClass}>Kept but not used</h3>
@@ -214,10 +229,7 @@ function KeptButNotUsed({ kept }: { kept: TrustSectionsView["keptButNotUsed"] })
         {kept.columns.map((column) => (
           <li key={column.column}>
             {column.column}
-            <span className="text-neutral-500">
-              {" "}
-              · {column.rowsHoldingContent} {column.rowsHoldingContent === 1 ? "row" : "rows"}
-            </span>
+            <span className="text-neutral-500"> · {countPhrase(column.rowsHoldingContent, "row", "rows")}</span>
           </li>
         ))}
       </ul>
@@ -226,11 +238,7 @@ function KeptButNotUsed({ kept }: { kept: TrustSectionsView["keptButNotUsed"] })
   );
 }
 
-function MissingFromExport({
-  missing,
-}: {
-  missing: { entries: string[]; counts: [MissingCountView, MissingCountView] };
-}) {
+function MissingFromExport({ missing }: { missing: MissingFromExportView }) {
   return (
     <section className="flex flex-col gap-2">
       <h3 className={labelClass}>Missing from export</h3>

@@ -1,5 +1,10 @@
 import { catalogueEntry } from "@/core/import/catalogue";
-import type { ReconciliationNode, ReconciliationSection, TrustReport } from "@/core/import/trust-report";
+import type {
+  ExternalAssetHost,
+  ReconciliationNode,
+  ReconciliationSection,
+  TrustReport,
+} from "@/core/import/trust-report";
 
 /** Shown beside a Section or Item name when that name continues an earlier run. */
 export const SPLIT_RUN_MARK = "split run";
@@ -30,11 +35,16 @@ export type ExternalAssetUrlView = {
   sourceRows: number[];
 };
 
+export type ExternalAssetHostView = {
+  host: string;
+  urls: ExternalAssetUrlView[];
+};
+
 export type ExternalAssetsView = {
   /** Set when the report lists no hosts. The note is absent in that case. */
   empty: typeof EXTERNAL_ASSETS_EMPTY | null;
   note: typeof EXTERNAL_ASSETS_NOTE | null;
-  hosts: { host: string; urls: ExternalAssetUrlView[] }[];
+  hosts: ExternalAssetHostView[];
 };
 
 export type KeptColumnView = {
@@ -42,71 +52,63 @@ export type KeptColumnView = {
   rowsHoldingContent: number;
 };
 
+export type KeptButNotUsedView = {
+  note: typeof KEPT_NOTE;
+  columns: KeptColumnView[];
+};
+
 export type MissingCountView = {
   title: string;
   count: number;
+};
+
+export type MissingFromExportView = {
+  entries: string[];
+  counts: [MissingCountView, MissingCountView];
 };
 
 /** What the Trust Report shows below the Summary, in section order, from the report as it comes. */
 export type TrustSectionsView = {
   reconciliation: ReconciliationSectionView[];
   externalAssets: ExternalAssetsView;
-  keptButNotUsed: { note: typeof KEPT_NOTE; columns: KeptColumnView[] };
-  missingFromExport: { entries: string[]; counts: [MissingCountView, MissingCountView] };
+  keptButNotUsed: KeptButNotUsedView;
+  missingFromExport: MissingFromExportView;
 };
 
 export function trustSectionsView(report: TrustReport): TrustSectionsView {
   return {
     reconciliation: report.sections.map(sectionView),
     externalAssets: externalAssetsView(report),
-    keptButNotUsed: {
-      note: KEPT_NOTE,
-      columns: report.keptButNotUsed.map((column) => ({
-        column: column.column,
-        rowsHoldingContent: column.nonDefaultRows,
-      })),
-    },
-    missingFromExport: {
-      entries: [...report.missingFromExport.entries],
-      counts: [
-        {
-          title: catalogueEntry("expected-column-missing").title,
-          count: report.missingFromExport.expectedColumnMissing,
-        },
-        {
-          title: catalogueEntry("youtube-wrapper-empty").title,
-          count: report.missingFromExport.youtubeWrapperEmpty,
-        },
-      ],
-    },
+    keptButNotUsed: keptButNotUsedView(report),
+    missingFromExport: missingFromExportView(report),
   };
+}
+
+export function countPhrase(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function sectionView(section: ReconciliationSection): ReconciliationSectionView {
   return {
     row: rowView(section, section.itemCount),
-    items: section.items.map((item) => rowView(item, null)),
+    items: section.items.map((item) => rowView(item)),
   };
 }
 
-/** `itemCount` is null on an Item, which has no Items of its own. Status is the report's glyph. */
-function rowView(node: ReconciliationNode, itemCount: number | null): ReconciliationRowView {
-  const parts = [
+/** Pass a Section's Item count. Omit it for an Item, which has no Items of its own. */
+function rowView(node: ReconciliationNode, itemCount?: number): ReconciliationRowView {
+  const counts = [
     countPhrase(node.sourceRows, "source row", "source rows"),
     countPhrase(node.comments, "stored Comment", "stored Comments"),
   ];
-  if (itemCount !== null) parts.push(countPhrase(itemCount, "Item", "Items"));
-  parts.push(countPhrase(node.issues, "issue", "issues"));
+  if (itemCount !== undefined) counts.push(countPhrase(itemCount, "Item", "Items"));
+  counts.push(countPhrase(node.issues, "issue", "issues"));
   return {
     name: node.name,
     mark: node.split ? SPLIT_RUN_MARK : null,
-    counts: parts.join(" · "),
+    counts: counts.join(" · "),
     status: node.status,
   };
-}
-
-function countPhrase(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function externalAssetsView(report: TrustReport): ExternalAssetsView {
@@ -116,9 +118,34 @@ function externalAssetsView(report: TrustReport): ExternalAssetsView {
   return {
     empty: null,
     note: EXTERNAL_ASSETS_NOTE,
-    hosts: report.externalAssets.map((host) => ({
-      host: host.host,
-      urls: host.urls.map((asset) => ({ url: asset.url, sourceRows: [...asset.sourceRows] })),
+    hosts: report.externalAssets.map(hostView),
+  };
+}
+
+function hostView(assetHost: ExternalAssetHost): ExternalAssetHostView {
+  return {
+    host: assetHost.host,
+    urls: assetHost.urls.map((asset) => ({ url: asset.url, sourceRows: [...asset.sourceRows] })),
+  };
+}
+
+function keptButNotUsedView(report: TrustReport): KeptButNotUsedView {
+  return {
+    note: KEPT_NOTE,
+    columns: report.keptButNotUsed.map((column) => ({
+      column: column.column,
+      rowsHoldingContent: column.nonDefaultRows,
     })),
+  };
+}
+
+function missingFromExportView(report: TrustReport): MissingFromExportView {
+  const missing = report.missingFromExport;
+  return {
+    entries: [...missing.entries],
+    counts: [
+      { title: catalogueEntry("expected-column-missing").title, count: missing.expectedColumnMissing },
+      { title: catalogueEntry("youtube-wrapper-empty").title, count: missing.youtubeWrapperEmpty },
+    ],
   };
 }
