@@ -91,6 +91,27 @@ const vocabularyNormalised = defineIssue({
   message: (detail: { field: string }) => `${columnTitle(detail.field)} was re-cased or trimmed.`,
 });
 
+const booleanDefaultNormalised = defineIssue({
+  kind: "boolean-default-normalised",
+  level: "row",
+  severity: "notice",
+  class: "Changed",
+  title: "Boolean default normalised",
+  detail: z.object({ value: z.boolean() }),
+  message: (detail: { value: boolean }) =>
+    detail.value ? "Default Value was stored as yes." : "Default Value was stored as no.",
+});
+
+const booleanDefaultInvalid = defineIssue({
+  kind: "boolean-default-invalid",
+  level: "row",
+  severity: "warning",
+  class: "Changed",
+  title: "Boolean default invalid",
+  detail: noDetail,
+  message: () => "Default Value wasn't a yes/no value, so none was stored.",
+});
+
 const commentTypeFallback = defineIssue({
   kind: "comment-type-fallback",
   level: "row",
@@ -130,6 +151,36 @@ const categoryOrphan = defineIssue({
   detail: z.object({ category: categoryValue }),
   message: (detail: { category: -1 | 0 | 1 }) =>
     `Category ${detail.category} was kept on an Informational or Limitation Comment.`,
+});
+
+const checkboxDefaultNotInOptions = defineIssue({
+  kind: "checkbox-default-not-in-options",
+  level: "row",
+  severity: "notice",
+  class: "Check",
+  title: "Checkbox default not in options",
+  detail: z.object({ value: z.string().min(1) }),
+  message: (detail: { value: string }) => `Default Value "${detail.value}" isn't one of the choice options.`,
+});
+
+const emptyOptionDropped = defineIssue({
+  kind: "empty-option-dropped",
+  level: "row",
+  severity: "notice",
+  class: "Changed",
+  title: "Empty option dropped",
+  detail: z.object({ field: z.string().min(1) }),
+  message: (detail: { field: string }) => `An empty entry was dropped from ${columnTitle(detail.field)}.`,
+});
+
+const optionsOrphan = defineIssue({
+  kind: "options-orphan",
+  level: "row",
+  severity: "notice",
+  class: "Check",
+  title: "Choice options kept",
+  detail: noDetail,
+  message: () => "Choice options were kept on a Comment that isn't a checkbox.",
 });
 
 const editorLeftovers = defineIssue({
@@ -242,10 +293,15 @@ export const catalogue = [
   extraSheet,
   whitespaceTrimmed,
   vocabularyNormalised,
+  booleanDefaultNormalised,
+  booleanDefaultInvalid,
   commentTypeFallback,
   answerTypeFallback,
   categoryMissing,
   categoryOrphan,
+  checkboxDefaultNotInOptions,
+  emptyOptionDropped,
+  optionsOrphan,
   editorLeftovers,
   attributeRemoved,
   tagUnwrapped,
@@ -264,10 +320,15 @@ export const issueKinds = [
   extraSheet.kind,
   whitespaceTrimmed.kind,
   vocabularyNormalised.kind,
+  booleanDefaultNormalised.kind,
+  booleanDefaultInvalid.kind,
   commentTypeFallback.kind,
   answerTypeFallback.kind,
   categoryMissing.kind,
   categoryOrphan.kind,
+  checkboxDefaultNotInOptions.kind,
+  emptyOptionDropped.kind,
+  optionsOrphan.kind,
   editorLeftovers.kind,
   attributeRemoved.kind,
   tagUnwrapped.kind,

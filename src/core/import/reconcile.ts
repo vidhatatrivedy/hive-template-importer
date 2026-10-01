@@ -9,7 +9,9 @@ export type Cell = string | number | boolean | null;
  * Import issue kinds, or a named rule. A null explanation is an Unexplained difference.
  * `category-dropped` is an invalid Category on an info or limit Comment, discarded with no issue.
  */
-export type DifferenceExplanation = { issues: IssueKind[] } | { rule: "entity-decoding" | "category-dropped" };
+export type DifferenceExplanation =
+  | { issues: IssueKind[] }
+  | { rule: "entity-decoding" | "category-dropped" | "option-list" };
 
 export type Difference = {
   column: string;
@@ -55,12 +57,6 @@ const NAME_COLUMNS = [SECTION_NAME, ITEM_NAME, COMMENT_NAME, RECOMMENDATION];
 /** Copied, not imported from the parser, so a parser bug cannot explain itself away. */
 const COMMENT_TYPES = ["info", "limit", "defect"] as const;
 const ANSWER_TYPES = ["boolean", "checkbox", "number", "range", "text", "date"] as const;
-
-/**
- * Written from the tree, but not compared. Ben's `f` defaults are still empty, and the
- * boolean-default predicate that would explain them is a later ticket.
- */
-const SKIPPED_COLUMNS = [DEFAULT_VALUE];
 
 type SourceRow = ImportEvidence["sourceRows"][number];
 
@@ -219,12 +215,13 @@ function fieldDifferences(
 ): Difference[] {
   const differences: Difference[] = [];
   const commentType = cellForHeader(headers, storedCells, COMMENT_TYPE);
+  const answerType = cellForHeader(headers, storedCells, ANSWER_TYPE);
+  const choiceOptions = cellForHeader(headers, storedCells, CHOICE_OPTIONS);
   for (let index = 0; index < headers.length; index += 1) {
     const column = headers[index] ?? "";
-    if (matchesAny(column, SKIPPED_COLUMNS)) continue;
     const raw = index < source.cells.length ? (source.cells[index] ?? null) : null;
     const stored = storedCells[index] ?? null;
-    const difference = compareCell(column, raw, stored, issues, commentType);
+    const difference = compareCell(column, raw, stored, issues, commentType, answerType, choiceOptions);
     if (difference) differences.push(difference);
   }
   return differences;
@@ -236,6 +233,8 @@ function compareCell(
   stored: Cell,
   issues: readonly ImportIssue[],
   commentType: Cell,
+  answerType: Cell,
+  choiceOptions: Cell,
 ): Difference | null {
   if (matchesExpectedHeader(column, COMMENT_TEXT)) return commentTextDifference(column, raw, stored, issues);
   if (matchesAny(column, NAME_COLUMNS)) return nameDifference(column, raw, stored, issues);
@@ -246,7 +245,178 @@ function compareCell(
   if (matchesExpectedHeader(column, ANSWER_TYPE)) {
     return vocabularyDifference(column, raw, stored, issues, ANSWER_TYPES, "boolean", "answer-type-fallback");
   }
+  if (matchesExpectedHeader(column, DEFAULT_VALUE)) {
+    return defaultDifference(column, raw, stored, issues, answerType, choiceOptions);
+  }
+  if (matchesExpectedHeader(column, CHOICE_OPTIONS) || matchesExpectedHeader(column, UNIT_OPTIONS)) {
+    return optionDifference(column, raw, stored, issues, matchesExpectedHeader(column, CHOICE_OPTIONS), answerType);
+  }
   return equalityDifference(column, raw, stored);
+}
+
+/**
+ * A boolean default of `f`/`t` or odd case needs `boolean-default-normalised`.
+ * Anything else non-blank needs `boolean-default-invalid`. Exact `true`/`false` and an xlsx
+ * boolean cell are not a difference. Other answer types follow names: decoding, then trim.
+ * A checkbox default that isn't a stored choice option is a difference even when the text matches.
+ */
+function defaultDifference(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  issues: readonly ImportIssue[],
+  answerType: Cell,
+  choiceOptions: Cell,
+): Difference | null {
+  if (answerType === "boolean") return booleanDefaultDifference(column, raw, stored, issues);
+  const diff = textDefaultDifference(column, raw, stored, issues);
+  if (answerType !== "checkbox") return diff;
+  const storedText = typeof stored === "string" ? stored : null;
+  if (storedText === null || storedText === "") return diff;
+  if (splitOptions(choiceOptions).includes(storedText)) return diff;
+  const notIn = explanationForKind(issues, "checkbox-default-not-in-options");
+  if (diff === null) return { column, raw, stored, explanation: notIn };
+  if (!notIn || diff.explanation === null) return { column, raw, stored, explanation: null };
+  if ("issues" in diff.explanation) {
+    return { column, raw, stored, explanation: { issues: [...diff.explanation.issues, "checkbox-default-not-in-options"] } };
+  }
+  return diff;
+}
+
+function booleanDefaultDifference(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  issues: readonly ImportIssue[],
+): Difference | null {
+  if (raw === true || raw === false) {
+    if (stored !== (raw ? "true" : "false")) return { column, raw, stored, explanation: null };
+    return null;
+  }
+  const text = (typeof raw === "string" ? cellText(raw) : raw === null ? "" : String(raw)).trim();
+  if (text === "") {
+    if (stored === null) return null;
+    return { column, raw, stored, explanation: null };
+  }
+  const lower = text.toLowerCase();
+  const canonical = lower === "true" || lower === "t" ? "true" : lower === "false" || lower === "f" ? "false" : null;
+  if (canonical === null) {
+    if (stored !== null) return { column, raw, stored, explanation: null };
+    return { column, raw, stored, explanation: explanationForKind(issues, "boolean-default-invalid") };
+  }
+  if (stored !== canonical) return { column, raw, stored, explanation: null };
+  if (raw === canonical) return null;
+  return { column, raw, stored, explanation: explanationForKind(issues, "boolean-default-normalised") };
+}
+
+/** A non-boolean default. A number or boolean cell's string form is not a difference. */
+function textDefaultDifference(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  issues: readonly ImportIssue[],
+): Difference | null {
+  if (typeof raw !== "string") {
+    if (raw === null && stored === null) return null;
+    if (stored === String(raw)) return null;
+    return { column, raw, stored, explanation: null };
+  }
+  if (Object.is(raw, stored)) return null;
+  const decoded = cellText(raw);
+  const trimmed = decoded.trim();
+  if (trimmed === "" && stored === null) {
+    if (trimmed !== decoded) return { column, raw, stored, explanation: explanationForField(issues, "whitespace-trimmed", column) };
+    return null;
+  }
+  const storedText = typeof stored === "string" ? stored : null;
+  if (storedText === decoded && decoded !== raw) return { column, raw, stored, explanation: { rule: "entity-decoding" } };
+  if (storedText === trimmed && trimmed !== decoded) {
+    return { column, raw, stored, explanation: explanationForField(issues, "whitespace-trimmed", column) };
+  }
+  return { column, raw, stored, explanation: null };
+}
+
+/**
+ * Entries are split, decoded and trimmed independently of the parser.
+ * Whitespace only around commas is the `option-list` rule. A dropped empty entry needs
+ * `empty-option-dropped`. Choice options on a non-checkbox answer need `options-orphan`,
+ * even when the joined text matches.
+ */
+function optionDifference(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  issues: readonly ImportIssue[],
+  choiceColumn: boolean,
+  answerType: Cell,
+): Difference | null {
+  if (raw === null) {
+    if (stored === null) return null;
+    return { column, raw, stored, explanation: null };
+  }
+  const text = typeof raw === "string" ? raw : String(raw);
+  const normalised = normaliseOptionCell(text);
+  const storedEntries = splitOptions(stored);
+  if (!sameList(normalised.entries, storedEntries)) return { column, raw, stored, explanation: null };
+
+  const orphan = choiceColumn && answerType !== "checkbox" && normalised.entries.length > 0;
+  const unchanged = !normalised.droppedEmpty && !normalised.decoded && (text.trim() === "" ? stored === null : text === stored);
+  if (unchanged) return finishOption(column, raw, stored, undefined, issues, orphan);
+
+  let explanation: DifferenceExplanation | null;
+  if (normalised.droppedEmpty) explanation = explanationForField(issues, "empty-option-dropped", column);
+  else if (normalised.decoded) explanation = { rule: "entity-decoding" };
+  else explanation = { rule: "option-list" };
+  return finishOption(column, raw, stored, explanation, issues, orphan);
+}
+
+/** `undefined` means the joined text did not change. `null` means it changed and nothing explains it. */
+function finishOption(
+  column: string,
+  raw: Cell,
+  stored: Cell,
+  valueExplanation: DifferenceExplanation | null | undefined,
+  issues: readonly ImportIssue[],
+  orphan: boolean,
+): Difference | null {
+  if (!orphan) {
+    if (valueExplanation === undefined) return null;
+    return { column, raw, stored, explanation: valueExplanation };
+  }
+  const orphanExplanation = explanationForKind(issues, "options-orphan");
+  if (valueExplanation === undefined) return { column, raw, stored, explanation: orphanExplanation };
+  if (valueExplanation === null || !orphanExplanation) return { column, raw, stored, explanation: null };
+  if ("issues" in valueExplanation) {
+    return { column, raw, stored, explanation: { issues: [...valueExplanation.issues, "options-orphan"] } };
+  }
+  return { column, raw, stored, explanation: valueExplanation };
+}
+
+function normaliseOptionCell(raw: string): { entries: string[]; droppedEmpty: boolean; decoded: boolean } {
+  if (raw.trim() === "") return { entries: [], droppedEmpty: false, decoded: false };
+  let droppedEmpty = false;
+  let decoded = false;
+  const entries: string[] = [];
+  for (const part of raw.split(",")) {
+    const decodedPart = decodeHTML(part);
+    if (decodedPart !== part) decoded = true;
+    const trimmed = decodedPart.trim();
+    if (trimmed === "") droppedEmpty = true;
+    else entries.push(trimmed);
+  }
+  return { entries, droppedEmpty, decoded };
+}
+
+function splitOptions(value: Cell): string[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+}
+
+function sameList(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((entry, index) => entry === right[index]);
 }
 
 /**

@@ -280,6 +280,260 @@ describe("parseSpectoraExport", () => {
     expect(responsibility.answerType).toBe("boolean");
     expect(responsibility.defaultBoolean).toBe(true);
     expect(responsibility.defaultText).toBeNull();
+    expect(draft.issues.filter((issue) => issue.kind === "boolean-default-normalised")).toEqual([]);
+  });
+
+  it("stores Ben's f defaults as false, each with boolean-default-normalised", async () => {
+    const draft = await draftOf("Ben Gromicko's Template for Home Inspections-2026-09-30.xls");
+    expect(catalogueEntry("boolean-default-normalised")).toMatchObject({
+      level: "row",
+      severity: "notice",
+      class: "Changed",
+    });
+    expect(renderIssueMessage("boolean-default-normalised", { value: false })).toBe("Default Value was stored as no.");
+    expect(renderIssueMessage("boolean-default-normalised", { value: true })).toBe("Default Value was stored as yes.");
+
+    const fRows = [71, 141, 245, 263, 278, 285, 294, 340, 368, 573, 575, 1142];
+    expect(draft.issues.filter((issue) => issue.kind === "boolean-default-normalised").map((issue) => issue.sourceRow)).toEqual(
+      fRows,
+    );
+    for (const rowNumber of fRows) {
+      const comment = commentOn(draft, rowNumber);
+      expect(comment.defaultBoolean, String(rowNumber)).toBe(false);
+      expect(comment.defaultText, String(rowNumber)).toBeNull();
+      expect(draft.issues).toContainEqual({
+        kind: "boolean-default-normalised",
+        sourceRow: rowNumber,
+        detail: { value: false },
+        cuts: [],
+      });
+    }
+    const defaultColumn = draft.run.headers.indexOf(DEFAULT_VALUE);
+    for (const rowNumber of fRows) {
+      expect(draft.sourceRows.find((row) => row.rowNumber === rowNumber)?.cells[defaultColumn], String(rowNumber)).toBe("f");
+    }
+
+    expect(commentOn(draft, 7).defaultBoolean).toBe(true);
+    expect(commentOn(draft, 22).defaultBoolean).toBe(false);
+    expect(draft.issues.filter((issue) => issue.sourceRow === 7 || issue.sourceRow === 22)).not.toContainEqual(
+      expect.objectContaining({ kind: "boolean-default-normalised" }),
+    );
+
+    const attendance = commentOn(draft, 3);
+    expect(attendance.answerType).toBe("checkbox");
+    expect(attendance.defaultBoolean).toBeNull();
+    expect(attendance.defaultText).toBe("Client");
+    expect(attendance.choiceOptions).toEqual([
+      "Client",
+      "Client's Agent",
+      "Home Owner",
+      "Listing Agent",
+      "Family of My Client",
+      "Just the Inspector",
+    ]);
+    expect(draft.issues.filter((issue) => issue.sourceRow === 3 && issue.kind === "checkbox-default-not-in-options")).toEqual(
+      [],
+    );
+  });
+
+  it("stores odd defaults and option lists, and explains each change", async () => {
+    const draft = await defaultsDraft();
+
+    expect(catalogueEntry("boolean-default-invalid")).toMatchObject({ level: "row", severity: "warning", class: "Changed" });
+    expect(catalogueEntry("checkbox-default-not-in-options")).toMatchObject({ level: "row", severity: "notice", class: "Check" });
+    expect(catalogueEntry("empty-option-dropped")).toMatchObject({ level: "row", severity: "notice", class: "Changed" });
+    expect(catalogueEntry("options-orphan")).toMatchObject({ level: "row", severity: "notice", class: "Check" });
+    expect(renderIssueMessage("boolean-default-invalid", {})).toBe(
+      "Default Value wasn't a yes/no value, so none was stored.",
+    );
+    expect(renderIssueMessage("checkbox-default-not-in-options", { value: "Other" })).toBe(
+      `Default Value "Other" isn't one of the choice options.`,
+    );
+    expect(renderIssueMessage("empty-option-dropped", { field: CHOICE_OPTIONS })).toBe(
+      "An empty entry was dropped from Multiple Choice Options.",
+    );
+    expect(renderIssueMessage("options-orphan", {})).toBe("Choice options were kept on a Comment that isn't a checkbox.");
+
+    expect(storedDefaults(draft)).toEqual([
+      { name: "Lower t", answerType: "boolean", defaultBoolean: true, defaultText: null, choiceOptions: [], unitOptions: [] },
+      { name: "Upper F", answerType: "boolean", defaultBoolean: false, defaultText: null, choiceOptions: [], unitOptions: [] },
+      { name: "Padded true", answerType: "boolean", defaultBoolean: true, defaultText: null, choiceOptions: [], unitOptions: [] },
+      { name: "Maybe", answerType: "boolean", defaultBoolean: null, defaultText: null, choiceOptions: [], unitOptions: [] },
+      { name: "Exact true", answerType: "boolean", defaultBoolean: true, defaultText: null, choiceOptions: [], unitOptions: [] },
+      { name: "Xlsx false", answerType: "boolean", defaultBoolean: false, defaultText: null, choiceOptions: [], unitOptions: [] },
+      {
+        name: "Not an option",
+        answerType: "checkbox",
+        defaultBoolean: null,
+        defaultText: "Other",
+        choiceOptions: ["Client", "Agent"],
+        unitOptions: [],
+      },
+      {
+        name: "Trimmed missing",
+        answerType: "checkbox",
+        defaultBoolean: null,
+        defaultText: "Other",
+        choiceOptions: ["Client", "Agent"],
+        unitOptions: [],
+      },
+      {
+        name: "Trimmed present",
+        answerType: "checkbox",
+        defaultBoolean: null,
+        defaultText: "Client",
+        choiceOptions: ["Client", "Agent"],
+        unitOptions: [],
+      },
+      {
+        name: "Empty entry",
+        answerType: "checkbox",
+        defaultBoolean: null,
+        defaultText: null,
+        choiceOptions: ["wood", "metal"],
+        unitOptions: [],
+      },
+      {
+        name: "Spaced options",
+        answerType: "checkbox",
+        defaultBoolean: null,
+        defaultText: null,
+        choiceOptions: ["wood", "metal"],
+        unitOptions: [],
+      },
+      {
+        name: "Duplicate options",
+        answerType: "checkbox",
+        defaultBoolean: null,
+        defaultText: null,
+        choiceOptions: ["a", "a"],
+        unitOptions: [],
+      },
+      {
+        name: "Text options",
+        answerType: "text",
+        defaultBoolean: null,
+        defaultText: null,
+        choiceOptions: ["Yes", "No"],
+        unitOptions: [],
+      },
+      {
+        name: "Unit empty",
+        answerType: "number",
+        defaultBoolean: null,
+        defaultText: null,
+        choiceOptions: [],
+        unitOptions: ["F", "C"],
+      },
+      {
+        name: "Decoded default",
+        answerType: "text",
+        defaultBoolean: null,
+        defaultText: "&lt;",
+        choiceOptions: [],
+        unitOptions: [],
+      },
+      {
+        name: "Decoded option",
+        answerType: "checkbox",
+        defaultBoolean: null,
+        defaultText: null,
+        choiceOptions: ["&lt;"],
+        unitOptions: [],
+      },
+      {
+        name: "Text trim",
+        answerType: "text",
+        defaultBoolean: null,
+        defaultText: "hello",
+        choiceOptions: [],
+        unitOptions: [],
+      },
+      {
+        name: "Blank boolean",
+        answerType: "boolean",
+        defaultBoolean: null,
+        defaultText: null,
+        choiceOptions: [],
+        unitOptions: [],
+      },
+    ]);
+
+    expect(draft.run.valuesDecoded).toBe(2);
+    expect(sourceCell(draft, "Decoded default", DEFAULT_VALUE)).toBe("&amp;lt;");
+    expect(sourceCell(draft, "Decoded option", CHOICE_OPTIONS)).toBe("&amp;lt;");
+    expect(commentOn(draft, sourceRow(draft, "Decoded default")).defaultText).not.toBe("<");
+    expect(commentOn(draft, sourceRow(draft, "Decoded option")).choiceOptions).not.toContain("<");
+    expect(sourceCell(draft, "Xlsx false", DEFAULT_VALUE)).toBe(false);
+
+    expect(defaultIssues(draft, "Lower t")).toEqual([issue(draft, "Lower t", "boolean-default-normalised", { value: true })]);
+    expect(defaultIssues(draft, "Upper F")).toEqual([issue(draft, "Upper F", "boolean-default-normalised", { value: false })]);
+    expect(defaultIssues(draft, "Padded true")).toEqual([
+      issue(draft, "Padded true", "boolean-default-normalised", { value: true }),
+    ]);
+    expect(defaultIssues(draft, "Maybe")).toEqual([issue(draft, "Maybe", "boolean-default-invalid", {})]);
+    expect(defaultIssues(draft, "Exact true")).toEqual([]);
+    expect(defaultIssues(draft, "Xlsx false")).toEqual([]);
+    expect(defaultIssues(draft, "Not an option")).toEqual([
+      issue(draft, "Not an option", "checkbox-default-not-in-options", { value: "Other" }),
+    ]);
+    expect(defaultIssues(draft, "Trimmed missing")).toEqual([
+      issue(draft, "Trimmed missing", "whitespace-trimmed", { field: DEFAULT_VALUE }),
+      issue(draft, "Trimmed missing", "checkbox-default-not-in-options", { value: "Other" }),
+    ]);
+    expect(defaultIssues(draft, "Trimmed present")).toEqual([
+      issue(draft, "Trimmed present", "whitespace-trimmed", { field: DEFAULT_VALUE }),
+    ]);
+    expect(defaultIssues(draft, "Empty entry")).toEqual([
+      issue(draft, "Empty entry", "empty-option-dropped", { field: CHOICE_OPTIONS }),
+    ]);
+    expect(defaultIssues(draft, "Spaced options")).toEqual([]);
+    expect(defaultIssues(draft, "Duplicate options")).toEqual([]);
+    expect(defaultIssues(draft, "Text options")).toEqual([issue(draft, "Text options", "options-orphan", {})]);
+    expect(defaultIssues(draft, "Unit empty")).toEqual([
+      issue(draft, "Unit empty", "empty-option-dropped", { field: UNIT_OPTIONS }),
+    ]);
+    expect(defaultIssues(draft, "Decoded default")).toEqual([]);
+    expect(defaultIssues(draft, "Decoded option")).toEqual([]);
+    expect(defaultIssues(draft, "Text trim")).toEqual([
+      issue(draft, "Text trim", "whitespace-trimmed", { field: DEFAULT_VALUE }),
+    ]);
+    expect(defaultIssues(draft, "Blank boolean")).toEqual([]);
+
+    expectRoundTrip(draft);
+    const result = reconcile(draft, draft.tree);
+    for (const name of ["Exact true", "Xlsx false", "Blank boolean"]) {
+      expect(differencesOn(result.rows, sourceRow(draft, name), DEFAULT_VALUE), name).toEqual([]);
+    }
+    expect(differencesOn(result.rows, sourceRow(draft, "Duplicate options"), CHOICE_OPTIONS)).toEqual([]);
+    for (const flagged of DEFAULT_FLAGGED) {
+      const rowNumber = sourceRow(draft, flagged.name);
+      expect(differencesOn(result.rows, rowNumber, flagged.difference.column), flagged.name).toContainEqual(flagged.difference);
+      if (flagged.kind === null) continue;
+
+      const stripped = structuredClone(draft);
+      const index = stripped.issues.findIndex((issue) => issue.sourceRow === rowNumber && issue.kind === flagged.kind);
+      expect(index, flagged.name).toBeGreaterThanOrEqual(0);
+      stripped.issues.splice(index, 1);
+      const broken = reconcile(stripped, stripped.tree);
+      expect(broken.rows.find((row) => row.sourceRow === rowNumber)?.status, flagged.name).toBe("✗");
+      expect(differencesOn(broken.rows, rowNumber, flagged.difference.column), flagged.name).toContainEqual({
+        ...flagged.difference,
+        explanation: null,
+      });
+    }
+
+    const spaced = structuredClone(draft);
+    const spacedComment = commentsIn(spaced.tree).find((comment) => comment.name === "Spaced options");
+    if (!spacedComment) throw new Error("Spaced options was not stored");
+    spacedComment.choiceOptions = ["wood", "metal", "extra"];
+    const corrupted = reconcile(spaced, spaced.tree);
+    expect(differencesOn(corrupted.rows, sourceRow(draft, "Spaced options"), CHOICE_OPTIONS)).toContainEqual({
+      column: CHOICE_OPTIONS,
+      raw: "wood,metal",
+      stored: "wood, metal, extra",
+      explanation: null,
+    });
   });
 
   it("stores odd Comment types, Answer types and Categories with a named fallback", async () => {
@@ -1003,6 +1257,11 @@ const UNSAFE_STYLE = /url\(|expression\(|@import/i;
 const KINDS_WITHOUT_CUTS = new Set<IssueKind>([
   "whitespace-trimmed",
   "vocabulary-normalised",
+  "boolean-default-normalised",
+  "boolean-default-invalid",
+  "checkbox-default-not-in-options",
+  "empty-option-dropped",
+  "options-orphan",
   "comment-type-fallback",
   "answer-type-fallback",
   "category-missing",
@@ -1115,6 +1374,9 @@ function expectRoundTrip(draft: ImportDraft): void {
 const COMMENT_TYPE = "Comment Type (info, limit, defect)";
 const ANSWER_TYPE = "Answer Type (boolean, checkbox, date, number, range, text)";
 const CATEGORY = "Category (-1: Low, 0: Med, 1: High)";
+const DEFAULT_VALUE = "Default Value";
+const CHOICE_OPTIONS = "Multiple Choice Options (comma-separated)";
+const UNIT_OPTIONS = "Unit Type Options (numeric answers only, comma-separated)";
 
 const VOCABULARY_KINDS = new Set<IssueKind>([
   "vocabulary-normalised",
@@ -1217,6 +1479,215 @@ const FLAGGED = [
     },
   },
 ] as const;
+
+const DEFAULT_ISSUE_KINDS = new Set<IssueKind>([
+  "boolean-default-normalised",
+  "boolean-default-invalid",
+  "checkbox-default-not-in-options",
+  "empty-option-dropped",
+  "options-orphan",
+  "whitespace-trimmed",
+]);
+
+const DEFAULT_FLAGGED = [
+  {
+    name: "Lower t",
+    kind: "boolean-default-normalised",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: "t",
+      stored: "true",
+      explanation: { issues: ["boolean-default-normalised"] },
+    },
+  },
+  {
+    name: "Upper F",
+    kind: "boolean-default-normalised",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: "F",
+      stored: "false",
+      explanation: { issues: ["boolean-default-normalised"] },
+    },
+  },
+  {
+    name: "Padded true",
+    kind: "boolean-default-normalised",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: " true",
+      stored: "true",
+      explanation: { issues: ["boolean-default-normalised"] },
+    },
+  },
+  {
+    name: "Maybe",
+    kind: "boolean-default-invalid",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: "maybe",
+      stored: null,
+      explanation: { issues: ["boolean-default-invalid"] },
+    },
+  },
+  {
+    name: "Not an option",
+    kind: "checkbox-default-not-in-options",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: "Other",
+      stored: "Other",
+      explanation: { issues: ["checkbox-default-not-in-options"] },
+    },
+  },
+  {
+    name: "Trimmed missing",
+    kind: "whitespace-trimmed",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: " Other ",
+      stored: "Other",
+      explanation: { issues: ["whitespace-trimmed", "checkbox-default-not-in-options"] },
+    },
+  },
+  {
+    name: "Trimmed missing",
+    kind: "checkbox-default-not-in-options",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: " Other ",
+      stored: "Other",
+      explanation: { issues: ["whitespace-trimmed", "checkbox-default-not-in-options"] },
+    },
+  },
+  {
+    name: "Trimmed present",
+    kind: "whitespace-trimmed",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: " Client ",
+      stored: "Client",
+      explanation: { issues: ["whitespace-trimmed"] },
+    },
+  },
+  {
+    name: "Empty entry",
+    kind: "empty-option-dropped",
+    difference: {
+      column: CHOICE_OPTIONS,
+      raw: "wood,,metal",
+      stored: "wood, metal",
+      explanation: { issues: ["empty-option-dropped"] },
+    },
+  },
+  {
+    name: "Spaced options",
+    kind: null,
+    difference: {
+      column: CHOICE_OPTIONS,
+      raw: "wood,metal",
+      stored: "wood, metal",
+      explanation: { rule: "option-list" },
+    },
+  },
+  {
+    name: "Text options",
+    kind: "options-orphan",
+    difference: {
+      column: CHOICE_OPTIONS,
+      raw: "Yes, No",
+      stored: "Yes, No",
+      explanation: { issues: ["options-orphan"] },
+    },
+  },
+  {
+    name: "Unit empty",
+    kind: "empty-option-dropped",
+    difference: {
+      column: UNIT_OPTIONS,
+      raw: "F,,C",
+      stored: "F, C",
+      explanation: { issues: ["empty-option-dropped"] },
+    },
+  },
+  {
+    name: "Decoded default",
+    kind: null,
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: "&amp;lt;",
+      stored: "&lt;",
+      explanation: { rule: "entity-decoding" },
+    },
+  },
+  {
+    name: "Decoded option",
+    kind: null,
+    difference: {
+      column: CHOICE_OPTIONS,
+      raw: "&amp;lt;",
+      stored: "&lt;",
+      explanation: { rule: "entity-decoding" },
+    },
+  },
+  {
+    name: "Text trim",
+    kind: "whitespace-trimmed",
+    difference: {
+      column: DEFAULT_VALUE,
+      raw: "  hello  ",
+      stored: "hello",
+      explanation: { issues: ["whitespace-trimmed"] },
+    },
+  },
+] as const;
+
+async function defaultsDraft(): Promise<ImportDraft> {
+  const rows = [
+    rowFor(HEADERS, { "comment name": "Lower t", "default value": "t" }),
+    rowFor(HEADERS, { "comment name": "Upper F", "default value": "F" }),
+    rowFor(HEADERS, { "comment name": "Padded true", "default value": " true" }),
+    rowFor(HEADERS, { "comment name": "Maybe", "default value": "maybe" }),
+    rowFor(HEADERS, { "comment name": "Exact true", "default value": "true" }),
+    rowFor(HEADERS, { "comment name": "Not an option", "answer type": "checkbox", "default value": "Other", "multiple choice options": "Client, Agent" }),
+    rowFor(HEADERS, { "comment name": "Trimmed missing", "answer type": "checkbox", "default value": " Other ", "multiple choice options": "Client, Agent" }),
+    rowFor(HEADERS, { "comment name": "Trimmed present", "answer type": "checkbox", "default value": " Client ", "multiple choice options": "Client, Agent" }),
+    rowFor(HEADERS, { "comment name": "Empty entry", "answer type": "checkbox", "multiple choice options": "wood,,metal" }),
+    rowFor(HEADERS, { "comment name": "Spaced options", "answer type": "checkbox", "multiple choice options": "wood,metal" }),
+    rowFor(HEADERS, { "comment name": "Duplicate options", "answer type": "checkbox", "multiple choice options": "a, a" }),
+    rowFor(HEADERS, { "comment name": "Text options", "answer type": "text", "multiple choice options": "Yes, No" }),
+    rowFor(HEADERS, { "comment name": "Unit empty", "answer type": "number", "unit type options": "F,,C" }),
+    rowFor(HEADERS, { "comment name": "Decoded default", "answer type": "text", "default value": "&amp;lt;" }),
+    rowFor(HEADERS, { "comment name": "Decoded option", "answer type": "checkbox", "multiple choice options": "&amp;lt;" }),
+    rowFor(HEADERS, { "comment name": "Text trim", "answer type": "text", "default value": "  hello  " }),
+    rowFor(HEADERS, { "comment name": "Blank boolean", "default value": "   " }),
+  ];
+  const xlsxFalse = rowFor(HEADERS, { "comment name": "Xlsx false", "answer type": "boolean", "default value": null });
+  const defaultIndex = HEADERS.indexOf(DEFAULT_VALUE);
+  const booleanFalse = xlsxFalse.map((cell, index) => (index === defaultIndex ? { value: false, type: Boolean } : cell));
+  const ordered = [
+    ...rows.slice(0, 5),
+    booleanFalse,
+    ...rows.slice(5),
+  ];
+  return expectDraft(await parseSpectoraExport(await writeXlsxFile([HEADERS, ...ordered]).toBuffer(), "defaults.xls"));
+}
+
+function storedDefaults(draft: ImportDraft) {
+  return commentsIn(draft.tree).map((comment) => ({
+    name: comment.name,
+    answerType: comment.answerType,
+    defaultBoolean: comment.defaultBoolean,
+    defaultText: comment.defaultText,
+    choiceOptions: comment.choiceOptions,
+    unitOptions: comment.unitOptions,
+  }));
+}
+
+function defaultIssues(draft: ImportDraft, name: string) {
+  const rowNumber = sourceRow(draft, name);
+  return draft.issues.filter((issue) => issue.sourceRow === rowNumber && DEFAULT_ISSUE_KINDS.has(issue.kind));
+}
 
 async function vocabularyDraft(): Promise<ImportDraft> {
   return expectDraft(

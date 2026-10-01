@@ -381,7 +381,15 @@ function buildComment(
     rowNumber,
     issues,
   });
-  const defaults = defaultsOf(answerType, cellAt(cells, indexes.defaultValue));
+  const choiceOptions = optionsOf(
+    cellAt(cells, indexes.choiceOptions),
+    COLUMNS.choiceOptions,
+    rowNumber,
+    issues,
+    answerType !== "checkbox",
+  );
+  const unitOptions = optionsOf(cellAt(cells, indexes.unitOptions), COLUMNS.unitOptions, rowNumber, issues, false);
+  const defaults = defaultsOf(answerType, cellAt(cells, indexes.defaultValue), choiceOptions, rowNumber, issues);
   return {
     sourceRow: rowNumber,
     name,
@@ -392,8 +400,8 @@ function buildComment(
     answerType,
     defaultBoolean: defaults.defaultBoolean,
     defaultText: defaults.defaultText,
-    choiceOptions: optionsOf(cellAt(cells, indexes.choiceOptions)),
-    unitOptions: optionsOf(cellAt(cells, indexes.unitOptions)),
+    choiceOptions,
+    unitOptions,
   };
 }
 
@@ -485,26 +493,79 @@ function recommendationOf(value: Cell): string | null {
   return text === "" ? null : text;
 }
 
+/**
+ * Boolean: `true`/`t` and `false`/`f`, case-insensitive after trim. Exact `true`/`false`
+ * and an xlsx boolean cell are stored with no notice. Any other non-blank value is dropped.
+ * Other answer types keep the decoded, trimmed text. A trim is `whitespace-trimmed` except on boolean.
+ */
 function defaultsOf(
   answerType: AnswerType,
   value: Cell,
+  choiceOptions: readonly string[],
+  rowNumber: number,
+  issues: ImportDraft["issues"],
 ): { defaultBoolean: boolean | null; defaultText: string | null } {
-  if (answerType === "boolean") {
-    if (value === true || value === "true") return { defaultBoolean: true, defaultText: null };
-    if (value === false || value === "false") return { defaultBoolean: false, defaultText: null };
-    return { defaultBoolean: null, defaultText: null };
+  if (answerType === "boolean") return booleanDefault(value, rowNumber, issues);
+  const decoded = decodeCell(value);
+  const text = decoded.text.trim();
+  if (typeof value === "string" && text !== decoded.text) {
+    issues.push({ kind: "whitespace-trimmed", sourceRow: rowNumber, detail: { field: COLUMNS.defaultValue }, cuts: [] });
   }
-  const text = decodeCell(value).text.trim();
-  return { defaultBoolean: null, defaultText: text === "" ? null : text };
+  if (text === "") return { defaultBoolean: null, defaultText: null };
+  if (answerType === "checkbox" && !choiceOptions.includes(text)) {
+    issues.push({ kind: "checkbox-default-not-in-options", sourceRow: rowNumber, detail: { value: text }, cuts: [] });
+  }
+  return { defaultBoolean: null, defaultText: text };
 }
 
-/** Split, then decode each entry once. Empty entries are dropped; duplicates stay. */
-function optionsOf(value: Cell): string[] {
-  if (typeof value !== "string" || value.trim() === "") return [];
-  return value
-    .split(",")
-    .map((entry) => decodeHTML(entry).trim())
-    .filter((entry) => entry !== "");
+function booleanDefault(
+  value: Cell,
+  rowNumber: number,
+  issues: ImportDraft["issues"],
+): { defaultBoolean: boolean | null; defaultText: string | null } {
+  if (value === true || value === false) return { defaultBoolean: value, defaultText: null };
+  const text = decodeCell(value).text.trim();
+  if (text === "") return { defaultBoolean: null, defaultText: null };
+  const lower = text.toLowerCase();
+  const canonical = lower === "true" || lower === "t" ? true : lower === "false" || lower === "f" ? false : null;
+  if (canonical === null) {
+    issues.push({ kind: "boolean-default-invalid", sourceRow: rowNumber, detail: {}, cuts: [] });
+    return { defaultBoolean: null, defaultText: null };
+  }
+  if (value !== (canonical ? "true" : "false")) {
+    issues.push({ kind: "boolean-default-normalised", sourceRow: rowNumber, detail: { value: canonical }, cuts: [] });
+  }
+  return { defaultBoolean: canonical, defaultText: null };
+}
+
+/**
+ * Split on commas, then decode and trim each entry. Empty entries are dropped, once per cell.
+ * Duplicates stay. Choice options on a non-checkbox answer are kept and flagged.
+ */
+function optionsOf(
+  value: Cell,
+  field: string,
+  rowNumber: number,
+  issues: ImportDraft["issues"],
+  orphan: boolean,
+): string[] {
+  if (value === null) return [];
+  const text = typeof value === "string" ? value : String(value);
+  if (text.trim() === "") return [];
+  let dropped = false;
+  const entries: string[] = [];
+  for (const part of text.split(",")) {
+    const entry = decodeHTML(part).trim();
+    if (entry === "") dropped = true;
+    else entries.push(entry);
+  }
+  if (dropped) {
+    issues.push({ kind: "empty-option-dropped", sourceRow: rowNumber, detail: { field }, cuts: [] });
+  }
+  if (orphan && entries.length > 0) {
+    issues.push({ kind: "options-orphan", sourceRow: rowNumber, detail: {}, cuts: [] });
+  }
+  return entries;
 }
 
 function decodeCell(value: Cell): { text: string; decoded: boolean } {
