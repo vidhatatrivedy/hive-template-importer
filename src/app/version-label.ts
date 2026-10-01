@@ -28,3 +28,8 @@ export function versionLabel(version: VersionLabelInput, detail: VersionLabelDet
       return version.restoredFromNumber === null ? "Restored" : `Restored from v${version.restoredFromNumber}`;
   }
 }
+
+/** The Restore confirm. The new Version is the latest number plus one. */
+export function restorePrompt(viewedNumber: number, latestNumber: number): string {
+  return `Restore Version ${viewedNumber} as Version ${latestNumber + 1}? Your current version stays in history.`;
+}

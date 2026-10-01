@@ -90,10 +90,13 @@ export async function TemplateScreen({
           banner={
             readOnly ? (
               <VersionBanner
+                templateId={template.id}
+                versionId={viewed.id}
                 number={viewed.number}
+                latestNumber={latest.number}
                 label={versionLabel(viewed, template)}
                 savedAt={viewed.savedAt}
-                backHref={templateHref(template.id, { panes: view.panes, row: null })}
+                panes={view.panes}
               />
             ) : null
           }

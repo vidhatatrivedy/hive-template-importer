@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { versionLabel } from "@/app/version-label";
+import { restorePrompt, versionLabel } from "@/app/version-label";
 
 const unrelated = { importRun: null, copiedFrom: null };
 
@@ -32,5 +32,13 @@ describe("versionLabel", () => {
 
   it("names the Version a Restore came from", () => {
     expect(versionLabel({ origin: "restore", restoredFromNumber: 1 }, unrelated)).toBe("Restored from v1");
+  });
+});
+
+describe("restorePrompt", () => {
+  it("asks to restore the viewed Version as the next number after the latest", () => {
+    expect(restorePrompt(3, 7)).toBe(
+      "Restore Version 3 as Version 8? Your current version stays in history.",
+    );
   });
 });

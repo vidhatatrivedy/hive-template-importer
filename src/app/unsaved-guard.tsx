@@ -201,8 +201,15 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   onCancel,
+  pending = false,
   children,
-}: ConfirmChoice & { onConfirm: () => void; onCancel: () => void; children?: ReactNode }) {
+}: ConfirmChoice & {
+  onConfirm: () => void;
+  onCancel: () => void;
+  /** Disables confirm so a running action cannot be submitted twice. */
+  pending?: boolean;
+  children?: ReactNode;
+}) {
   const titleId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -238,7 +245,7 @@ export function ConfirmDialog({
         </p>
         {children ? <div className="mt-3">{children}</div> : null}
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" className={buttonClass} onClick={onConfirm}>
+          <button type="button" className={buttonClass} disabled={pending} onClick={onConfirm}>
             {confirmLabel}
           </button>
           <button type="button" ref={cancelRef} className={primaryButtonClass} onClick={onCancel}>
