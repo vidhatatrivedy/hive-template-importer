@@ -206,19 +206,30 @@ function samePathname(href: string, pathname: string): boolean {
   return path === pathname;
 }
 
-function ConfirmDialog({
+export function ConfirmDialog({
   message,
   confirmLabel,
   cancelLabel,
   onConfirm,
   onCancel,
-}: ConfirmChoice & { onConfirm: () => void; onCancel: () => void }) {
+  children,
+}: ConfirmChoice & { onConfirm: () => void; onCancel: () => void; children?: ReactNode }) {
   const titleId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     cancelRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCancel();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
 
   return (
     <div
@@ -231,11 +242,12 @@ function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`${glassClass} w-full max-w-sm rounded-2xl px-6 py-5`}
+        className={`${glassClass} w-full rounded-2xl px-6 py-5 ${children ? "max-w-lg" : "max-w-sm"}`}
       >
         <p id={titleId} className="text-neutral-900 dark:text-white">
           {message}
         </p>
+        {children ? <div className="mt-3">{children}</div> : null}
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className={buttonClass} onClick={onConfirm}>
             {confirmLabel}

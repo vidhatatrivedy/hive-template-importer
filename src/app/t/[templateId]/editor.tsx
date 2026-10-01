@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type Ref } from "react";
 import { saveErrorMessage } from "@/core/import/editor-messages";
+import { summariseCuts, type TextChange } from "@/core/import/prepare-save";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
+import { sanitiseCommentHtml } from "@/core/sanitise";
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 import {
   blankNames,
@@ -28,7 +30,7 @@ import {
   type OptionChange,
 } from "@/app/editor/editor-state";
 import { templateHref } from "@/app/template-view";
-import { confirmChoice, confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
+import { confirmChoice, ConfirmDialog, confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, labelClass, primaryButtonClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
@@ -162,12 +164,28 @@ export function Editor({
 
   async function runSave() {
     if (saveLock.current || !canSave) return;
+    const next = editorReducer(state, { type: "saveRequested" });
     dispatch({ type: "saveRequested" });
-    // Blank names stop the Save at `invalid`; nothing goes to the server.
-    if (blankNames(state.tree).length > 0) return;
-    saveLock.current = true;
+    if (next.save.status !== "saving") return;
+    await commitSave(state.base.number, state.tree);
+  }
+
+  async function acceptSave() {
+    if (saveLock.current || state.save.status !== "confirm") return;
     const baseNumber = state.base.number;
     const working = state.tree;
+    dispatch({ type: "saveConfirmed" });
+    await commitSave(baseNumber, working);
+  }
+
+  function openConfirmedChange(path: TextChange["path"]) {
+    const comment = state.tree.sections[path[0]]?.items[path[1]]?.comments[path[2]];
+    if (comment?.id) dispatch({ type: "select", ref: { level: "comment", id: comment.id } });
+    dispatch({ type: "saveCancelled" });
+  }
+
+  async function commitSave(baseNumber: number, working: EditableTree) {
+    saveLock.current = true;
     try {
       const result = await saveTemplate(templateId, baseNumber, working);
       if (!result.ok) {
@@ -477,6 +495,15 @@ export function Editor({
           />
         </section>
       </div>
+      {state.save.status === "confirm" ? (
+        <TextChangeDialog
+          tree={state.tree}
+          changes={state.save.changes}
+          onSave={() => void acceptSave()}
+          onCancel={() => dispatch({ type: "saveCancelled" })}
+          onOpen={openConfirmedChange}
+        />
+      ) : null}
     </div>
   );
 }
@@ -651,11 +678,135 @@ function CommentDetail({
         <OptionsField comment={comment} readOnly={readOnly} locked={locked} onOption={onOption} />
       ) : null}
       <DefaultField comment={comment} readOnly={readOnly} locked={locked} defaultCleared={defaultCleared} onPatch={onPatch} />
-      <div className="border-t border-black/[0.05] pt-3 dark:border-white/[0.06]">
-        <CommentHtml html={comment.textHtml} sourceRow={comment.sourceRow} />
-      </div>
+      <CommentText
+        key={comment.id}
+        comment={comment}
+        readOnly={readOnly}
+        locked={locked}
+        onPatch={onPatch}
+      />
     </div>
   );
+}
+
+/** Rendered Comment text, or the HTML source beside a live preview of what Save would store. */
+function CommentText({
+  comment,
+  readOnly,
+  locked,
+  onPatch,
+}: {
+  comment: Comment;
+  readOnly: boolean;
+  locked: boolean;
+  onPatch: PatchHandler;
+}) {
+  const [editing, setEditing] = useState(false);
+  const sourceRef = useRef<HTMLTextAreaElement>(null);
+  const showSource = editing && !readOnly;
+  useEffect(() => {
+    if (showSource) sourceRef.current?.focus();
+  }, [showSource]);
+  const preview = useMemo(
+    () => (showSource ? sanitiseCommentHtml(comment.textHtml) : null),
+    [showSource, comment.textHtml],
+  );
+  const cuts = preview && preview.cuts.length > 0 ? summariseCuts(preview.cuts) : [];
+  const plain = !comment.textHtml.includes("<");
+
+  return (
+    <div className="border-t border-black/[0.05] pt-3 dark:border-white/[0.06]">
+      {readOnly ? null : (
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            className={buttonClass}
+            disabled={locked && !showSource}
+            onClick={() => setEditing((open) => !open)}
+          >
+            {showSource ? "Done" : "Edit"}
+          </button>
+        </div>
+      )}
+      {showSource && preview ? (
+        <div className="grid grid-cols-2 gap-3">
+          <textarea
+            ref={sourceRef}
+            aria-label={plain ? "Comment text" : "HTML source"}
+            value={comment.textHtml}
+            readOnly={locked}
+            spellCheck={plain}
+            onChange={(event) => onPatch({ textHtml: event.currentTarget.value })}
+            className={`${controlClass} min-h-40 resize-y ${plain ? "" : "font-mono"}`}
+          />
+          <div className="min-w-0">
+            <CommentHtml html={preview.html} sourceRow={comment.sourceRow} />
+            {cuts.length > 0 ? (
+              <div className="mt-3 text-neutral-500">
+                <p>When saved, this will be removed:</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {cuts.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <CommentHtml html={comment.textHtml} sourceRow={comment.sourceRow} />
+      )}
+    </div>
+  );
+}
+
+function TextChangeDialog({
+  tree,
+  changes,
+  onSave,
+  onCancel,
+  onOpen,
+}: {
+  tree: EditableTree;
+  changes: readonly TextChange[];
+  onSave: () => void;
+  onCancel: () => void;
+  onOpen: (path: TextChange["path"]) => void;
+}) {
+  return (
+    <ConfirmDialog
+      message="When saved, this will be removed:"
+      confirmLabel="Save anyway"
+      cancelLabel="Keep editing"
+      onConfirm={onSave}
+      onCancel={onCancel}
+    >
+      <ul className="flex max-h-[50vh] flex-col gap-1 overflow-y-auto">
+        {changes.map((change) => (
+          <li key={change.path.join(".")}>
+            <button
+              type="button"
+              className="w-full rounded-md px-2 py-1.5 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              onClick={() => onOpen(change.path)}
+            >
+              <span className="text-neutral-900 dark:text-white">{changeTitle(tree, change)}</span>
+              <ul className="mt-1 text-neutral-500">
+                {change.summary.map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </ConfirmDialog>
+  );
+}
+
+function changeTitle(tree: EditableTree, change: TextChange): string {
+  const section = tree.sections[change.path[0]];
+  const item = section?.items[change.path[1]];
+  return `${section?.name.trim() || "Section"} › ${item?.name.trim() || "Item"} › ${change.name || "Comment"}`;
 }
 
 function RecommendationField({

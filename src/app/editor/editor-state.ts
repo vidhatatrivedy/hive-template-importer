@@ -1,5 +1,5 @@
 import type { SaveError } from "@/core/import/editor-messages";
-import { prepareSave } from "@/core/import/prepare-save";
+import { textChanges, type TextChange } from "@/core/import/prepare-save";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 
 /** The column the inspector is working in. Columns to its left collapse. */
@@ -22,11 +22,13 @@ export type EditorBase = {
   tree: EditableTree;
 };
 
-/** Where a Save is. `confirm` arrives with a later ticket. */
+/** Where a Save is. */
 export type SaveState =
   | { status: "idle" }
   /** A Save was attempted with blank names. The markers come from `blankNames`, so they clear as names are filled. */
   | { status: "invalid" }
+  /** Edited Comment text would be cut. Nothing is stored until the inspector confirms. */
+  | { status: "confirm"; changes: TextChange[] }
   | { status: "saving" }
   | { status: "awaiting"; number: number }
   | { status: "refused"; error: SaveError };
@@ -81,6 +83,8 @@ export type EditorAction =
   | { type: "setComment"; id: string; patch: CommentPatch }
   | ({ type: "option"; id: string } & OptionChange)
   | { type: "saveRequested" }
+  | { type: "saveConfirmed" }
+  | { type: "saveCancelled" }
   | { type: "saveSucceeded"; number: number }
   | { type: "saveFailed"; error: SaveError }
   | { type: "dismissError" }
@@ -234,6 +238,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return changeOptions(state, action.id, action);
     case "saveRequested":
       return requestSave(state);
+    case "saveConfirmed":
+      return saveConfirmed(state);
+    case "saveCancelled":
+      return saveCancelled(state);
     case "saveSucceeded":
       return saveSucceeded(state, action.number);
     case "saveFailed":
@@ -260,9 +268,19 @@ function requestSave(state: EditorState): EditorState {
     const selected = select(state, first);
     return { ...selected, focus: columnOf(first.level), focusName: first.id, save: { status: "invalid" } };
   }
-  // Text cuts stay on this path until a later ticket adds `confirm`.
-  prepareSave(state.tree);
+  const changes = textChanges(state.tree, state.base.tree);
+  if (changes.length > 0) return { ...state, save: { status: "confirm", changes } };
   return { ...state, save: { status: "saving" } };
+}
+
+function saveConfirmed(state: EditorState): EditorState {
+  if (state.mode === "read-only" || state.save.status !== "confirm") return state;
+  return { ...state, save: { status: "saving" } };
+}
+
+function saveCancelled(state: EditorState): EditorState {
+  if (state.save.status !== "confirm") return state;
+  return { ...state, save: { status: "idle" } };
 }
 
 function columnOf(level: NodeRef["level"]): Column {
@@ -701,6 +719,7 @@ function adoptVersion(state: EditorState, next: EditorBase): EditorState {
     case "idle":
     case "invalid":
     case "refused":
+    case "confirm":
       if (isDirty(state)) return { ...state, held: copyBase(next) };
       return commitVersion(state, next, state.save);
     default: {

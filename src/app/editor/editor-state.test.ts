@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
+import { prepareSave } from "@/core/import/prepare-save";
 import type { Comment, EditableTree } from "@/core/import/schemas";
 import type { SaveError } from "@/core/import/editor-messages";
 import {
@@ -1020,6 +1021,61 @@ describe("editorReducer on Ben", () => {
       if (index === sectionIndex) expect(section).not.toBe(ben.sections[index]);
       else expect(section).toBe(ben.sections[index]);
     });
+  });
+});
+
+describe("editorReducer: pre-Save notice", () => {
+  it("asks before saving a Comment that would lose a script tag, and cancel or confirm leaves that text in place", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const original = located(opened).comment?.textHtml ?? "";
+    const textHtml = `${original}<script>alert(1)</script>`;
+    const edited = editorReducer(opened, {
+      type: "setComment",
+      id: commentId,
+      patch: { textHtml },
+    });
+
+    const confirming = editorReducer(edited, { type: "saveRequested" });
+
+    expect(confirming.save.status).toBe("confirm");
+    if (confirming.save.status !== "confirm") return;
+    expect(confirming.save.changes).toEqual([
+      expect.objectContaining({
+        name: "In Attendance",
+        sourceRow: 2,
+        summary: expect.arrayContaining(["1 tag removed with its content: `<script>`"]),
+      }),
+    ]);
+
+    const cancelled = editorReducer(confirming, { type: "saveCancelled" });
+    expect(cancelled.save).toEqual({ status: "idle" });
+    expect(located(cancelled).comment?.textHtml).toBe(textHtml);
+
+    const saving = editorReducer(confirming, { type: "saveConfirmed" });
+    expect(saving.save).toEqual({ status: "saving" });
+    expect(located(saving).comment?.textHtml).toBe(textHtml);
+  });
+
+  it("reports the same cuts for one edited Residential Comment as sanitising every Comment", () => {
+    const opened = open();
+    const commentId = requireCommentId(opened);
+    const edited = editorReducer(opened, {
+      type: "setComment",
+      id: commentId,
+      patch: { textHtml: '<p>Kept</p><script>alert(1)</script><p onclick="x">Click</p>' },
+    });
+
+    const confirming = editorReducer(edited, { type: "saveRequested" });
+    const prepared = prepareSave(edited.tree);
+
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(confirming.save.status).toBe("confirm");
+    if (confirming.save.status !== "confirm") return;
+    expect(confirming.save.changes).toEqual(prepared.changes);
+    expect(prepared.changes).toHaveLength(1);
+    expect(prepared.changes[0]?.name).toBe("In Attendance");
   });
 });
 

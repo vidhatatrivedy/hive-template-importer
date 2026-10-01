@@ -21,6 +21,47 @@ export type PrepareSaveResult =
   | { ok: false; blank: BlankName[] };
 
 /**
+ * Cuts Save would report, sanitising only Comments whose text differs from `base` (matched by id).
+ * Imported text is already sanitised, so this matches `prepareSave`'s `changes` without sanitising every Comment.
+ */
+export function textChanges(tree: EditableTree, base: EditableTree): TextChange[] {
+  const stored = new Map<string, string>();
+  for (const section of base.sections) {
+    for (const item of section.items) {
+      for (const comment of item.comments) {
+        if (comment.id !== undefined) stored.set(comment.id, comment.textHtml);
+      }
+    }
+  }
+
+  const changes: TextChange[] = [];
+  for (let sectionIndex = 0; sectionIndex < tree.sections.length; sectionIndex++) {
+    const section = tree.sections[sectionIndex];
+    if (!section) continue;
+    for (let itemIndex = 0; itemIndex < section.items.length; itemIndex++) {
+      const item = section.items[itemIndex];
+      if (!item) continue;
+      for (let commentIndex = 0; commentIndex < item.comments.length; commentIndex++) {
+        const comment = item.comments[commentIndex];
+        if (!comment) continue;
+        const previous = comment.id !== undefined ? stored.get(comment.id) : undefined;
+        if (previous === comment.textHtml) continue;
+        const text = sanitiseCommentHtml(comment.textHtml);
+        if (text.cuts.length === 0) continue;
+        changes.push({
+          path: [sectionIndex, itemIndex, commentIndex],
+          name: comment.name.trim(),
+          sourceRow: comment.sourceRow,
+          cuts: text.cuts,
+          summary: summariseCuts(text.cuts),
+        });
+      }
+    }
+  }
+  return changes;
+}
+
+/**
  * The tree Save stores. Strips ids, trims as the parser does (U+00A0 included),
  * drops empty option entries, and re-sanitises every Comment. Blank names are the only refusal.
  */
