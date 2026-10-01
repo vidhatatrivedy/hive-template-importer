@@ -3,19 +3,8 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import type { IssueClass, IssueSeverity } from "@/core/import/catalogue";
-import { filterIssueGroups, type ImportIssueGroupView, type ImportIssueItemView } from "@/app/trust-issues";
-import { buttonClass, labelClass, severityNoticeClass, severityWarningClass } from "@/app/ui/classes";
-
-export type LinkedImportIssue = ImportIssueItemView & { href: string | null };
-
-export type LinkedImportIssueGroup = Omit<ImportIssueGroupView, "issues"> & {
-  issues: LinkedImportIssue[];
-};
-
-const severityClass: Record<IssueSeverity, string> = {
-  warning: severityWarningClass,
-  notice: severityNoticeClass,
-};
+import { filterIssueGroups, type LinkedImportIssueGroup } from "@/app/trust-issues";
+import { buttonClass, labelClass, severityClass } from "@/app/ui/classes";
 
 /** Filter chips and expand state for the Import issues list. Issues in a closed group are not rendered. */
 export function ImportIssues({
@@ -33,9 +22,9 @@ export function ImportIssues({
     () => new Set(groups.filter((group) => group.open).map((group) => group.kind)),
   );
 
-  const visible = filterIssueGroups<LinkedImportIssueGroup>(groups, {
-    severities: severities.filter((severity) => selectedSeverities.has(severity)),
-    classes: classes.filter((issueClass) => selectedClasses.has(issueClass)),
+  const visible = filterIssueGroups(groups, {
+    severities: [...selectedSeverities],
+    classes: [...selectedClasses],
   });
 
   function toggleSeverity(severity: IssueSeverity) {
@@ -94,21 +83,24 @@ export function ImportIssues({
             </button>
             {open ? (
               <ul className="mt-1 flex flex-col gap-2 pl-3">
-                {group.issues.map((issue, index) => (
-                  <li key={`${issue.sourceRow ?? "file"}-${index}`} className="flex flex-col gap-0.5">
-                    {issue.location ? <p>{issue.location}</p> : null}
-                    {issue.href !== null && issue.sourceRow !== null ? (
-                      <p>
-                        <Link href={issue.href} className="underline underline-offset-2">
-                          Source row {issue.sourceRow}
-                        </Link>
-                      </p>
-                    ) : null}
-                    <p className={issue.location !== null || issue.href !== null ? "text-neutral-500" : undefined}>
-                      {issue.message}
-                    </p>
-                  </li>
-                ))}
+                {group.issues.map((issue, index) => {
+                  const href = issue.href;
+                  const sourceRow = issue.sourceRow;
+                  const hasContext = issue.location !== null || href !== null;
+                  return (
+                    <li key={`${sourceRow ?? "file"}-${index}`} className="flex flex-col gap-0.5">
+                      {issue.location ? <p>{issue.location}</p> : null}
+                      {href !== null && sourceRow !== null ? (
+                        <p>
+                          <Link href={href} className="underline underline-offset-2">
+                            Source row {sourceRow}
+                          </Link>
+                        </p>
+                      ) : null}
+                      <p className={hasContext ? "text-neutral-500" : undefined}>{issue.message}</p>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
           </div>

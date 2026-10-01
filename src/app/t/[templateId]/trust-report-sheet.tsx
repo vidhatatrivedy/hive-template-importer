@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { issueClasses, issueSeverities, type IssueSeverity } from "@/core/import/catalogue";
+import { issueClasses, issueSeverities } from "@/core/import/catalogue";
 import { templateHref, withTrustPane, type TemplateView } from "@/app/template-view";
 import { attachSourceRowLinks, importIssuesView } from "@/app/trust-issues";
 import {
@@ -13,15 +13,10 @@ import {
   type ReconciliationSectionView,
 } from "@/app/trust-sections";
 import { trustSummaryView } from "@/app/trust-summary";
-import { glassSheetClass, labelClass, severityNoticeClass, severityWarningClass } from "@/app/ui/classes";
+import { glassSheetClass, labelClass, severityClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
 import { ImportIssues } from "./import-issues";
 import type { LoadedTrustReport } from "./load-trust-report";
-
-const severityClass: Record<IssueSeverity, string> = {
-  warning: severityWarningClass,
-  notice: severityNoticeClass,
-};
 
 const verdictClass = "font-medium text-neutral-900 dark:text-white";
 

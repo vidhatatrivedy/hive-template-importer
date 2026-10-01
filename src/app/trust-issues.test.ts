@@ -178,7 +178,7 @@ function groupOf<Group extends { kind: string }>(groups: readonly Group[], kind:
 }
 
 function sampleGroups(): ImportIssueGroupView[] {
-    return [
+  return [
     {
       kind: "expected-column-missing",
       severity: "warning",

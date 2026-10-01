@@ -2,7 +2,7 @@ import type { IssueClass, IssueKind, IssueSeverity } from "@/core/import/catalog
 import type { TrustIssueGroup } from "@/core/import/trust-report";
 
 /** One Import issue as the Trust Report list renders it. No cuts. */
-export type ImportIssueItemView = {
+export type ImportIssueView = {
   /** "Section › Item › Comment" for a row issue. Null for a file-level issue. */
   location: string | null;
   sourceRow: number | null;
@@ -17,7 +17,14 @@ export type ImportIssueGroupView = {
   title: string;
   count: number;
   open: boolean;
-  issues: ImportIssueItemView[];
+  issues: ImportIssueView[];
+};
+
+/** A list issue plus its Source row link. A file-level issue has no row, so `href` is null. */
+export type LinkedImportIssue = ImportIssueView & { href: string | null };
+
+export type LinkedImportIssueGroup = Omit<ImportIssueGroupView, "issues"> & {
+  issues: LinkedImportIssue[];
 };
 
 export type IssueFilterSelection = {
@@ -65,10 +72,10 @@ export function filterIssueGroups<Group extends ImportIssueGroupView>(
 }
 
 /** Adds the Source row link. A file-level issue has no row, so it gets no link. */
-export function attachSourceRowLinks<Group extends ImportIssueGroupView>(
-  groups: readonly Group[],
+export function attachSourceRowLinks(
+  groups: readonly ImportIssueGroupView[],
   hrefFor: (row: number) => string,
-): (Group & { issues: (ImportIssueItemView & { href: string | null })[] })[] {
+): LinkedImportIssueGroup[] {
   return groups.map((group) => ({
     ...group,
     issues: group.issues.map((issue) => ({

@@ -1,3 +1,5 @@
+import type { IssueSeverity } from "@/core/import/catalogue";
+
 /** Visual language from the layout prototype (variant B) and docs/spec/design.md. */
 
 export const glassClass =
@@ -18,3 +20,8 @@ export const primaryButtonClass =
 export const severityWarningClass = "font-medium text-neutral-900 dark:text-white";
 
 export const severityNoticeClass = "font-normal text-neutral-400";
+
+export const severityClass: Record<IssueSeverity, string> = {
+  warning: severityWarningClass,
+  notice: severityNoticeClass,
+};
