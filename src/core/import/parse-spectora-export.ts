@@ -1,7 +1,7 @@
 import { decodeHTML } from "entities";
 import readXlsxFile from "read-excel-file/node";
 import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
-import type { Comment, ImportDraft, Item, Section } from "@/core/import/schemas";
+import type { Comment, ImportDraft, ImportIssue, Item, Section } from "@/core/import/schemas";
 
 export type ParseResult = { ok: true; draft: ImportDraft };
 
@@ -258,9 +258,9 @@ function isBundled(cut: Cut): boolean {
   return cut.kind === "editor-leftover" || (cut.kind === "css-property-removed" && !isUnsafeStyle(cut));
 }
 
-function issuesFromCuts(cuts: readonly Cut[], sourceRow: number): ImportDraft["issues"] {
-  const issues: ImportDraft["issues"] = [];
+function issuesFromCuts(cuts: readonly Cut[], sourceRow: number): ImportIssue[] {
   const bundled = cuts.filter(isBundled);
+  const issues: ImportIssue[] = [];
   if (bundled.length > 0) {
     issues.push({
       kind: "editor-leftovers",
@@ -270,31 +270,29 @@ function issuesFromCuts(cuts: readonly Cut[], sourceRow: number): ImportDraft["i
     });
   }
   for (const cut of cuts) {
-    if (isBundled(cut)) continue;
-    issues.push(issueForCut(cut, sourceRow));
+    if (!isBundled(cut)) issues.push(issueForCut(cut, sourceRow));
   }
   return issues;
 }
 
-function issueForCut(cut: Cut, sourceRow: number): ImportDraft["issues"][number] {
+function issueForCut(cut: Cut, sourceRow: number): ImportIssue {
   const cuts = [evidenceCut(cut)];
   const tag = cut.context.tag;
   switch (cut.kind) {
     case "css-property-removed":
-      return { kind: "unsafe-style-removed", sourceRow, detail: { tag, property: cutField(cut, "property") }, cuts };
+      return { kind: "unsafe-style-removed", sourceRow, detail: { tag, property: contextField(cut, "property") }, cuts };
     case "attribute-removed":
-      return { kind: "attribute-removed", sourceRow, detail: { tag, attribute: cutField(cut, "attribute") }, cuts };
+      return { kind: "attribute-removed", sourceRow, detail: { tag, attribute: contextField(cut, "attribute") }, cuts };
     case "style-unparseable":
     case "tag-unwrapped":
     case "tag-removed":
     case "link-scheme-removed":
       return { kind: cut.kind, sourceRow, detail: { tag }, cuts };
     case "iframe-to-link":
-      return { kind: "iframe-to-link", sourceRow, detail: {}, cuts };
+    case "markup-rebuilt":
+      return { kind: cut.kind, sourceRow, detail: {}, cuts };
     case "youtube-wrapper-emptied":
       return { kind: "youtube-wrapper-empty", sourceRow, detail: {}, cuts };
-    case "markup-rebuilt":
-      return { kind: "markup-rebuilt", sourceRow, detail: {}, cuts };
     case "editor-leftover":
       throw new Error("Editor leftovers are bundled into one issue");
     default: {
@@ -304,13 +302,13 @@ function issueForCut(cut: Cut, sourceRow: number): ImportDraft["issues"][number]
   }
 }
 
-function cutField(cut: Cut, field: "attribute" | "property"): string {
+function contextField(cut: Cut, field: "attribute" | "property"): string {
   const value = cut.context[field];
   if (!value) throw new Error(`Cut ${cut.kind} at ${cut.start}–${cut.end} has no ${field}`);
   return value;
 }
 
-function evidenceCut(cut: Cut): ImportDraft["issues"][number]["cuts"][number] {
+function evidenceCut(cut: Cut): ImportIssue["cuts"][number] {
   return {
     start: cut.start,
     end: cut.end,

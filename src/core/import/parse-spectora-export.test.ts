@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import writeXlsxFile from "write-excel-file/node";
-import { catalogue, renderIssueMessage } from "@/core/import/catalogue";
+import { catalogue, renderIssueMessage, type IssueKind } from "@/core/import/catalogue";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
 import { sanitiseCommentHtml, type Cut } from "@/core/sanitise";
 import {
@@ -409,7 +409,7 @@ describe("parseSpectoraExport", () => {
         }
 
         for (const issue of rowIssues) {
-          if (!HTML_ISSUE_KINDS.has(issue.kind)) expect(issue.cuts, `${label} ${issue.kind}`).toEqual([]);
+          if (KINDS_WITHOUT_CUTS.has(issue.kind)) expect(issue.cuts, `${label} ${issue.kind}`).toEqual([]);
           expect(renderIssueMessage(issue.kind, issue.detail).trim().length, `${label} ${issue.kind}`).toBeGreaterThan(0);
         }
       }
@@ -448,6 +448,64 @@ describe("parseSpectoraExport", () => {
     expect(renderIssueMessage("editor-leftovers", { count: 1 })).toBe("1 editor leftover was removed from this Comment.");
   });
 
+  it("raises each HTML issue kind the fixtures do not contain", async () => {
+    const samples = [
+      {
+        text: '<p>Keep <font color="red">these words</font> here</p>',
+        issues: [
+          { kind: "tag-unwrapped", detail: { tag: "font" } },
+          { kind: "tag-unwrapped", detail: { tag: "font" } },
+        ],
+      },
+      {
+        text: '<p style="color: red; font-weight">t</p>',
+        issues: [{ kind: "style-unparseable", detail: { tag: "p" } }],
+      },
+      {
+        text: "<script>alert(1)</script>",
+        issues: [{ kind: "tag-removed", detail: { tag: "script" } }],
+      },
+      {
+        text: '<a href="javascript:alert(1)">this</a>',
+        issues: [{ kind: "link-scheme-removed", detail: { tag: "a" } }],
+      },
+      {
+        text: '<iframe src="https://example.org/page"></iframe>',
+        issues: [{ kind: "iframe-to-link", detail: {} }],
+      },
+      {
+        text: `${"<div>".repeat(600)}words`,
+        issues: [{ kind: "markup-rebuilt", detail: {} }],
+      },
+      {
+        text: '<div class="youtube-embed-wrapper"></div>',
+        issues: [{ kind: "youtube-wrapper-empty", detail: {} }],
+      },
+    ] as const;
+
+    const result = await parseSpectoraExport(
+      await workbookWithCommentText(samples.map((sample) => sample.text)),
+      "synthetic.xls",
+    );
+    expect(result.ok).toBe(true);
+    const parsed = importDraftSchema.safeParse(result.draft);
+    expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues)).toBe(true);
+
+    for (const [index, sample] of samples.entries()) {
+      const sourceRow = index + 2;
+      const label = sample.issues[0]?.kind ?? `row ${sourceRow}`;
+      const issues = result.draft.issues.filter((issue) => issue.sourceRow === sourceRow);
+      expect(
+        issues.map((issue) => ({ kind: issue.kind, detail: issue.detail })),
+        label,
+      ).toEqual(sample.issues);
+      for (const issue of issues) {
+        expect(issue.cuts, label).toHaveLength(1);
+        expect(renderIssueMessage(issue.kind, issue.detail).trim().length, label).toBeGreaterThan(0);
+      }
+    }
+  });
+
   it("keeps an Item name that recurs under different Sections as separate Items", async () => {
     const draft = await draftOf("Room-by-Room Residential Template-2026-09-30.xls");
     const master = draft.tree.sections.find((section) => section.name === "Master Bedroom");
@@ -469,21 +527,14 @@ async function draftOf(file: string): Promise<ImportDraft> {
   return result.draft;
 }
 
-/** Tokens the catalogue treats as a dangerous style value, matched against the cut's source span. */
+/**
+ * Source-span tokens that stay a warning of their own. The sanitiser's `unsafeValue` flag
+ * covers the same tokens when they only appear after decoding.
+ */
 const UNSAFE_STYLE = /url\(|expression\(|@import/i;
 
-const HTML_ISSUE_KINDS = new Set<string>([
-  "editor-leftovers",
-  "attribute-removed",
-  "tag-unwrapped",
-  "style-unparseable",
-  "tag-removed",
-  "link-scheme-removed",
-  "iframe-to-link",
-  "markup-rebuilt",
-  "youtube-wrapper-empty",
-  "unsafe-style-removed",
-]);
+/** Import issue kinds that do not come from a sanitiser cut, so they carry no evidence. */
+const KINDS_WITHOUT_CUTS = new Set<IssueKind>(["whitespace-trimmed"]);
 
 /** Routine editor leftovers and CSS removals share one notice. Dangerous CSS does not. */
 function isBundledCut(cut: Cut): boolean {

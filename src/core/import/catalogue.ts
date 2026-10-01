@@ -173,6 +173,14 @@ export type IssueKind = (typeof issueKinds)[number];
 export function renderIssueMessage(kind: IssueKind, detail: unknown): string {
   const entry = catalogue.find((candidate) => candidate.kind === kind);
   if (!entry) throw new Error(`Unknown Import issue kind: ${kind}`);
+  return messageOf(entry, detail);
+}
+
+/**
+ * Catalogue entries each close over their own detail type, so a found entry's `message`
+ * cannot be called with the parsed value without naming that relationship here.
+ */
+function messageOf(entry: (typeof catalogue)[number], detail: unknown): string {
   const parsed = entry.detail.parse(detail);
   return (entry.message as (value: typeof parsed) => string)(parsed);
 }
