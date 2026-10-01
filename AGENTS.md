@@ -60,6 +60,8 @@ This repo is worked on by Claude Code and Cursor, switching mid-task. Keep it pr
 
 Agents never close issues. The loop closes each one after its review passes, so a closed issue means implemented and reviewed. If a review fails, the issue stays open with a comment and the run stops.
 
+An agent that prints nothing for 30 minutes is stopped (Cursor reports no tool calls, so long test runs look silent). Cursor takes its prompt as a command-line argument capped at 120 KiB, so prompts stay small: the implement prompt lists issues without bodies, and a review prompt over 110 KiB gets a per-file diff summary instead of the full diff.
+
 Iterations chain within one run, and nothing is merged to `main`. A new run forks from the host's `HEAD`, but tickets closed by the last run only have their code on its last branch. Before starting another run, fast-forward `main` to that branch (`git merge --ff-only <branch>`). Otherwise the next run builds tickets on top of missing prerequisites.
 
 Credentials live in `.sandcastle/.env` (template: `.sandcastle/.env.example`); every key there is injected into the sandbox, including the dev Supabase project's, so agents run `test:db` themselves. Needs Docker running and the image built once: `npx sandcastle docker build-image`.

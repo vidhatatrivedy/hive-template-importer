@@ -6,7 +6,9 @@ Review the code changes on branch `{{BRANCH}}` and improve code clarity, consist
 
 ## Branch diff
 
-!`git diff {{BASE}}...{{BRANCH}}`
+{{DIFF_NOTE}}
+
+!`{{DIFF_COMMAND}}`
 
 ## Commits on this branch
 

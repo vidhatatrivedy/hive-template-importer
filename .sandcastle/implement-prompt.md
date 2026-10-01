@@ -2,15 +2,11 @@
 
 ## Open issues
 
-!`gh issue list --state open --label ready-for-agent --limit 100 --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'`
+!`gh api 'repos/vidhatatrivedy/hive-template-importer/issues?state=open&labels=ready-for-agent&per_page=100' --jq '[.[] | select(.pull_request | not) | {number, title, labels: [.labels[].name], openBlockers: .issue_dependencies_summary.blocked_by}]'`
 
 The list above has already been filtered to open issues labelled `ready-for-agent` and is the sole source of truth for what work exists. Do not run your own unfiltered query to find more issues — if the list is empty, there is nothing to do.
 
-## Open blockers
-
-!`gh api 'repos/vidhatatrivedy/hive-template-importer/issues?state=open&labels=ready-for-agent&per_page=100' --jq '[.[] | select(.pull_request | not) | {number, openBlockers: .issue_dependencies_summary.blocked_by}]'`
-
-`openBlockers` is the number of GitHub's native "blocked by" issues that are still open. An issue with `openBlockers > 0` is blocked: never work on it, even if its body doesn't mention a blocker.
+It holds only each issue's number, title, labels and `openBlockers`, to keep this prompt small. `openBlockers` is the number of GitHub's native "blocked by" issues that are still open. An issue with `openBlockers > 0` is blocked: never work on it, even if its body doesn't mention a blocker. Read an issue's body and comments with `gh issue view <ID> --comments` before choosing it.
 
 ## Recent RALPH commits (last 10)
 
@@ -29,11 +25,11 @@ Work on issues in this order:
 3. **Polish** — improving existing functionality (error messages, UX, docs)
 4. **Refactors** — internal cleanups with no user-visible change
 
-Pick the highest-priority open issue that is not blocked: its `openBlockers` is 0 and its body names no open blocker.
+Pick the highest-priority open issue that is not blocked: its `openBlockers` is 0 and its body names no open blocker. Judge priority from titles and labels first, then read the bodies (`gh issue view <ID> --comments`) of the few likeliest candidates to confirm.
 
 ## Workflow
 
-1. **Explore** — read the issue carefully. Pull in the parent PRD if referenced. Read the relevant source files and tests before writing any code.
+1. **Explore** — read the issue and all its comments (`gh issue view <ID> --comments`); comments may hold instructions from earlier attempts. Pull in the parent PRD and any issues it references the same way. Read the relevant source files and tests before writing any code.
 2. **Plan** — decide what to change and why. Keep the change as small as possible.
 3. **Execute** — use the tdd skill. RGR (Red → Green → Repeat → Refactor): write a failing test first, then write the implementation to pass it.
 4. **Verify** — run `npm run typecheck` and `npm run test` before committing. Fix any failures before proceeding.

@@ -22,11 +22,17 @@
 //   npm run sandcastle -- --dry-run --provider cursor    # print config, run nothing
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 import { USAGE, checkCredentials, describe, parseRunConfig, resolveAgent } from "./agents.mts";
 
 const GH_REPO = "vidhatatrivedy/hive-template-importer";
+// Cursor's CLI takes the prompt as one argv string capped at 120 KiB; stay under it.
+const MAX_PROMPT_BYTES = 110 * 1024;
+// Cursor reports no tool calls, so a long test run looks idle. Sandcastle's default is 600.
+const IDLE_TIMEOUT_SECONDS = 30 * 60;
+const REVIEW_PROMPT_FILE = "./.sandcastle/review-prompt.md";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -40,6 +46,30 @@ function issueFromCommits(commits: readonly { sha: string }[]): number | undefin
     if (match) return Number(match[1]);
   }
   return undefined;
+}
+
+/**
+ * The review prompt's diff block: the full diff when the expanded prompt fits
+ * MAX_PROMPT_BYTES, otherwise a file summary the reviewer drills into itself.
+ */
+function reviewDiffArgs(base: string, branch: string): { DIFF_COMMAND: string; DIFF_NOTE: string } {
+  const range = `${base}...${branch}`;
+  const git = (args: string[]) =>
+    execFileSync("git", args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  const bytes =
+    readFileSync(REVIEW_PROMPT_FILE).byteLength +
+    Buffer.byteLength(git(["diff", range])) +
+    Buffer.byteLength(git(["log", `${base}..${branch}`, "--oneline"]));
+  if (bytes <= MAX_PROMPT_BYTES) {
+    return { DIFF_COMMAND: `git diff ${range}`, DIFF_NOTE: "The full diff:" };
+  }
+  console.log(`Review diff is too large to inline (~${Math.round(bytes / 1024)} KB); sending a file summary instead.`);
+  return {
+    DIFF_COMMAND: `git diff --stat=200 ${range}`,
+    DIFF_NOTE:
+      `The full diff is too large to include, so this is a per-file summary. ` +
+      `Read each changed file's diff with \`git diff ${range} -- <path>\` before reviewing it.`,
+  };
 }
 
 /** Runs gh on the host with the sandbox's GH_TOKEN (loaded by checkCredentials). */
@@ -112,6 +142,7 @@ for (let iteration = 1; iteration <= config.iterations; iteration++) {
       maxIterations: 1,
       agent: implementer,
       promptFile: "./.sandcastle/implement-prompt.md",
+      idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
     });
 
     if (!implement.commits.length) {
@@ -129,10 +160,11 @@ for (let iteration = 1; iteration <= config.iterations; iteration++) {
         name: `reviewer:${config.reviewer.provider}`,
         maxIterations: 1,
         agent: reviewer,
-        promptFile: "./.sandcastle/review-prompt.md",
+        promptFile: REVIEW_PROMPT_FILE,
+        idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
         // Diff against the fork point, not the host branch: iterations chain, so
         // the host branch would show every earlier iteration's changes too.
-        promptArgs: { BRANCH: branch, BASE: base },
+        promptArgs: { BRANCH: branch, BASE: base, ...reviewDiffArgs(base, branch) },
       });
     } catch (error) {
       console.error(`\nReview failed: ${errorMessage(error)}`);
