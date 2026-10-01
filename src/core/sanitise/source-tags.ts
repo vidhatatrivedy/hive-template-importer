@@ -12,9 +12,10 @@ export type AttributeSpan = {
 
 /** Where a tag token starting at `start` ends: after its `>`, or at the end of the input. */
 export function tagTokenEnd(input: string, start: number): number {
-  const close = startTagAttributes(input, start, input.length).at(-1)?.end ?? indexAfterTagName(input, start, input.length);
-  const index = input.indexOf(">", close);
-  return index < 0 ? input.length : index + 1;
+  const attributes = startTagAttributes(input, start, input.length);
+  const afterAttributes = attributes.at(-1)?.end ?? indexAfterTagName(input, start, input.length);
+  const close = input.indexOf(">", afterAttributes);
+  return close < 0 ? input.length : close + 1;
 }
 
 /**
@@ -67,8 +68,10 @@ function attributeValue(input: string, nameEnd: number, tagEnd: number): { end: 
   while (isWhitespace(input[index])) index++;
   const quote = input[index];
   if (quote === '"' || quote === "'") {
-    const close = input.indexOf(quote, index + 1);
-    return close < 0 ? { end: tagEnd, valueStart: index + 1, valueEnd: tagEnd } : { end: close + 1, valueStart: index + 1, valueEnd: close };
+    const valueStart = index + 1;
+    const close = input.indexOf(quote, valueStart);
+    if (close < 0) return { end: tagEnd, valueStart, valueEnd: tagEnd };
+    return { end: close + 1, valueStart, valueEnd: close };
   }
   const valueStart = index;
   while (index < tagEnd && !isWhitespace(input[index]) && input[index] !== ">") index++;

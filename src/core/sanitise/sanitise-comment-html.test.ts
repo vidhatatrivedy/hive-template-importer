@@ -702,15 +702,15 @@ describe("allowlist", () => {
 });
 
 describe("self-check and rebuild", () => {
+  /** Unclosed tags nested deeper than a browser nests them (Chromium stops at 512). */
+  const deep = (open: string, depth: number) => `${open.repeat(depth)}words<script>x</script>`;
+
   it("survives lone surrogates, which the parser can't read as they are", () => {
     const input = "a\udc00\udc00<script>x</script>b\ud800";
     const { html, cuts } = sanitiseCommentHtml(input);
     expect(html).toBe("a\udc00\udc00b\ud800");
     expect(cuts.map((c) => c.kind)).toEqual(["tag-removed"]);
   });
-
-  /** Unclosed tags nested deeper than a browser nests them (Chromium stops at 512). */
-  const deep = (open: string, depth: number) => `${open.repeat(depth)}words<script>x</script>`;
 
   it("rebuilds markup nested too deep to trust, as one markup-rebuilt cut over the whole input", () => {
     for (const input of [deep("<font>", 600), deep("<div>", 600), deep("<b>", 20000)]) {

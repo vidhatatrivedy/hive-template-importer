@@ -64,7 +64,7 @@ export function checkStyle(input: string, valueStart: number, valueEnd: number):
  * the kept value. Null when the value can't be parsed or no declaration is kept.
  */
 export function keptStyleSource(value: string): string | null {
-  const source = value.replace(/&/g, "&amp;");
+  const source = ampersandEncoded(value);
   const verdict = checkStyle(source, 0, source.length);
   if (!verdict.parseable || verdict.removesAll) return null;
   let kept = "";
@@ -74,6 +74,16 @@ export function keptStyleSource(value: string): string | null {
     position = cut.end;
   }
   return kept + source.slice(position);
+}
+
+/** Whether the style filter would keep this parsed value with nothing removed. */
+export function isStyleKeptWhole(value: string): boolean {
+  return keptStyleSource(value) === ampersandEncoded(value);
+}
+
+/** `&` written as `&amp;`, so a parsed style value can be read as source again. */
+function ampersandEncoded(value: string): string {
+  return value.replace(/&/g, "&amp;");
 }
 
 /**

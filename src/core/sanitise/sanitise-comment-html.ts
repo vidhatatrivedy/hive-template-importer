@@ -42,7 +42,7 @@ export function sanitiseCommentHtml(input: string): { html: string; cuts: Cut[] 
     const html = applyCuts(input, cuts);
     if (allowlistViolations(html).length === 0) return { html, cuts };
   }
-  return rebuilt(input, fragment);
+  return rebuildMarkup(input, fragment);
 }
 
 function spanCuts(input: string, fragment: Node): Cut[] {
@@ -56,7 +56,7 @@ function spanCuts(input: string, fragment: Node): Cut[] {
  * The fallback when the cut output fails the allowlist check, or the markup is nested too deep
  * for its positions to be trusted: the whole fragment rebuilt from the parse tree, logged as one cut.
  */
-function rebuilt(input: string, fragment: Node): { html: string; cuts: Cut[] } {
+function rebuildMarkup(input: string, fragment: Node): { html: string; cuts: Cut[] } {
   const html = rebuildFragment(fragment);
   const cut: Cut = {
     start: 0,
@@ -64,6 +64,7 @@ function rebuilt(input: string, fragment: Node): { html: string; cuts: Cut[] } {
     kind: "markup-rebuilt",
     removedText: input,
     replacement: html,
+    // A fragment has no element name; `#document-fragment` still records where the rebuild started.
     context: { tag: fragment.nodeName },
   };
   return { html, cuts: [cut] };

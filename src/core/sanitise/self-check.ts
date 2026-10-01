@@ -1,7 +1,8 @@
 import { isAllowedAttribute } from "./allowlist";
 import { startTagAttributes } from "./source-tags";
-import { keptStyleSource } from "./style-attribute";
+import { isStyleKeptWhole } from "./style-attribute";
 import {
+  attributeValueOf,
   eachChild,
   isAllowedElement,
   isHarmlessStrayTag,
@@ -46,24 +47,26 @@ function attributeViolations(html: string, element: Element): string[] {
   const startTag = element.sourceCodeLocation?.startTag;
   if (startTag) {
     const names = startTagAttributes(html, startTag.startOffset, startTag.endOffset).map((attribute) => attribute.name);
-    for (const name of new Set(names.filter((name, index) => names.indexOf(name) !== index))) {
-      violations.push(`repeated attribute ${tag}[${name}]`);
-    }
+    for (const name of repeatedNames(names)) violations.push(`repeated attribute ${tag}[${name}]`);
   }
   for (const { name, value } of element.attrs) {
     if (!isAllowedAttribute(tag, name)) violations.push(`attribute ${tag}[${name}]`);
-    else if (name === "style" && !isCleanStyle(value)) violations.push(`style ${tag}[style="${value}"]`);
-    else if (isUrlAttribute(tag, name) && !isAllowedUrl(value)) {
-      violations.push(`URL ${tag}[${name}="${value}"]`);
-    }
+    else if (name === "style" && !isStyleKeptWhole(value)) violations.push(`style ${tag}[style="${value}"]`);
+    else if (isUrlAttribute(tag, name) && !isAllowedUrl(value)) violations.push(`URL ${tag}[${name}="${value}"]`);
   }
-  if (tag === "iframe" && !isYoutubeEmbed(element.attrs.find((attribute) => attribute.name === "src")?.value ?? "")) {
+  if (tag === "iframe" && !isYoutubeEmbed(attributeValueOf(element, "src") ?? "")) {
     violations.push("iframe that isn't a YouTube embed");
   }
   return violations;
 }
 
-/** A style value as parsed that the style filter would keep whole. */
-function isCleanStyle(value: string): boolean {
-  return keptStyleSource(value) === value.replace(/&/g, "&amp;");
+/** Names that occur more than once, in the order of their second occurrence. */
+function repeatedNames(names: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const repeated = new Set<string>();
+  for (const name of names) {
+    if (seen.has(name)) repeated.add(name);
+    else seen.add(name);
+  }
+  return [...repeated];
 }
