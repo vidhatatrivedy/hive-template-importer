@@ -91,10 +91,13 @@ const customEstimates = defineIssue({
   class: "Unsupported",
   title: "Custom estimates",
   detail: z.object({ rows: z.array(z.number().int().positive()).min(1) }),
-  message: (detail: { rows: number[] }) =>
-    detail.rows.length === 1
-      ? `A custom estimate on row ${detail.rows[0]} was kept in the Source row, not shown in the editor.`
-      : `Custom estimates on ${formatRowList(detail.rows)} were kept in the Source row, not shown in the editor.`,
+  message: (detail: { rows: number[] }) => {
+    const rowList = formatRows(detail.rows);
+    if (detail.rows.length === 1) {
+      return `A custom estimate on ${rowList} was kept in the Source row, not shown in the editor.`;
+    }
+    return `Custom estimates on ${rowList} were kept in the Source row, not shown in the editor.`;
+  },
 });
 
 const stockEstimates = defineIssue({
@@ -104,10 +107,10 @@ const stockEstimates = defineIssue({
   class: "Unsupported",
   title: "Stock estimates",
   detail: z.object({ count: z.number().int().positive() }),
-  message: (detail: { count: number }) =>
-    detail.count === 1
-      ? "Spectora's stock estimate on 1 Comment; not imported."
-      : `Spectora's stock estimate on all ${detail.count} Comments; not imported.`,
+  message: (detail: { count: number }) => {
+    if (detail.count === 1) return "Spectora's stock estimate on 1 Comment; not imported.";
+    return `Spectora's stock estimate on all ${detail.count} Comments; not imported.`;
+  },
 });
 
 const whitespaceTrimmed = defineIssue({
