@@ -1,5 +1,5 @@
 import type { TrustReport } from "@/core/import/trust-report";
-import { NOT_REVERIFIED, type ReportBase } from "@/app/report-base";
+import { movedOnLine, NOT_REVERIFIED, type ReportBase } from "@/app/report-base";
 
 /** The Trust Report Summary's lines that need wording, from the report as it comes. */
 export type TrustSummaryView = {
@@ -21,19 +21,15 @@ export function trustSummaryView(
   const { summary } = report;
   const { verified, total } = summary.verdict;
   const unverifiable = baseKind === "unverifiable";
-  const failed = unverifiable ? [] : report.rows.filter((row) => row.status === "✗");
-  const failure =
-    !unverifiable && verified < total
-      ? {
-          message: `✗ ${total - verified} of ${total} rows don't match what was stored. This is a bug in the importer.`,
-          sourceRows: failed.map((row) => row.sourceRow),
-        }
-      : null;
+  let failure: TrustSummaryView["failure"] = null;
+  if (!unverifiable && verified < total) {
+    failure = {
+      message: `✗ ${total - verified} of ${total} rows don't match what was stored. This is a bug in the importer.`,
+      sourceRows: report.rows.filter((row) => row.status === "✗").map((row) => row.sourceRow),
+    };
+  }
   return {
-    versionLabel:
-      baseKind === "own-import" && latestNumber > 1
-        ? `Describes Version 1, as imported. This Template is now at Version ${latestNumber}.`
-        : null,
+    versionLabel: baseKind === "own-import" ? movedOnLine(latestNumber) : null,
     fileSize: formatFileSize(summary.byteSize),
     rowFlow: `${summary.rowsRead} rows read → ${summary.blankRows} blank rows → ${summary.commentsStored} Comments stored`,
     verdict: unverifiable ? NOT_REVERIFIED : `${verified} / ${total} rows verified`,

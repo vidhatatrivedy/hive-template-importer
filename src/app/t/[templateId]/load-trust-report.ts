@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { buildTrustReport, type TrustReport } from "@/core/import/trust-report";
 import type { EditableTree, ImportEvidence } from "@/core/import/schemas";
-import { resolveReportBase, type ReportBase } from "@/app/report-base";
+import { findVersionOneId, resolveReportBase, type ReportBase } from "@/app/report-base";
 import type { Db, TemplateDetail } from "@/db";
 
 /** One evidence read per request, shared by the editor's read-only fields and the Trust Report. */
@@ -57,9 +57,8 @@ export async function loadTrustReport(
 
 /** The imported Template's Version 1, or this Copy's own Version 1 when that Template is gone. */
 async function baseVersionId(db: Db, base: Exclude<ReportBase, { kind: "none" }>): Promise<string | null> {
-  if (base.kind === "source-import") {
-    const imported = await db.getTemplate(base.templateId);
-    return imported?.versions.find((version) => version.number === 1)?.id ?? null;
-  }
-  return base.versionId;
+  if (base.kind !== "source-import") return base.versionId;
+  const imported = await db.getTemplate(base.templateId);
+  if (!imported) return null;
+  return findVersionOneId(imported.versions);
 }
