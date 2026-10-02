@@ -13,15 +13,17 @@ import {
 import { createPortal } from "react-dom";
 import { lifecycleErrorMessage, type LifecycleError } from "@/core/import/lifecycle-messages";
 import { isNextRedirect } from "@/app/is-next-redirect";
-import { duplicate, renameTemplate } from "@/app/sidebar/actions";
+import { deleteTemplate, duplicate, renameTemplate } from "@/app/sidebar/actions";
 import {
+  deleteConfirm,
   duplicateConfirm,
   lifecyclePrompt,
   parseOpenTemplate,
   renamePlan,
   type ActionTarget,
+  type Prompt,
 } from "@/app/sidebar/sidebar-view";
-import { confirmChoice, confirmDiscard, useUnsaved } from "@/app/unsaved-guard";
+import { confirmChoice, ConfirmDialog, confirmDiscard, useUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, glassClass, primaryButtonClass, rowIdleClass } from "@/app/ui/classes";
 
 /** One Copy at a time, shared by the row menu and the header. Cleared when the route changes. */
@@ -38,9 +40,23 @@ function endDuplicate() {
   duplicateInFlight = false;
 }
 
+/** One Delete at a time, shared by the row menu and the header. */
+let deleteInFlight = false;
+
+/** Returns false when a Delete is already under way. */
+function beginDelete(): boolean {
+  if (deleteInFlight) return false;
+  deleteInFlight = true;
+  return true;
+}
+
+function endDelete() {
+  deleteInFlight = false;
+}
+
 /**
  * The "⋯" menu on a sidebar row and beside the Template name.
- * Rename and Duplicate are wired. Delete is shown for the ticket that follows.
+ * Rename, Duplicate and Delete are wired.
  */
 export function TemplateActions({
   target,
@@ -59,6 +75,7 @@ export function TemplateActions({
   const [renaming, setRenaming] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [duplicateError, setDuplicateError] = useState<LifecycleError<"duplicate"> | null>(null);
+  const [deletePrompt, setDeletePrompt] = useState<Extract<Prompt, { kind: "delete" }> | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -79,6 +96,7 @@ export function TemplateActions({
     if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
     endDuplicate();
+    setDeletePrompt(null);
   }, [pathname]);
 
   useLayoutEffect(() => {
@@ -146,6 +164,14 @@ export function TemplateActions({
     }
   }
 
+  function startDelete() {
+    if (submitting.current || awaitingConfirm.current || duplicateInFlight || deleteInFlight) return;
+    const prompt = lifecyclePrompt("delete", target, { open, dirty });
+    if (prompt.kind !== "delete") return;
+    setMenuOpen(false);
+    setDeletePrompt(prompt);
+  }
+
   function askThenDuplicate(answer: Promise<boolean>) {
     awaitingConfirm.current = true;
     holdMenu.current = true;
@@ -202,7 +228,7 @@ export function TemplateActions({
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? menuId : undefined}
         onClick={() => {
-          if (holdMenu.current) return;
+          if (holdMenu.current || deletePrompt) return;
           setDuplicateError(null);
           setMenuOpen((current) => !current);
         }}
@@ -221,9 +247,13 @@ export function TemplateActions({
             setRenaming(true);
           }}
           onDuplicate={startDuplicate}
+          onDelete={startDelete}
         />
       ) : null}
       {renaming ? <RenameDialog target={target} onClose={() => setRenaming(false)} /> : null}
+      {deletePrompt ? (
+        <DeleteDialog target={target} prompt={deletePrompt} onClose={() => setDeletePrompt(null)} />
+      ) : null}
     </>
   );
 }
@@ -236,6 +266,7 @@ function ActionsMenu({
   notice,
   onRename,
   onDuplicate,
+  onDelete,
 }: {
   menuRef: RefObject<HTMLDivElement | null>;
   menuId: string;
@@ -244,6 +275,7 @@ function ActionsMenu({
   notice: string | null;
   onRename: () => void;
   onDuplicate: () => void;
+  onDelete: () => void;
 }) {
   const renameRef = useRef<HTMLButtonElement>(null);
   /** Rename is focused once. A later notice must not pull focus back. */
@@ -290,7 +322,7 @@ function ActionsMenu({
       >
         {duplicating ? "Duplicating…" : "Duplicate"}
       </button>
-      <button type="button" role="menuitem" className={itemClass} disabled={duplicating}>
+      <button type="button" role="menuitem" className={itemClass} disabled={duplicating} onClick={onDelete}>
         Delete…
       </button>
       {notice ? (
@@ -299,6 +331,71 @@ function ActionsMenu({
         </p>
       ) : null}
     </div>,
+    document.body,
+  );
+}
+
+function DeleteDialog({
+  target,
+  prompt,
+  onClose,
+}: {
+  target: ActionTarget;
+  prompt: Extract<Prompt, { kind: "delete" }>;
+  onClose: () => void;
+}) {
+  const choice = deleteConfirm(prompt);
+  const submitting = useRef(false);
+  const ownsLock = useRef(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<LifecycleError<"delete"> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (ownsLock.current) endDelete();
+    };
+  }, []);
+
+  async function run() {
+    if (submitting.current || !beginDelete()) return;
+    submitting.current = true;
+    ownsLock.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      await deleteTemplate(target.id, prompt.leaves);
+      ownsLock.current = false;
+      endDelete();
+      onClose();
+    } catch (caught) {
+      if (isNextRedirect(caught)) return;
+      setError({ kind: "delete-failed" });
+      submitting.current = false;
+      ownsLock.current = false;
+      endDelete();
+      setPending(false);
+    }
+  }
+
+  // Portaled: the sidebar and the editor card use backdrop-filter, which traps `fixed`.
+  return createPortal(
+    <ConfirmDialog
+      message={choice.message}
+      confirmLabel={pending ? "Deleting…" : choice.confirmLabel}
+      cancelLabel={choice.cancelLabel}
+      pending={pending}
+      onConfirm={() => void run()}
+      onCancel={() => {
+        if (submitting.current) return;
+        onClose();
+      }}
+    >
+      {error ? (
+        <p role="alert" className="text-neutral-500">
+          {lifecycleErrorMessage("delete", error)}
+        </p>
+      ) : null}
+    </ConfirmDialog>,
     document.body,
   );
 }

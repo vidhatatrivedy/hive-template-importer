@@ -94,6 +94,24 @@ export function lifecyclePrompt(
   }
 }
 
+/** The Delete confirm. Cancel is focused. One Version is singular. */
+export type DeleteConfirm = {
+  message: string;
+  confirmLabel: "Delete";
+  cancelLabel: "Cancel";
+};
+
+/** Names the Template and how many Versions go with it. Copies are kept. */
+export function deleteConfirm(prompt: Extract<Prompt, { kind: "delete" }>): DeleteConfirm {
+  const versions = prompt.versions === 1 ? "1 Version" : `${prompt.versions} Versions`;
+  const lost = prompt.losesEdits ? " Your unsaved changes will be lost too." : "";
+  return {
+    message: `Delete '${prompt.name}' and its ${versions}? This can't be undone. Copies of it are kept.${lost}`,
+    confirmLabel: "Delete",
+    cancelLabel: "Cancel",
+  };
+}
+
 /** The Duplicate confirm, for the two prompts that are not the shared discard dialog. */
 export type DuplicateConfirm = {
   message: string;

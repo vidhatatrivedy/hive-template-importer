@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   blankPlan,
+  deleteConfirm,
   duplicateConfirm,
   landingTarget,
   lifecyclePrompt,
@@ -227,6 +228,51 @@ describe("lifecyclePrompt", () => {
       losesEdits: false,
       leaves: false,
     });
+  });
+});
+
+describe("deleteConfirm", () => {
+  it("names the Template and its Versions, and says Copies are kept", () => {
+    expect(
+      deleteConfirm({
+        kind: "delete",
+        name: "InterNACHI Residential",
+        versions: 3,
+        losesEdits: false,
+        leaves: true,
+      }),
+    ).toEqual({
+      message:
+        "Delete 'InterNACHI Residential' and its 3 Versions? This can't be undone. Copies of it are kept.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+    });
+  });
+
+  it("uses the singular when one Version goes", () => {
+    expect(
+      deleteConfirm({
+        kind: "delete",
+        name: "Radon",
+        versions: 1,
+        losesEdits: false,
+        leaves: false,
+      }).message,
+    ).toBe("Delete 'Radon' and its 1 Version? This can't be undone. Copies of it are kept.");
+  });
+
+  it("adds the lost-edits line when unsaved changes would go too", () => {
+    expect(
+      deleteConfirm({
+        kind: "delete",
+        name: "InterNACHI Residential",
+        versions: 3,
+        losesEdits: true,
+        leaves: true,
+      }).message,
+    ).toBe(
+      "Delete 'InterNACHI Residential' and its 3 Versions? This can't be undone. Copies of it are kept. Your unsaved changes will be lost too.",
+    );
   });
 });
 

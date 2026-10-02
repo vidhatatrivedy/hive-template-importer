@@ -86,3 +86,29 @@ export async function duplicate(templateId: string): Promise<DuplicateResult> {
   revalidatePath("/", "layout");
   redirect(templateHref(duplicated.value.templateId, { panes: new Set(), row: null }));
 }
+
+const deleteInput = z.object({
+  templateId: z.string(),
+  leave: z.boolean(),
+});
+
+type DeleteResult = { ok: true };
+
+/**
+ * Deletes a Template for good. Arguments are untrusted.
+ * `template-not-found` counts as done. `importRunDeleted` is ignored.
+ * `leave` redirects to `/` outside any `try`. A thrown action is `delete-failed` on the client.
+ */
+export async function deleteTemplate(templateId: string, leave: boolean): Promise<DeleteResult> {
+  const parsed = deleteInput.safeParse({ templateId, leave });
+  if (!parsed.success) throw new Error("Delete received arguments it cannot store");
+
+  const deleted = await getDb().deleteTemplate(parsed.data.templateId);
+  if (!deleted.ok && deleted.error.kind !== "template-not-found") {
+    throw new Error("Delete refused unexpectedly");
+  }
+
+  revalidatePath("/", "layout");
+  if (parsed.data.leave) redirect("/");
+  return { ok: true };
+}
