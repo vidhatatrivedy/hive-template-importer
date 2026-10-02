@@ -60,45 +60,11 @@ describe("persistence tracer", () => {
   });
 
   it("reads an imported Template back unchanged", async () => {
-    const imported = await db.importTemplate(draft, draft.suggestedName);
-    try {
-      const evidence = await db.getImportEvidence(imported.importRunId);
-      const tree = await db.getVersionTree(imported.versionId);
-      if (!evidence || !tree) throw new Error("Import read returned null");
-      expect(evidence).toEqual({ run: draft.run, sourceRows: draft.sourceRows, issues: draft.issues });
-      expect(withoutIds(tree)).toEqual(withoutIds(draft.tree));
-
-      const result = reconcile(evidence, tree);
-      expect(result.unexplained).toBe(0);
-      expect(result.verified).toBe(result.total);
-
-      const exported = toExportRows(tree, evidence);
-      expect(exported.map((row) => row.sourceRow)).toEqual(evidence.sourceRows.map((row) => row.rowNumber));
-    } finally {
-      await db.deleteTemplate(imported.templateId);
-    }
+    await expectStoredRoundTrip(draft);
   });
 
   it.each(HTML_FIXTURES)("stores %s in one import with nothing unexplained", async (file) => {
-    const fixture = await loadDraft(file);
-    const imported = await db.importTemplate(fixture, fixture.suggestedName);
-    try {
-      const evidence = await db.getImportEvidence(imported.importRunId);
-      const tree = await db.getVersionTree(imported.versionId);
-      if (!evidence || !tree) throw new Error("Import read returned null");
-      expect(evidence).toEqual({ run: fixture.run, sourceRows: fixture.sourceRows, issues: fixture.issues });
-      expect(withoutIds(tree)).toEqual(withoutIds(fixture.tree));
-
-      const result = reconcile(evidence, tree);
-      expect(result.unexplained).toBe(0);
-      expect(result.verified).toBe(result.total);
-
-      const exported = toExportRows(tree, evidence);
-      expect(exported).toHaveLength(evidence.sourceRows.length);
-      expect(exported.map((row) => row.sourceRow)).toEqual(evidence.sourceRows.map((row) => row.rowNumber));
-    } finally {
-      await db.deleteTemplate(imported.templateId);
-    }
+    await expectStoredRoundTrip(await loadDraft(file));
   });
 
   it("returns the Template header and Version 1 from the import", async () => {
@@ -829,6 +795,27 @@ function withoutIds(tree: EditableTree): EditableTree {
       })),
     })),
   };
+}
+
+async function expectStoredRoundTrip(fixture: ImportDraft) {
+  const imported = await db.importTemplate(fixture, fixture.suggestedName);
+  try {
+    const evidence = await db.getImportEvidence(imported.importRunId);
+    const tree = await db.getVersionTree(imported.versionId);
+    if (!evidence || !tree) throw new Error("Import read returned null");
+    expect(evidence).toEqual({ run: fixture.run, sourceRows: fixture.sourceRows, issues: fixture.issues });
+    expect(withoutIds(tree)).toEqual(withoutIds(fixture.tree));
+
+    const result = reconcile(evidence, tree);
+    expect(result.unexplained).toBe(0);
+    expect(result.verified).toBe(result.total);
+
+    const exported = toExportRows(tree, evidence);
+    expect(exported).toHaveLength(evidence.sourceRows.length);
+    expect(exported.map((row) => row.sourceRow)).toEqual(evidence.sourceRows.map((row) => row.rowNumber));
+  } finally {
+    await db.deleteTemplate(imported.templateId);
+  }
 }
 
 async function loadDraft(filename: string): Promise<ImportDraft> {
