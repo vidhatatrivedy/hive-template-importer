@@ -94,19 +94,22 @@ export function lifecyclePrompt(
   }
 }
 
-/** The Delete confirm. Cancel is focused. One Version is singular. */
+/** The delete prompt `lifecyclePrompt` returns. */
+export type DeletePrompt = Extract<Prompt, { kind: "delete" }>;
+
+/** The Delete confirm. Cancel is focused. */
 export type DeleteConfirm = {
   message: string;
   confirmLabel: "Delete";
   cancelLabel: "Cancel";
 };
 
-/** Names the Template and how many Versions go with it. Copies are kept. */
-export function deleteConfirm(prompt: Extract<Prompt, { kind: "delete" }>): DeleteConfirm {
+/** Names the Template and how many Versions go with it. One Version stays singular. Copies are kept. */
+export function deleteConfirm(prompt: DeletePrompt): DeleteConfirm {
   const versions = prompt.versions === 1 ? "1 Version" : `${prompt.versions} Versions`;
-  const lost = prompt.losesEdits ? " Your unsaved changes will be lost too." : "";
+  const message = `Delete '${prompt.name}' and its ${versions}? This can't be undone. Copies of it are kept.`;
   return {
-    message: `Delete '${prompt.name}' and its ${versions}? This can't be undone. Copies of it are kept.${lost}`,
+    message: prompt.losesEdits ? `${message} Your unsaved changes will be lost too.` : message,
     confirmLabel: "Delete",
     cancelLabel: "Cancel",
   };

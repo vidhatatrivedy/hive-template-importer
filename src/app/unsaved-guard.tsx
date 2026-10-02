@@ -219,19 +219,18 @@ export function ConfirmDialog({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || pending) return;
+      if (event.key !== "Escape") return;
       event.preventDefault();
       onCancel();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel, pending]);
+  }, [onCancel]);
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/20 p-6 dark:bg-black/40"
       onMouseDown={(event) => {
-        if (pending) return;
         if (event.target === event.currentTarget) onCancel();
       }}
     >
@@ -249,7 +248,7 @@ export function ConfirmDialog({
           <button type="button" className={buttonClass} disabled={pending} onClick={onConfirm}>
             {confirmLabel}
           </button>
-          <button type="button" ref={cancelRef} className={primaryButtonClass} disabled={pending} onClick={onCancel}>
+          <button type="button" ref={cancelRef} className={primaryButtonClass} onClick={onCancel}>
             {cancelLabel}
           </button>
         </div>

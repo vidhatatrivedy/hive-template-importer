@@ -21,7 +21,7 @@ import {
   parseOpenTemplate,
   renamePlan,
   type ActionTarget,
-  type Prompt,
+  type DeletePrompt,
 } from "@/app/sidebar/sidebar-view";
 import { confirmChoice, ConfirmDialog, confirmDiscard, useUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, glassClass, primaryButtonClass, rowIdleClass } from "@/app/ui/classes";
@@ -40,7 +40,7 @@ function endDuplicate() {
   duplicateInFlight = false;
 }
 
-/** One Delete at a time, shared by the row menu and the header. */
+/** Set while a Delete action is running, shared by the row menu and the header. */
 let deleteInFlight = false;
 
 /** Returns false when a Delete is already under way. */
@@ -75,7 +75,7 @@ export function TemplateActions({
   const [renaming, setRenaming] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [duplicateError, setDuplicateError] = useState<LifecycleError<"duplicate"> | null>(null);
-  const [deletePrompt, setDeletePrompt] = useState<Extract<Prompt, { kind: "delete" }> | null>(null);
+  const [deletePrompt, setDeletePrompt] = useState<DeletePrompt | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -341,7 +341,7 @@ function DeleteDialog({
   onClose,
 }: {
   target: ActionTarget;
-  prompt: Extract<Prompt, { kind: "delete" }>;
+  prompt: DeletePrompt;
   onClose: () => void;
 }) {
   const choice = deleteConfirm(prompt);
@@ -349,6 +349,11 @@ function DeleteDialog({
   const ownsLock = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<LifecycleError<"delete"> | null>(null);
+
+  function releaseLock() {
+    ownsLock.current = false;
+    endDelete();
+  }
 
   useEffect(() => {
     return () => {
@@ -364,17 +369,16 @@ function DeleteDialog({
     setError(null);
     try {
       await deleteTemplate(target.id, prompt.leaves);
-      ownsLock.current = false;
-      endDelete();
-      onClose();
     } catch (caught) {
       if (isNextRedirect(caught)) return;
       setError({ kind: "delete-failed" });
       submitting.current = false;
-      ownsLock.current = false;
-      endDelete();
+      releaseLock();
       setPending(false);
+      return;
     }
+    releaseLock();
+    onClose();
   }
 
   // Portaled: the sidebar and the editor card use backdrop-filter, which traps `fixed`.
