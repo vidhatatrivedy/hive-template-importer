@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { applyTheme, readThemeCookie, subscribeToTheme, type ThemeChoice } from "@/app/theme";
 import { labelClass } from "@/app/ui/classes";
 
@@ -24,7 +24,15 @@ const hiddenUntilExpanded =
  * The server prop paints the first response. After that the cookie wins, including when the
  * Template list resolving remounts this switch before the next request.
  */
-export function ThemeSwitch({ theme, revealed }: { theme: ThemeChoice; revealed: boolean }) {
+export function ThemeSwitch({
+  theme,
+  revealed,
+  children,
+}: {
+  theme: ThemeChoice;
+  revealed: boolean;
+  children?: ReactNode;
+}) {
   const choice = useSyncExternalStore(subscribeToTheme, readThemeCookie, () => theme);
   const reveal = revealed ? "opacity-100" : hiddenUntilExpanded;
   return (
@@ -46,6 +54,7 @@ export function ThemeSwitch({ theme, revealed }: { theme: ThemeChoice; revealed:
           );
         })}
       </div>
+      {children}
     </div>
   );
 }

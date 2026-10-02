@@ -23,6 +23,7 @@ Companion specs: [technical](technical.md) (schema, architecture, verification) 
   - **Delete**: a hard delete behind a confirm dialog that names the Template and its Version count, plus a line when unsaved edits would be lost. Any Template can be deleted, including the seeded one. Deleting the open Template goes to `/`; deleting another leaves you where you are. A Template already deleted elsewhere counts as done.
 - **Blank** asks for a name (trimmed, can't be blank; duplicates allowed), then opens the empty Template in the editor. With unsaved edits it asks to discard only after Create. [slice 6 spec][s6]
 - A Template link that no longer exists shows not-found with a link to `/`. [slice 6 spec][s6]
+- Column collapsing is an opt-in setting, off by default, in the sidebar settings block. Off, all four columns stay open. On, columns to the left of the one you're working in collapse. It applies to the editor and the read-only Version view, and it never touches unsaved edits.
 - The Template header shows counts, the source filename and, for a Copy, the copied-from line.
 - The Trust Report and Versions panes are hidden by default, and header toggles open them. Both can be open at once (this supersedes the "one at a time" rule in [Screens][t5]; see [Layout][t15]).
 - **Seed** (`npm run seed`, run by the developer) wipes the database and imports InterNACHI Residential as the only Template. There's no in-app reset.

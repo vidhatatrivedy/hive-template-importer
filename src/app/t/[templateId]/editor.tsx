@@ -1,12 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from "react";
 import { saveErrorMessage } from "@/core/import/editor-messages";
 import { summariseCuts, type TextChange } from "@/core/import/prepare-save";
 import type { ReadOnlyFields, ReadOnlyPhoto } from "@/core/import/read-only-fields";
 import type { Comment, EditableTree, Item, Section } from "@/core/import/schemas";
 import { sanitiseCommentHtml } from "@/core/sanitise";
+import {
+  columnCollapsed,
+  readCollapseColumnsCookie,
+  subscribeToCollapseColumns,
+} from "@/app/collapse-columns";
 import { ADDED_IN_THE_EDITOR } from "@/app/editor/added-in-the-editor";
 import {
   blankNames,
@@ -39,8 +44,6 @@ import { ColumnStrip } from "@/app/ui/column-strip";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
 import { saveTemplate } from "./actions";
-
-const COLUMNS = ["sections", "items", "comments"] as const;
 
 const TYPE_LABEL: Record<Comment["commentType"], string> = {
   info: "Informational",
@@ -104,6 +107,7 @@ export function Editor({
   row,
   versionsOpen,
   counts,
+  collapseColumns,
   mode = "edit",
   hrefVersion = null,
   readOnlyFields = {},
@@ -120,6 +124,8 @@ export function Editor({
   row: number | null;
   versionsOpen: boolean;
   counts: string;
+  /** From the collapse-columns cookie. Off leaves every column open. */
+  collapseColumns: boolean;
   mode?: EditorMode;
   /** Set on an old Version, so Source row links stay on `/v/<n>`. */
   hrefVersion?: number | null;
@@ -145,6 +151,11 @@ export function Editor({
   const canSave = canSaveState(state);
   const canDiscard = dirty && !savingOrAwaiting;
   const editable = canChangeStructure(state);
+  const collapse = useSyncExternalStore(
+    subscribeToCollapseColumns,
+    readCollapseColumnsCookie,
+    () => collapseColumns,
+  );
   useReportUnsaved(dirty);
 
   useEffect(() => {
@@ -339,7 +350,7 @@ export function Editor({
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <EditorColumn
           title="Sections"
-          collapsed={isCollapsed("sections", state.focus)}
+          collapsed={columnCollapsed(collapse, "sections", state.focus)}
           stripText={section?.name ?? ""}
           onFocus={() => focusColumn("sections")}
           actions={
@@ -390,7 +401,7 @@ export function Editor({
         </EditorColumn>
         <EditorColumn
           title="Items"
-          collapsed={isCollapsed("items", state.focus)}
+          collapsed={columnCollapsed(collapse, "items", state.focus)}
           stripText={item?.name ?? ""}
           onFocus={() => focusColumn("items")}
           actions={
@@ -445,7 +456,7 @@ export function Editor({
         </EditorColumn>
         <EditorColumn
           title="Comments"
-          collapsed={isCollapsed("comments", state.focus)}
+          collapsed={columnCollapsed(collapse, "comments", state.focus)}
           stripText={comment?.name ?? ""}
           onFocus={() => focusColumn("comments")}
           actions={
@@ -1647,10 +1658,6 @@ function saveIndicator(state: EditorState): string | null {
   if (isSavingOrAwaiting(state)) return "Saving…";
   if (isDirty(state)) return "Unsaved changes";
   return null;
-}
-
-function isCollapsed(column: Column, focus: Column): boolean {
-  return COLUMNS.indexOf(column) < COLUMNS.indexOf(focus);
 }
 
 /** Source row view on this Template, keeping the Versions sheet open when it already is. */

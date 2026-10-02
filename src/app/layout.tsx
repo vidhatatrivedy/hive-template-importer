@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
 import { UnsavedGuardProvider } from "@/app/unsaved-guard";
 import { TemplateSidebar } from "@/app/sidebar/template-sidebar";
+import { COLLAPSE_COLUMNS_COOKIE, parseCollapseColumns } from "@/app/collapse-columns";
 import { parseTheme, THEME_COOKIE, themeAttribute } from "@/app/theme";
 import { Backdrop } from "@/app/ui/backdrop";
 import "./globals.css";
@@ -23,7 +24,9 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+  const cookieStore = await cookies();
+  const theme = parseTheme(cookieStore.get(THEME_COOKIE)?.value);
+  const collapseColumns = parseCollapseColumns(cookieStore.get(COLLAPSE_COLUMNS_COOKIE)?.value);
   return (
     <html
       lang="en"
@@ -33,7 +36,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="h-full">
         <UnsavedGuardProvider>
           <Backdrop>
-            <TemplateSidebar theme={theme} />
+            <TemplateSidebar theme={theme} collapseColumns={collapseColumns} />
             <div className="h-full pl-14">{children}</div>
           </Backdrop>
         </UnsavedGuardProvider>

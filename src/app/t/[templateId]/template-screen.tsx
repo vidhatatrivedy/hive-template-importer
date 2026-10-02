@@ -1,7 +1,9 @@
+import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { z } from "zod";
+import { COLLAPSE_COLUMNS_COOKIE, parseCollapseColumns } from "@/app/collapse-columns";
 import { getDb } from "@/db/server";
 import {
   parseTemplateView,
@@ -36,6 +38,7 @@ export async function TemplateScreen({
   requestedVersion: number | null;
 }) {
   await connection();
+  const collapseColumns = parseCollapseColumns((await cookies()).get(COLLAPSE_COLUMNS_COOKIE)?.value);
   const view = parseTemplateView(await searchParams);
   if (!z.uuid().safeParse(templateId).success) notFound();
 
@@ -88,6 +91,7 @@ export async function TemplateScreen({
           row={view.row}
           versionsOpen={versionsOpen}
           counts={counts}
+          collapseColumns={collapseColumns}
           mode={readOnly ? "read-only" : "edit"}
           hrefVersion={hrefVersion}
           readOnlyFields={evidence ? readOnlyFields(evidence) : {}}
