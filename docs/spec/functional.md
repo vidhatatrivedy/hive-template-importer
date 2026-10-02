@@ -10,6 +10,7 @@ Companion specs: [technical](technical.md) (schema, architecture, verification) 
 - Templates are created three ways: **Import**, **Duplicate** (which makes a **Copy**) and **Blank**.
 - There's no auth: everyone shares one workspace. It's desktop only, at a minimum width of about 1200px. [Screens][t5]
 - Cut: searching across a whole Template, mobile and narrow layouts, duplicating a Section, Item or Comment inside a Template, drag-and-drop (a stretch goal), keyboard navigation between columns (a stretch goal), diff views, merging concurrent edits, and a "download original file" action. [Screens][t5], [Editor][t7], [Save][t8]
+- Section and Item settings (icon, Standards of Practice, Reminders, Optional/Included) aren't modelled, so Sections and Items have only a name. The export doesn't carry them, the Trust Report lists them under Missing from export, and adding them would need a schema and editor change. See [`product-models.md`](../research/product-models.md).
 - Out of scope for this effort: acknowledging or dismissing Import issues, exporting the Trust Report, and copying **External assets** into storage. See the map's Out of scope section.
 
 ## Shell and navigation ([Screens][t5], [Layout][t15])
