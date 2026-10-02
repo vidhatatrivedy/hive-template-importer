@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { describe, expect, it } from "vitest";
 import writeXlsxFile from "write-excel-file/node";
 import { catalogue, issueClasses, issueKinds, issueSeverities, renderIssueMessage, type IssueKind } from "@/core/import/catalogue";
 import { parseSpectoraExport } from "@/core/import/parse-spectora-export";
@@ -367,7 +367,7 @@ describe("catalogue completeness", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    CUT_SAMPLES.forEach((sample, index) => {
+    for (const [index, sample] of CUT_SAMPLES.entries()) {
       const sourceRow = index + 2;
       const cuts = sanitiseCommentHtml(sample.html).cuts.filter((cut) => cut.kind === sample.cutKind);
       expect(cuts.length, sample.cutKind).toBeGreaterThan(0);
@@ -380,7 +380,7 @@ describe("catalogue completeness", () => {
         expect(owners, `${sample.cutKind}@${cut.start}`).toHaveLength(1);
         expect(owners[0]?.kind, `${sample.cutKind} → ${sample.issueKind}`).toBe(sample.issueKind);
       }
-    });
+    }
   });
 
   it("validates every issue in every fixture draft against its kind's detail schema", async () => {

@@ -74,10 +74,17 @@ const PINNED: Record<string, { valuesDecoded: number; issues: Partial<Record<Iss
   },
 };
 
-function issueCounts(draft: ImportDraft): Record<IssueKind, number> {
-  const counts = Object.fromEntries(issueKinds.map((kind) => [kind, 0])) as Record<IssueKind, number>;
-  for (const issue of draft.issues) counts[issue.kind] += 1;
+/** Every issue kind, using `partial` where it names a kind and 0 for the rest. */
+function countsForEveryKind(partial: Partial<Record<IssueKind, number>>): Record<IssueKind, number> {
+  const counts = {} as Record<IssueKind, number>;
+  for (const kind of issueKinds) counts[kind] = partial[kind] ?? 0;
   return counts;
+}
+
+function issueCounts(draft: ImportDraft): Record<IssueKind, number> {
+  const partial: Partial<Record<IssueKind, number>> = {};
+  for (const issue of draft.issues) partial[issue.kind] = (partial[issue.kind] ?? 0) + 1;
+  return countsForEveryKind(partial);
 }
 
 describe("pinned quirks", () => {
@@ -88,16 +95,16 @@ describe("pinned quirks", () => {
       expect(result.ok, file).toBe(true);
       if (!result.ok) continue;
 
-      const expected = Object.fromEntries(issueKinds.map((kind) => [kind, pin.issues[kind] ?? 0]));
+      const expected = countsForEveryKind(pin.issues);
+      expect(expected["split-run"], file).toBe(0);
+      expect(expected["unsafe-style-removed"], file).toBe(0);
+      expect(expected["stock-estimates"], file).toBe(1);
       expect(issueCounts(result.draft), file).toEqual(expected);
       expect(result.draft.run.valuesDecoded, file).toBe(pin.valuesDecoded);
-      expect(result.draft.issues.filter((issue) => issue.kind === "split-run"), file).toEqual([]);
-      expect(result.draft.issues.filter((issue) => issue.kind === "unsafe-style-removed"), file).toEqual([]);
-      expect(result.draft.issues.filter((issue) => issue.kind === "stock-estimates"), file).toHaveLength(1);
 
       const report = buildTrustReport(result.draft, result.draft.tree);
-      const hosts = Object.fromEntries(report.externalAssets.map((host) => [host.host, host.urls.length]));
-      expect(hosts, file).toEqual(pin.hosts);
+      const urlsByHost = Object.fromEntries(report.externalAssets.map((asset) => [asset.host, asset.urls.length]));
+      expect(urlsByHost, file).toEqual(pin.hosts);
     }
   });
 });

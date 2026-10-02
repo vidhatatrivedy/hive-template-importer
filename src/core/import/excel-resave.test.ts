@@ -10,7 +10,8 @@ const FIXTURE_DIR = path.resolve(__dirname, "../../../fixtures/spectora");
 const EXCEL_RESAVE = "InterNACHI Residential -2026-09-30 (excel).xls";
 const ORIGINAL = "InterNACHI Residential -2026-09-30.xls";
 
-function comparable(draft: ImportDraft) {
+/** Parsed content shared by both files. Drops `filename`, `sha256`, `byteSize` and `suggestedName`, which follow the file itself. */
+function draftWithoutFileIdentity(draft: ImportDraft) {
   return {
     sheetName: draft.run.sheetName,
     headers: draft.run.headers,
@@ -35,6 +36,6 @@ describe("Excel re-save", () => {
     expect(original.ok).toBe(true);
     expect(excel.ok).toBe(true);
     if (!original.ok || !excel.ok) return;
-    expect(comparable(excel.draft)).toEqual(comparable(original.draft));
+    expect(draftWithoutFileIdentity(excel.draft)).toEqual(draftWithoutFileIdentity(original.draft));
   });
 });

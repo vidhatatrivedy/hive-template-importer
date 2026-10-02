@@ -61,7 +61,7 @@ html_cuts      (id, import_issue_id → import_issues, position, start, end, kin
 The complete rules are in [Schema][t12]. The ones that drive implementation:
 - **Ids and positions:** ids are uuids and change on every Save. Positions are contiguous from 0, with `unique(parent, position)`. Comments are stored in file order across all types.
 - **Constraints:**
-  - Vocabularies are `text` with a named `check (col = any (array[…]))`: issue kind (29), severity, class, cut kind, Comment type, Answer type, Version origin and option list. An offline test compares each with the array core (or `src/db`, for origin) exports. [slice 3 spec][s3]
+  - Vocabularies are `text` with a named `check (col = any (array[…]))`: issue kind (30), severity, class, cut kind, Comment type, Answer type, Version origin and option list. An offline test compares each with the array core (or `src/db`, for origin) exports. [slice 3 spec][s3]
   - Category is `smallint` in (-1, 0, 1).
   - Names are `not null` and `btrim(name) <> ''`. The database never trims; callers do.
   - A check ties each Version `origin` to its columns: `copy` needs the source name and number (`source_version_id` may be null once the source is deleted), `restore` needs `restored_from_version_id`, the others need all four null. `number = 1` exactly when origin is `import`, `blank` or `copy`.
