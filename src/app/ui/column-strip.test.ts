@@ -13,22 +13,25 @@ function renderStrip(title: string, stripText: string) {
   return node;
 }
 
+function classTokens(node: Element | undefined) {
+  return node?.className.split(/\s+/) ?? [];
+}
+
 describe("collapsed column strip", () => {
-  it("pins a long Section name and a short Item name to the top of the strip", () => {
+  it("gives a long Section name and a short Item name the top-pinned strip classes", () => {
     const section = renderStrip("Sections", "Basement, Foundation, Crawlspace & Structure");
     expect(section.tagName).toBe("BUTTON");
     expect(section.getAttribute("type")).toBe("button");
     expect(section.getAttribute("aria-label")).toBe("Sections, Basement, Foundation, Crawlspace & Structure");
-
-    const sectionClass = section.className.split(/\s+/);
-    expect(sectionClass).toEqual(expect.arrayContaining(["w-9", "py-3", "gap-3", "hover:bg-black/[0.03]"]));
-    expect(sectionClass.some((token) => token.startsWith("dark:hover:"))).toBe(true);
+    expect(classTokens(section)).toEqual(
+      expect.arrayContaining(["w-9", "py-3", "gap-3", "hover:bg-black/[0.03]", "dark:hover:bg-white/[0.03]"]),
+    );
 
     const sectionName = section.children[0];
     const sectionLabel = section.children[1];
     expect(sectionName?.textContent).toBe("Basement, Foundation, Crawlspace & Structure");
     expect(sectionLabel?.textContent).toBe("Sections");
-    expect(nameClass(sectionName)).toEqual(
+    expect(classTokens(sectionName)).toEqual(
       expect.arrayContaining([
         "[writing-mode:vertical-rl]",
         "rotate-180",
@@ -39,9 +42,9 @@ describe("collapsed column strip", () => {
         "max-h-[70%]",
       ]),
     );
-    expect(nameClass(sectionName)).not.toContain("flex-1");
-    expect(nameClass(sectionName)).not.toContain("text-center");
-    expect(labelClass(sectionLabel)).toEqual(
+    expect(classTokens(sectionName)).not.toContain("flex-1");
+    expect(classTokens(sectionName)).not.toContain("text-center");
+    expect(classTokens(sectionLabel)).toEqual(
       expect.arrayContaining(["mt-auto", "text-[10px]", "[writing-mode:vertical-rl]", "rotate-180"]),
     );
 
@@ -49,8 +52,8 @@ describe("collapsed column strip", () => {
     expect(item.getAttribute("aria-label")).toBe("Items, Roof");
     expect(item.children[0]?.textContent).toBe("Roof");
     expect(item.children[1]?.textContent).toBe("Items");
-    expect(nameClass(item.children[0])).not.toContain("flex-1");
-    expect(labelClass(item.children[1])).toContain("mt-auto");
+    expect(classTokens(item.children[0])).not.toContain("flex-1");
+    expect(classTokens(item.children[1])).toContain("mt-auto");
   });
 
   it("names a strip with no selection by its column alone", () => {
@@ -63,11 +66,3 @@ describe("collapsed column strip", () => {
     expect(collapsing).toMatch(/pinned to the top/);
   });
 });
-
-function nameClass(node: Element | undefined) {
-  return node?.className.split(/\s+/) ?? [];
-}
-
-function labelClass(node: Element | undefined) {
-  return node?.className.split(/\s+/) ?? [];
-}
