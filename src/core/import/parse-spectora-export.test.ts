@@ -677,6 +677,37 @@ describe("parseSpectoraExport", () => {
     );
   });
 
+  it("trims a padded or blank Recommendation, records the trim and explains it only while the issue remains", async () => {
+    const recommendation = "Recommendation (from list)";
+    const draft = expectDraft(
+      await parseSpectoraExport(
+        await workbook(HEADERS, [
+          rowFor(HEADERS, { "comment name": "Padded", recommendation: "Masonry-restoration " }),
+          rowFor(HEADERS, { "comment name": "Exact", recommendation: "pro" }),
+          rowFor(HEADERS, { "comment name": "Spaces only", recommendation: "   " }),
+        ]),
+        "padded-recommendation.xls",
+      ),
+    );
+
+    expect(commentOn(draft, sourceRow(draft, "Padded")).recommendation).toBe("Masonry-restoration");
+    expect(draft.issues.filter((issue) => issue.sourceRow === sourceRow(draft, "Padded"))).toEqual([
+      { kind: "whitespace-trimmed", sourceRow: sourceRow(draft, "Padded"), detail: { field: recommendation }, cuts: [] },
+    ]);
+    expect(draft.issues.filter((issue) => issue.sourceRow === sourceRow(draft, "Exact"))).toEqual([]);
+    expect(commentOn(draft, sourceRow(draft, "Spaces only")).recommendation).toBeNull();
+    expect(draft.issues.filter((issue) => issue.sourceRow === sourceRow(draft, "Spaces only"))).toEqual([
+      { kind: "whitespace-trimmed", sourceRow: sourceRow(draft, "Spaces only"), detail: { field: recommendation }, cuts: [] },
+    ]);
+    expectRoundTrip(draft);
+
+    const stripped = structuredClone(draft);
+    stripped.issues = stripped.issues.filter((issue) => issue.kind !== "whitespace-trimmed");
+    expect(differencesOn(reconcile(stripped, stripped.tree).rows, sourceRow(draft, "Padded"), recommendation)).toEqual([
+      { column: recommendation, raw: "Masonry-restoration ", stored: "Masonry-restoration", explanation: null },
+    ]);
+  });
+
   it("falls back when the filename is only an extension or only an export date", async () => {
     const bytes = readFixture("Radon Inspection-2026-09-30.xls");
     const untitled = await parseSpectoraExport(bytes, ".xls");

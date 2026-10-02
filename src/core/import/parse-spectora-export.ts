@@ -503,7 +503,7 @@ function buildComment(
     textHtml,
     commentType,
     category: categoryValue(cellAt(cells, indexes.category), indexes.category, commentType, rowNumber, issues),
-    recommendation: recommendationOf(cellAt(cells, indexes.recommendation)),
+    recommendation: recommendationOf(cellAt(cells, indexes.recommendation), rowNumber, issues),
     answerType,
     defaultBoolean: defaults.defaultBoolean,
     defaultText: defaults.defaultText,
@@ -707,8 +707,13 @@ function categoryNumber(value: Cell): number | null {
   return Number(text);
 }
 
-function recommendationOf(value: Cell): string | null {
-  const text = decodeCell(value).text.trim();
+/** Decode, then trim. Any trim is `whitespace-trimmed`, including one that leaves the value blank. */
+function recommendationOf(value: Cell, rowNumber: number, issues: ImportDraft["issues"]): string | null {
+  const decoded = decodeCell(value);
+  const text = decoded.text.trim();
+  if (text !== decoded.text) {
+    issues.push({ kind: "whitespace-trimmed", sourceRow: rowNumber, detail: { field: COLUMNS.recommendation }, cuts: [] });
+  }
   return text === "" ? null : text;
 }
 
