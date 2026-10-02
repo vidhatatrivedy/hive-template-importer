@@ -81,7 +81,7 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 
 ## Database access ([Architecture][t13], [ADR 0003](../adr/0003-all-database-access-through-postgres-functions.md))
 
-- Every read and write is one plpgsql function, called with one `.rpc()` from server code using the **service-role key**. Functions are `security invoker` with `set search_path = ''`. Inserts are set-based (`jsonb_array_elements … WITH ORDINALITY`), never a row-at-a-time loop.
+- Every read and write is one Postgres function, called with one `.rpc()` from server code using the **service-role key**. Functions are `security invoker` with `set search_path = ''`. Writes are plpgsql. `list_templates`, `get_version_tree` and `get_import_evidence` are `language sql`. Inserts are set-based (`jsonb_array_elements … WITH ORDINALITY`), never a row-at-a-time loop. [slice 3 spec][s3]
 - **The functions speak core's JSON shapes verbatim** (camelCase), so `src/db` does no reshaping. Tree Comments and issues name Source rows by row number; every function maps row numbers to and from `source_row_id` in SQL, keeping each operation one round trip. [slice 3 spec][s3]
 - **Writes**, one transaction each:
 
@@ -100,8 +100,8 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
   - `duplicate_template` and `restore_version` copy the tree with `INSERT … SELECT`, keeping every `source_row_id`. A Copy is named "<source name> (copy)" and inherits the source's `import_run_id`. Restoring the latest Version is allowed.
   - `delete_template` then deletes the Template's Import run if nothing references it any more.
 - **Reads** each return one `jsonb` value, or null for an unknown id, which avoids the 1,000-row cap:
-  - `list_templates()` → `TemplateSummary[]`: id, name, `creation` (the origin of Version 1), `copiedFromName`, `importRun` (id, filename, sha256, importedAt; inherited by Copies) and `latest` (id, number, savedAt). Sorted by last Save, newest first. It also serves the Import review's SHA-256 notice: the newest Template with `creation = 'import'` and a matching hash.
-  - `get_template(template_id)` → `TemplateDetail`: the summary plus `copiedFrom` (templateId, null once the source is deleted; name; Version number), the run's `byteSize`, and every Version newest first with its origin, `restoredFromNumber` and counts.
+  - `list_templates()` → `TemplateSummary[]`: id, name, `creation` (the origin of Version 1), `copiedFromName`, `importRun` (id, filename, sha256, importedAt; inherited by Copies) and `latest` (id, number, savedAt). Sorted by last Save (`latest.savedAt` desc), then `created_at` desc, then id. `createdAt` is not in the summary. It also serves the Import review's SHA-256 notice: the newest Template with `creation = 'import'` and a matching hash. [slice 3 spec][s3]
+  - `get_template(template_id)` → `TemplateDetail` or null: id, name, `createdAt`, `creation`, `copiedFrom` (templateId, null once the source is deleted; name; Version number), `importRun` with `byteSize`, `latest`, and every Version newest first with its origin, `restoredFromNumber` and counts. [slice 3 spec][s3]
   - `get_version_tree(version_id)` → `EditableTree`.
   - `get_import_evidence(import_run_id)` → `ImportEvidence`.
 - **Grants:**
@@ -114,8 +114,8 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
   3. Resolves every non-null `sourceRow` within the Template's `import_run_id`, and refuses `foreign-source-row` with any that don't resolve. On a Blank Template, every non-null `sourceRow` is refused.
   4. Inserts Version `base_number + 1` with new uuids.
 
-  The unique violation remains the backstop for a race, mapped to `stale-base` with `latestNumber = base_number + 1`.
-- **Refusals** are raised with a custom SQLSTATE per kind and a JSON detail. `src/db` maps them by code, never by message text. Their messages live in core's catalogue.
+  The unique violation (`23505` on `versions (template_id, number)`) remains the backstop for a race, mapped to `stale-base` with `latestNumber = base_number + 1`.
+- **Refusals** are raised with a custom SQLSTATE and a JSON detail. `src/db` maps the code, never the message: `PT404` is `template-not-found`, `PT409` is `stale-base` (`latestNumber`), and `PT422` is `foreign-source-row` (`rowNumbers`). The trigger and a `sourceRow` that isn't in the draft raise `P0001` and throw. Their messages live in core's catalogue. [slice 3 spec][s3]
 
 ## Next.js surface ([Architecture][t13])
 
@@ -140,14 +140,14 @@ The complete rules are in [Schema][t12]. The ones that drive implementation:
 
 ## Migrations, environments, Seed ([Architecture][t13])
 
-- `supabase/migrations/*.sql` holds the tables, trigger, functions and grants, with no seed data. The Supabase CLI is a pinned dev dependency, driven by a Postgres connection string rather than `supabase login`/`link`: `npm run db:push` applies pending migrations to `SUPABASE_DB_URL`, and `npm run db:reset` drops everything there and re-applies every migration. There's no local stack.
+- `supabase/migrations/*.sql` holds the tables, trigger, functions and grants, with no seed data. The Supabase CLI is a pinned dev dependency, driven by a Postgres connection string rather than `supabase login`/`link`: `npm run db:push` applies pending migrations to `SUPABASE_DB_URL`, and `npm run db:reset` drops everything there and re-applies every migration. `db:reset` is `supabase db reset --db-url` with `--yes` and `--no-seed`. The pinned CLI accepts `db reset --db-url`, so the slice 3 spec's drop-and-push fallback was not needed. There's no local stack. Ben's import (check 8) finishes on the default service-role statement timeout. No migration sets `statement_timeout`. [slice 3 spec][s3]
 - There are no generated database types. Results are typed by zod; the few RPC argument types are written by hand in `src/db`. `supabase gen types` needs either Docker (unavailable inside the sandcastle container) or an account-wide access token. (Reverses the slice 3 spec.)
 - Two hosted projects: `.env.local` points at **dev** and `.env.prod` at **prod**. Dev is disposable: agents and `test:db` reset it freely, and Seed restores the demo Template. `SUPABASE_DB_URL` and `SUPABASE_PUBLISHABLE_KEY` exist for dev only. Prod is pushed by the human before the first deploy, with its own connection string passed on the command line.
-- `npm run seed` runs `scripts/seed.ts` (tsx), with `--env-file .env.prod` for production. It:
+- `npm run seed` runs `scripts/seed.ts` (tsx), with `--env-file .env.prod` for production. [slice 3 spec][s3] It:
   1. prints the host, and asks you to type it unless `--yes` is passed
   2. runs `wipe_all()`
   3. parses InterNACHI Residential and imports it under its suggested name through `src/db`
-  4. reads Version 1 and the evidence back and runs `reconcile`, printing one line in the `verify` format
+  4. reads Version 1 and the evidence back, checks the database holds exactly that one Template under its suggested name, and runs `reconcile`, printing the `verify` table for it (a header and one row)
 
   It exits non-zero on a rejection, on any **Unexplained difference**, or if not every row is verified. It never re-implements reconciliation.
 
