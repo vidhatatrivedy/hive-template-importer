@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
@@ -8,14 +9,11 @@ import { ColumnStrip } from "@/app/ui/column-strip";
 
 function renderColumn(collapsed: boolean) {
   const html = renderToStaticMarkup(
-    <CollapsingColumn
-      collapsed={collapsed}
-      strip={<ColumnStrip title="Sections" stripText="Roof" onFocus={() => {}} />}
-    >
-      <ul>
-        <li>Roof covering</li>
-      </ul>
-    </CollapsingColumn>,
+    createElement(CollapsingColumn, {
+      collapsed,
+      strip: createElement(ColumnStrip, { title: "Sections", stripText: "Roof", onFocus: () => {} }),
+      children: createElement("ul", null, createElement("li", null, "Roof covering")),
+    }),
   );
   const node = new JSDOM(html).window.document.body.firstElementChild;
   if (!node) throw new Error("collapsing column rendered nothing");
@@ -24,6 +22,15 @@ function renderColumn(collapsed: boolean) {
 
 function classTokens(node: Element | null | undefined) {
   return node?.className.split(/\s+/) ?? [];
+}
+
+function columnParts(node: Element) {
+  const list = node.querySelector("ul");
+  return {
+    list,
+    content: list?.parentElement,
+    strip: node.querySelector("button")?.parentElement,
+  };
 }
 
 describe("collapsing column", () => {
@@ -41,11 +48,9 @@ describe("collapsing column", () => {
     );
     expect(classTokens(open)).not.toContain("w-9");
 
-    const openList = open.querySelector("ul");
-    const openContent = openList?.parentElement;
-    const openStrip = open.querySelector("button")?.parentElement;
-    expect(openList?.textContent).toBe("Roof covering");
-    expect(classTokens(openContent)).toEqual(
+    const openParts = columnParts(open);
+    expect(openParts.list?.textContent).toBe("Roof covering");
+    expect(classTokens(openParts.content)).toEqual(
       expect.arrayContaining([
         "w-56",
         "opacity-100",
@@ -55,12 +60,12 @@ describe("collapsing column", () => {
         "motion-reduce:transition-none",
       ]),
     );
-    expect(openContent?.hasAttribute("inert")).toBe(false);
+    expect(openParts.content?.hasAttribute("inert")).toBe(false);
     expect(open.querySelector("button")?.getAttribute("aria-label")).toBe("Sections, Roof");
-    expect(classTokens(openStrip)).toEqual(
+    expect(classTokens(openParts.strip)).toEqual(
       expect.arrayContaining(["opacity-0", "pointer-events-none", "transition-opacity"]),
     );
-    expect(openStrip?.hasAttribute("inert")).toBe(true);
+    expect(openParts.strip?.hasAttribute("inert")).toBe(true);
 
     const collapsed = renderColumn(true);
     expect(classTokens(collapsed)).toEqual(
@@ -73,16 +78,14 @@ describe("collapsing column", () => {
       ]),
     );
     expect(classTokens(collapsed)).not.toContain("w-56");
-    const collapsedList = collapsed.querySelector("ul");
-    const collapsedContent = collapsedList?.parentElement;
-    const collapsedStrip = collapsed.querySelector("button")?.parentElement;
-    expect(collapsedList?.textContent).toBe("Roof covering");
-    expect(classTokens(collapsedContent)).toEqual(
+    const collapsedParts = columnParts(collapsed);
+    expect(collapsedParts.list?.textContent).toBe("Roof covering");
+    expect(classTokens(collapsedParts.content)).toEqual(
       expect.arrayContaining(["w-56", "opacity-0", "pointer-events-none"]),
     );
-    expect(collapsedContent?.hasAttribute("inert")).toBe(true);
-    expect(classTokens(collapsedStrip)).toContain("opacity-100");
-    expect(collapsedStrip?.hasAttribute("inert")).toBe(false);
+    expect(collapsedParts.content?.hasAttribute("inert")).toBe(true);
+    expect(classTokens(collapsedParts.strip)).toContain("opacity-100");
+    expect(collapsedParts.strip?.hasAttribute("inert")).toBe(false);
   });
 
   it("records the width transition and the reduced-motion rule", () => {
