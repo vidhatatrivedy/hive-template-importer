@@ -18,6 +18,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
   - Each strip shows the current selection as vertical text pinned to the top, with a light vertical label at the bottom ("Sections" / "Items").
   - Clicking a strip or a breadcrumb segment expands that column again.
   - Picking a Section focuses Items, and picking an Item focuses Comments.
+  - The width eases between the open column and the strip over 200ms. The open content and the strip cross-fade, and the content is clipped so it doesn't squash. Reduced motion makes the change instant. Only a change in collapse state animates. Loading a Template, or opening another one, shows the columns already open or collapsed.
 - **Comment detail** shows:
   - the name
   - a Type / Answer / Category / Recommendation row

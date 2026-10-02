@@ -34,6 +34,7 @@ import { TemplateActions } from "@/app/sidebar/template-actions";
 import { templateHref } from "@/app/template-view";
 import { confirmChoice, ConfirmDialog, confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, labelClass, primaryButtonClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
+import { CollapsingColumn } from "@/app/ui/collapsing-column";
 import { ColumnStrip } from "@/app/ui/column-strip";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
@@ -1434,17 +1435,17 @@ function EditorColumn({
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  if (collapsed) {
-    return <ColumnStrip title={title} stripText={stripText} onFocus={onFocus} />;
-  }
   return (
-    <section className="flex min-h-0 w-56 shrink-0 flex-col border-r border-black/[0.05] dark:border-white/[0.06]">
+    <CollapsingColumn
+      collapsed={collapsed}
+      strip={<ColumnStrip title={title} stripText={stripText} onFocus={onFocus} />}
+    >
       <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3">
         <h2 className={labelClass}>{title}</h2>
         {actions}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-    </section>
+    </CollapsingColumn>
   );
 }
 
