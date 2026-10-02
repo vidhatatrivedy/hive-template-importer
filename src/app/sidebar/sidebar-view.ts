@@ -1,5 +1,6 @@
 /** What the sidebar shows and decides, kept pure so it can be tested without a browser. */
 
+import { templateHref } from "@/app/template-view";
 import { formatDate } from "@/app/ui/format-date";
 import type { TemplateSummary } from "@/db/schemas";
 
@@ -133,6 +134,16 @@ export function relativeTime(iso: string, now: Date): string {
   if (elapsed < 2 * DAY) return "yesterday";
   if (elapsed < 7 * DAY) return `${Math.floor(elapsed / DAY)} days ago`;
   return formatDate(iso, true);
+}
+
+/**
+ * Where `/` sends the inspector. `listTemplates()` is newest-first, so the first
+ * summary is the last-saved Template, opened with no panes. An empty list stays on `/`.
+ */
+export function landingTarget(summaries: readonly TemplateSummary[]): string | null {
+  const first = summaries[0];
+  if (first === undefined) return null;
+  return templateHref(first.id, { panes: new Set(), row: null });
 }
 
 /** "Imported · 2h ago". A Copy names its source by the name it had when copied. */

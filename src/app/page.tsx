@@ -1,14 +1,22 @@
-import Link from "next/link";
-import { glassClass, primaryButtonClass } from "@/app/ui/classes";
+import { connection } from "next/server";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
+import { EmptyState } from "@/app/empty-state";
+import { landingTarget } from "@/app/sidebar/sidebar-view";
+import { getDb } from "@/db/server";
 
+/** Opens the last-saved Template, or the empty state. The list is read per request, never at build time. */
 export default function Home() {
   return (
-    <main className="flex h-full items-center justify-center p-8">
-      <div className={`${glassClass} rounded-2xl px-8 py-6`}>
-        <Link href="/import" className={primaryButtonClass}>
-          Import
-        </Link>
-      </div>
-    </main>
+    <Suspense>
+      <Landing />
+    </Suspense>
   );
+}
+
+async function Landing() {
+  await connection();
+  const target = landingTarget(await getDb().listTemplates());
+  if (target !== null) redirect(target);
+  return <EmptyState />;
 }

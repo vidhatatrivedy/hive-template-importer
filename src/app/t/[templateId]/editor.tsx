@@ -322,6 +322,11 @@ export function Editor({
               Load latest
             </button>
           ) : null}
+          {notice.action === "templates" ? (
+            <GuardedLink href="/" className={buttonClass}>
+              Go to your Templates
+            </GuardedLink>
+          ) : null}
           {notice.action === "dismiss" ? (
             <button type="button" className={buttonClass} onClick={() => dispatch({ type: "dismissError" })}>
               Dismiss
@@ -1624,6 +1629,7 @@ function rowRef(nodes: Map<string, HTMLElement>, id: string): (node: HTMLElement
 
 type SaveNotice = { message: string } & (
   | { action: "load-latest"; latestNumber: number }
+  | { action: "templates" }
   | { action: "dismiss" }
   | { action: null }
 );
@@ -1638,6 +1644,7 @@ function saveNotice(state: EditorState, blankCount: number): SaveNotice | null {
   const error = state.save.error;
   const message = saveErrorMessage(error);
   if (error.kind === "stale-base") return { message, action: "load-latest", latestNumber: error.latestNumber };
+  if (error.kind === "template-not-found") return { message, action: "templates" };
   return { message, action: "dismiss" };
 }
 

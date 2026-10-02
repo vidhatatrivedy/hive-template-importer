@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   blankPlan,
   duplicateConfirm,
+  landingTarget,
   lifecyclePrompt,
   parseOpenTemplate,
   relativeTime,
@@ -86,6 +87,26 @@ describe("sidebarLine", () => {
       latest: { ...base.latest, savedAt: ago(3 * DAY) },
     };
     expect(sidebarLine(copy, now)).toBe("Copy of InterNACHI Residential · 3 days ago");
+  });
+});
+
+describe("landingTarget", () => {
+  const base: TemplateSummary = {
+    id: templateId,
+    name: "InterNACHI Residential",
+    creation: "import",
+    copiedFromName: null,
+    importRun: null,
+    latest: { id: "0d0c0b0a-0000-4000-8000-000000000002", number: 1, savedAt: ago(2 * HOUR) },
+  };
+  const olderId = "0d9f8e7c-1111-4222-8333-444455556666";
+
+  it("opens the first summary with no panes or row", () => {
+    expect(landingTarget([base, { ...base, id: olderId, name: "Older" }])).toBe(`/t/${templateId}`);
+  });
+
+  it("is null when there are no Templates", () => {
+    expect(landingTarget([])).toBeNull();
   });
 });
 

@@ -110,8 +110,8 @@ function restoreRecovery(error: RestoreError | null, refresh: () => void): React
       );
     case "template-not-found":
       return (
-        <Link href="/import" className={bannerButton}>
-          Import
+        <Link href="/" className={bannerButton}>
+          Go to your Templates
         </Link>
       );
     default:
