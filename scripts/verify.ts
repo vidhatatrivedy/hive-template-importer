@@ -2,7 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { catalogue, countEditableTree, parseSpectoraExport, reconcile } from "../src/core/import";
-import type { ImportDraft, ImportIssue, ParseResult, RejectionKind } from "../src/core/import";
+import type {
+  EditableTree,
+  ImportDraft,
+  ImportIssue,
+  ParseResult,
+  ReconcileResult,
+  RejectionKind,
+} from "../src/core/import";
 import type { IssueSeverity } from "../src/core/import/catalogue";
 
 const FIXTURE_DIR = path.resolve("fixtures/spectora");
@@ -34,18 +41,34 @@ const COLUMNS: [string, (row: VerifyRow) => string | number][] = [
 ];
 
 export function summariseDraft(file: string, draft: ImportDraft): VerifyRow {
-  const counts = countEditableTree(draft.tree);
-  const result = reconcile(draft, draft.tree);
-  return {
+  return summariseVerified({
     file,
     rowsRead: draft.run.rowsRead,
+    tree: draft.tree,
+    result: reconcile(draft, draft.tree),
+    issues: draft.issues,
+  });
+}
+
+/** One verify-format row for an accepted import, counted from the tree that was stored or parsed. */
+export function summariseVerified(input: {
+  file: string;
+  rowsRead: number;
+  tree: EditableTree;
+  result: ReconcileResult;
+  issues: readonly ImportIssue[];
+}): VerifyRow {
+  const counts = countEditableTree(input.tree);
+  return {
+    file: input.file,
+    rowsRead: input.rowsRead,
     comments: counts.comments,
     sections: counts.sections,
     items: counts.items,
-    explained: result.explained,
-    unexplained: result.unexplained,
-    warnings: countSeverity(draft.issues, "warning"),
-    notices: countSeverity(draft.issues, "notice"),
+    explained: input.result.explained,
+    unexplained: input.result.unexplained,
+    warnings: countSeverity(input.issues, "warning"),
+    notices: countSeverity(input.issues, "notice"),
     rejection: null,
   };
 }

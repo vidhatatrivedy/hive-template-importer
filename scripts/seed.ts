@@ -2,12 +2,10 @@ import readline from "node:readline/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { stdin, stdout } from "node:process";
-import { catalogue, countEditableTree, parseSpectoraExport, reconcile, rejectionMessage } from "../src/core/import";
-import type { EditableTree, ImportEvidence, ImportIssue } from "../src/core/import";
-import type { IssueSeverity } from "../src/core/import/catalogue";
-import type { ReconcileResult } from "../src/core/import/reconcile";
+import { parseSpectoraExport, reconcile, rejectionMessage } from "../src/core/import";
 import { createDb } from "../src/db";
-import { formatVerifyTable, type VerifyRow } from "./verify";
+import { assignEnvFile } from "./env-file";
+import { formatVerifyTable, summariseVerified } from "./verify";
 
 const FIXTURE = "InterNACHI Residential -2026-09-30.xls";
 
@@ -59,7 +57,17 @@ async function main() {
   }
 
   const result = reconcile(evidence, tree);
-  console.log(formatVerifyTable([toVerifyRow(evidence, tree, result)]));
+  console.log(
+    formatVerifyTable([
+      summariseVerified({
+        file: evidence.run.filename,
+        rowsRead: evidence.run.rowsRead,
+        tree,
+        result,
+        issues: evidence.issues,
+      }),
+    ]),
+  );
   if (result.unexplained > 0 || result.verified !== result.total) process.exit(1);
 }
 
@@ -94,51 +102,12 @@ function loadEnv(envFile: string | null) {
     console.error(`Env file not found: ${file}`);
     process.exit(1);
   }
-  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed === "" || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    process.env[key] = value;
-  }
+  assignEnvFile(file);
 }
 
 function readTypedHost(): Promise<string> {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   return rl.question("Type the host to wipe and re-import: ").finally(() => rl.close());
-}
-
-function toVerifyRow(evidence: ImportEvidence, tree: EditableTree, result: ReconcileResult): VerifyRow {
-  const counts = countEditableTree(tree);
-  return {
-    file: evidence.run.filename,
-    rowsRead: evidence.run.rowsRead,
-    comments: counts.comments,
-    sections: counts.sections,
-    items: counts.items,
-    explained: result.explained,
-    unexplained: result.unexplained,
-    warnings: countSeverity(evidence.issues, "warning"),
-    notices: countSeverity(evidence.issues, "notice"),
-    rejection: null,
-  };
-}
-
-function countSeverity(issues: readonly ImportIssue[], severity: IssueSeverity): number {
-  let count = 0;
-  for (const issue of issues) {
-    const entry = catalogue.find((candidate) => candidate.kind === issue.kind);
-    if (entry?.severity === severity) count += 1;
-  }
-  return count;
 }
 
 main().catch((error: unknown) => {
