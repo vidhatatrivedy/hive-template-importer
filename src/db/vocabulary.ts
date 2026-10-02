@@ -9,26 +9,27 @@ export type VocabularyDrift = {
   missingFromCore: string[];
 };
 
-const CONSTRAINT = /(?:add\s+)?constraint\s+([a-z0-9_]+)\s+check\b/gi;
-
 /**
  * Last `array[…]` of each named `check` constraint, files in the order given
  * (filename order). A later migration that redefines a constraint replaces it.
  */
-export function vocabularyArrays(sources: readonly MigrationSource[]): Map<string, readonly string[]> {
+function vocabularyArrays(sources: readonly MigrationSource[]): Map<string, readonly string[]> {
   const found = new Map<string, readonly string[]>();
   for (const source of sources) {
-    for (const match of source.sql.matchAll(CONSTRAINT)) {
-      const name = match[1];
-      if (!name || match.index === undefined) continue;
-      const values = arrayLiterals(constraintBody(source.sql, match.index + match[0].length));
+    const checks = [...source.sql.matchAll(/(?:add\s+)?constraint\s+([a-z0-9_]+)\s+check\b/gi)];
+    for (const [index, check] of checks.entries()) {
+      const name = check[1];
+      if (!name || check.index === undefined) continue;
+      const bodyStart = check.index + check[0].length;
+      const bodyEnd = checks[index + 1]?.index ?? source.sql.length;
+      const values = arrayLiterals(source.sql.slice(bodyStart, bodyEnd));
       if (values) found.set(name, values);
     }
   }
   return found;
 }
 
-/** Kinds in `expected` but not in the migrations, and the reverse. Order does not matter. */
+/** Values in `expected` but not in the migrations, and the reverse. Order does not matter. */
 export function vocabularyDrift(
   sources: readonly MigrationSource[],
   expected: Readonly<Record<string, readonly string[]>>,
@@ -48,16 +49,15 @@ export function vocabularyDrift(
   return drifts;
 }
 
-/** SQL from just after `check` up to the next constraint definition. */
-function constraintBody(sql: string, from: number): string {
-  const rest = sql.slice(from);
-  const next = rest.search(/\b(?:add\s+)?constraint\s+[a-z0-9_]+\s+check\b/i);
-  return next === -1 ? rest : rest.slice(0, next);
-}
-
 /** Quoted strings inside the first `array[…]`, or null when this check has no array. */
 function arrayLiterals(body: string): readonly string[] | null {
-  const array = /array\s*\[([\s\S]*?)\]/i.exec(body);
-  if (!array || array[1] === undefined) return null;
-  return [...array[1].matchAll(/'((?:[^']|'')*)'/g)].map((match) => match[1]?.replaceAll("''", "'") ?? "");
+  const contents = /array\s*\[([\s\S]*?)\]/i.exec(body)?.[1];
+  if (contents === undefined) return null;
+
+  const literals: string[] = [];
+  for (const match of contents.matchAll(/'((?:[^']|'')*)'/g)) {
+    const literal = match[1] ?? "";
+    literals.push(literal.replaceAll("''", "'"));
+  }
+  return literals;
 }
