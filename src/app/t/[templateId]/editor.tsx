@@ -34,6 +34,7 @@ import { TemplateActions } from "@/app/sidebar/template-actions";
 import { templateHref } from "@/app/template-view";
 import { confirmChoice, ConfirmDialog, confirmDiscard, GuardedLink, useReportUnsaved } from "@/app/unsaved-guard";
 import { buttonClass, labelClass, primaryButtonClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
+import { ColumnStrip } from "@/app/ui/column-strip";
 import { CommentHtml } from "@/app/ui/comment-html";
 import { AnswerTypeGlyph, CommentTypeDot } from "@/app/ui/comment-marks";
 import { saveTemplate } from "./actions";
@@ -1434,19 +1435,7 @@ function EditorColumn({
   children: ReactNode;
 }) {
   if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={onFocus}
-        aria-label={stripText ? `${title}, ${stripText}` : title}
-        className="flex h-full min-h-0 w-8 shrink-0 flex-col items-center gap-2 border-r border-black/[0.05] py-2 dark:border-white/[0.06]"
-      >
-        <span className="min-h-0 w-full flex-1 overflow-hidden text-center [writing-mode:vertical-rl] rotate-180">
-          {stripText}
-        </span>
-        <span className={`${labelClass} shrink-0 [writing-mode:vertical-rl] rotate-180`}>{title}</span>
-      </button>
-    );
+    return <ColumnStrip title={title} stripText={stripText} onFocus={onFocus} />;
   }
   return (
     <section className="flex min-h-0 w-56 shrink-0 flex-col border-r border-black/[0.05] dark:border-white/[0.06]">

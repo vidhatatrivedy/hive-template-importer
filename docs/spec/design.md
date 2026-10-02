@@ -15,7 +15,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
 - **Columns**, left to right: Sections │ Items │ Comments │ Comment detail. Comments are grouped Informational / Limitations / Deficiencies, each group with its own "+ New". This follows Spectora's columns rather than Hive's tree ([`product-models.md`](../research/product-models.md)).
 - **Collapsing:**
   - Columns to the left of the one you're working in collapse into thin vertical strips.
-  - Each strip shows the current selection as vertical text, with a light vertical label at the bottom ("Sections" / "Items").
+  - Each strip shows the current selection as vertical text pinned to the top, with a light vertical label at the bottom ("Sections" / "Items").
   - Clicking a strip or a breadcrumb segment expands that column again.
   - Picking a Section focuses Items, and picking an Item focuses Comments.
 - **Comment detail** shows:
