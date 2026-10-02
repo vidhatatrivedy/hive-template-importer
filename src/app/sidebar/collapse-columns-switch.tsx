@@ -20,7 +20,7 @@ export function CollapseColumnsSwitch({ enabled }: { enabled: boolean }) {
     ? "bg-neutral-900 dark:bg-white"
     : "border border-black/[0.08] dark:border-white/[0.1]";
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="relative flex items-center gap-1.5">
       <button
         id="collapse-columns"
         type="button"
@@ -44,7 +44,7 @@ export function CollapseColumnsSwitch({ enabled }: { enabled: boolean }) {
       >
         Collapse columns
       </label>
-      <span className="group/info relative">
+      <span className="group/info">
         <button
           type="button"
           aria-label="About Collapse columns"
@@ -56,7 +56,7 @@ export function CollapseColumnsSwitch({ enabled }: { enabled: boolean }) {
         <span
           id={TIP_ID}
           role="tooltip"
-          className="pointer-events-none absolute right-0 bottom-full z-10 mb-1 w-52 rounded-md border border-black/[0.08] bg-white px-2 py-1 text-[11px] leading-snug text-neutral-800 opacity-0 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] group-hover/info:opacity-100 group-focus-within/info:opacity-100 dark:border-white/[0.1] dark:bg-neutral-900 dark:text-neutral-200"
+          className="pointer-events-none absolute inset-x-0 bottom-full z-10 mb-1 rounded-md border border-black/[0.08] bg-white px-2 py-1 text-[11px] leading-snug text-neutral-800 opacity-0 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] group-hover/info:opacity-100 group-focus-within/info:opacity-100 dark:border-white/[0.1] dark:bg-neutral-900 dark:text-neutral-200"
         >
           {TIP}
         </span>
