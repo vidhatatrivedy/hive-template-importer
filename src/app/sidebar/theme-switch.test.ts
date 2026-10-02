@@ -30,7 +30,7 @@ describe("theme switch", () => {
     const [light, dark, system] = buttons;
     expect(classTokens(light!).some((token) => token.startsWith("border"))).toBe(true);
     expect(classTokens(dark!).some((token) => token.startsWith("border"))).toBe(true);
-    expect(classTokens(system!)).toEqual(expect.arrayContaining(["bg-neutral-900", "dark:bg-white", "rounded-full"]));
+    expect(classTokens(system!)).toEqual(expect.arrayContaining(["bg-neutral-900", "dark:bg-white", "rounded-md"]));
     expect(classTokens(system!).some((token) => token.startsWith("border"))).toBe(false);
   });
 

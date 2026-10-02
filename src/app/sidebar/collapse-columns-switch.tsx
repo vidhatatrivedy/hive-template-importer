@@ -20,7 +20,7 @@ export function CollapseColumnsSwitch({ enabled }: { enabled: boolean }) {
     ? "bg-neutral-900 dark:bg-white"
     : "border border-black/[0.08] dark:border-white/[0.1]";
   return (
-    <div className="relative flex items-center gap-1.5">
+    <div className="relative flex h-6 items-center gap-1.5">
       <button
         id="collapse-columns"
         type="button"
