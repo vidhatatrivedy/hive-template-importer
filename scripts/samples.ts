@@ -2,58 +2,30 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import writeXlsxFile from "write-excel-file/node";
+import { EXPECTED_HEADERS } from "../src/core/import/parse-spectora-export";
 
 /** Gitignored folder `npm run samples` fills for the hand checklist and the demo. */
-export const SAMPLES_DIR = "samples";
-
-/** Verbatim Spectora header, in file order. Same list the parser expects. */
-const HEADERS = [
-  "Section Name",
-  "Item Name",
-  "Comment Name",
-  "Comment Text",
-  "Comment Type (info, limit, defect)",
-  "Category (-1: Low, 0: Med, 1: High)",
-  "Multiple Choice Options (comma-separated)",
-  "Unit Type Options (numeric answers only, comma-separated)",
-  "Recommendation (from list)",
-  "Order (w/i item)",
-  "Answer Type (boolean, checkbox, date, number, range, text)",
-  "Default Value",
-  'Default Value 2 (for "range" types)',
-  'Default Unit Type (for "number" and "range" types)',
-  "Default Location",
-  "Default Estimate Min",
-  "Default Estimate Max",
-  "Locked",
-  "Simple Format",
-  "Disable Photos",
-  "Uses",
-  "Default Photo 1",
-  "Default Photo 1 Caption",
-  "Default Photo 2",
-  "Default Photo 2 Caption",
-  "Default Photo 3",
-  "Default Photo 3 Caption",
-  "Default Photo 4",
-  "Default Photo 4 Caption",
-  "Default Photo 5",
-  "Default Photo 5 Caption",
-  "Default Photo 6",
-  "Default Photo 6 Caption",
-  "Default Photo 7",
-  "Default Photo 7 Caption",
-  "Default Photo 8",
-  "Default Photo 8 Caption",
-  "Default Photo 9",
-  "Default Photo 9 Caption",
-  "Default Photo 10",
-  "Default Photo 10 Caption",
-  "Last Modified",
-];
+const SAMPLES_DIR = "samples";
 
 const COMMENT_TYPE = "Comment Type (info, limit, defect)";
 const FIVE_MB = 5 * 1024 * 1024;
+
+/** Filled cells for a normal comment row. Keys are headers with the parenthetical hint removed. */
+const DEFAULT_CELLS: Record<string, string> = {
+  "section name": "Roof",
+  "item name": "Covering",
+  "comment name": "Shingles",
+  "comment text": "<p>Checked</p>",
+  "comment type": "info",
+  "answer type": "boolean",
+};
+
+/** Values on the row that omits Item Name and Comment Type. Answer type stays blank. */
+const MISSING_COLUMN_CELLS: Record<string, string> = {
+  "Section Name": "Roof",
+  "Comment Name": "Shingles",
+  "Comment Text": "<p>Checked</p>",
+};
 
 /**
  * Writes the rejection and edge-case files the checklist uploads.
@@ -63,15 +35,11 @@ const FIVE_MB = 5 * 1024 * 1024;
 export async function writeSampleFiles(directory: string): Promise<void> {
   fs.mkdirSync(directory, { recursive: true });
 
-  await writeFile(directory, "no-data-rows.xls", await writeXlsxFile([HEADERS]).toBuffer());
+  await writeFile(directory, "no-data-rows.xls", await writeXlsxFile([[...EXPECTED_HEADERS]]).toBuffer());
 
-  const missingHeaders = HEADERS.filter((header) => header !== "Item Name" && header !== COMMENT_TYPE);
-  const missingRow = missingHeaders.map((header) => {
-    if (header === "Section Name") return "Roof";
-    if (header === "Comment Name") return "Shingles";
-    if (header === "Comment Text") return "<p>Checked</p>";
-    return "";
-  });
+  const omitted = new Set<string>(["Item Name", COMMENT_TYPE]);
+  const missingHeaders = EXPECTED_HEADERS.filter((header) => !omitted.has(header));
+  const missingRow = missingHeaders.map((header) => MISSING_COLUMN_CELLS[header] ?? "");
   await writeFile(directory, "missing-columns.xls", await writeXlsxFile([missingHeaders, missingRow]).toBuffer());
 
   await writeFile(directory, "unreadable-xlsx.xls", Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]));
@@ -79,27 +47,27 @@ export async function writeSampleFiles(directory: string): Promise<void> {
   await writeFile(directory, "not-xlsx.pdf", new TextEncoder().encode("%PDF-1.7\n"));
   await writeFile(directory, "too-large.xls", Buffer.alloc(FIVE_MB));
 
-  const warnings = [
-    rowFor({
-      "comment text": `<p style="background: url(https://evil.test/x)">t</p>`,
-    }),
-    rowFor({ "item name": "Flashing", "comment name": "Drip edge" }),
-    rowFor({ "comment name": "" }),
-  ];
-  await writeFile(directory, "warnings.xls", await writeXlsxFile([HEADERS, ...warnings]).toBuffer());
+  const unsafeStyle = rowFor({
+    "comment text": `<p style="background: url(https://evil.test/x)">t</p>`,
+  });
+  const splitItem = rowFor({ "item name": "Flashing", "comment name": "Drip edge" });
+  const blankCommentName = rowFor({ "comment name": "" });
+  await writeFile(
+    directory,
+    "warnings.xls",
+    await writeXlsxFile([[...EXPECTED_HEADERS], unsafeStyle, splitItem, blankCommentName]).toBuffer(),
+  );
+}
+
+function headerKey(header: string): string {
+  return header.replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
 }
 
 function rowFor(overrides: Record<string, string>): string[] {
-  return HEADERS.map((header) => {
-    const key = header.replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
+  return EXPECTED_HEADERS.map((header) => {
+    const key = headerKey(header);
     if (Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key] ?? "";
-    if (key === "section name") return "Roof";
-    if (key === "item name") return "Covering";
-    if (key === "comment name") return "Shingles";
-    if (key === "comment text") return "<p>Checked</p>";
-    if (key === "comment type") return "info";
-    if (key === "answer type") return "boolean";
-    return "";
+    return DEFAULT_CELLS[key] ?? "";
   });
 }
 

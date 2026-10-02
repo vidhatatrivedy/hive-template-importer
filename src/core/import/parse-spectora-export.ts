@@ -206,7 +206,7 @@ function isXlsxZip(bytes: Uint8Array): boolean {
 }
 
 /** Verbatim Spectora header, in file order. Optional columns missing from an export are flagged. */
-const EXPECTED_HEADERS = [
+export const EXPECTED_HEADERS = [
   "Section Name",
   "Item Name",
   "Comment Name",

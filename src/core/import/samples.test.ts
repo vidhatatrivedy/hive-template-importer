@@ -41,11 +41,12 @@ describe("writeSampleFiles", () => {
     const imported = await parseSpectoraExport(warnings, "warnings.xls");
     expect(imported.ok).toBe(true);
     if (!imported.ok) return;
-    const kinds = new Set(imported.draft.issues.map((issue) => issue.kind));
-    expect(kinds.has("split-run")).toBe(true);
-    expect(kinds.has("blank-name")).toBe(true);
-    expect(kinds.has("unsafe-style-removed")).toBe(true);
-    expect(imported.draft.issues.some(isItemSplit)).toBe(true);
+    expect(imported.draft.issues.map((issue) => issue.kind).sort()).toEqual([
+      "blank-name",
+      "split-run",
+      "unsafe-style-removed",
+    ]);
+    expect(imported.draft.issues.filter(isItemSplit)).toHaveLength(1);
   });
 });
 
