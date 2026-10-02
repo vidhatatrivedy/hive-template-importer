@@ -32,7 +32,7 @@ Companion specs: [technical](technical.md) (schema, architecture, verification) 
 
 ### Flow
 1. The user uploads a file. The server parses it without writing anything.
-2. The **Import review** shows an editable name, the counts (rows read → Sections / Items / Comments) and Import issue counts by severity.
+2. The **Import review** shows an editable name, the counts (rows read → Sections / Items / Comments) and Import issue counts by severity. Hovering or focusing a warning or notice count lists what was found, in a shared glass tooltip: each warning with its location (*Section › Item › Comment (row N)*, or *File*), and each notice kind with a count, six lines at most and a final "+ n more" when the list is longer. A count of zero has no tooltip. The lines are not links.
 3. **Import** commits in one transaction, and the new Template opens with its Trust Report pane open. **Cancel** stores nothing.
 - The name is prefilled from the filename, dropping the extension and a trailing `-YYYY-MM-DD` (spaces around the dash allowed). It can't be blank after trimming. Duplicate names are allowed.
 - Importing the same file again is allowed and creates an independent Template. When the file's SHA-256 matches an existing Import run, the review says *"You imported this file as 'X' on <date>"*.

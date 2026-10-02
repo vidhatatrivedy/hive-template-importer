@@ -6,6 +6,7 @@ import {
   readCollapseColumnsCookie,
   subscribeToCollapseColumns,
 } from "@/app/collapse-columns";
+import { Tooltip } from "@/app/ui/tooltip";
 
 const TIP_ID = "collapse-columns-tip";
 const TIP = "Picking a Section or Item collapses its column.";
@@ -20,7 +21,7 @@ export function CollapseColumnsSwitch({ enabled }: { enabled: boolean }) {
     ? "bg-neutral-900 dark:bg-white"
     : "border border-black/[0.08] dark:border-white/[0.1]";
   return (
-    <div className="relative flex h-6 items-center gap-1.5">
+    <div className="flex h-6 items-center gap-1.5">
       <button
         id="collapse-columns"
         type="button"
@@ -44,23 +45,15 @@ export function CollapseColumnsSwitch({ enabled }: { enabled: boolean }) {
       >
         Collapse columns
       </label>
-      <span className="group/info">
+      <Tooltip id={TIP_ID} content={TIP}>
         <button
           type="button"
           aria-label="About Collapse columns"
-          aria-describedby={TIP_ID}
           className="inline-flex size-4 items-center justify-center text-[12px] leading-none text-neutral-400"
         >
           <span aria-hidden="true">ⓘ</span>
         </button>
-        <span
-          id={TIP_ID}
-          role="tooltip"
-          className="pointer-events-none absolute inset-x-0 bottom-full z-10 mb-1 rounded-md border border-black/[0.08] bg-white px-2 py-1 text-[11px] leading-snug text-neutral-800 opacity-0 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] group-hover/info:opacity-100 group-focus-within/info:opacity-100 dark:border-white/[0.1] dark:bg-neutral-900 dark:text-neutral-200"
-        >
-          {TIP}
-        </span>
-      </span>
+      </Tooltip>
     </div>
   );
 }

@@ -35,19 +35,43 @@ describe("collapse columns switch", () => {
     expect(classTokens(filled)).toEqual(expect.arrayContaining(["bg-neutral-900", "dark:bg-white", "rounded-full"]));
   });
 
-  it("describes the behaviour from the info icon, on hover and keyboard focus, without a browser tooltip", () => {
-    const block = renderSwitch(false);
-    const info = block.querySelector("button[aria-describedby]");
-    const tipId = info?.getAttribute("aria-describedby");
-    const tip = tipId ? block.querySelector(`#${tipId}`) : null;
+  it("describes the behaviour from the info icon, on hover and keyboard focus, without a browser tooltip", async () => {
+    const dom = installSwitchDocument();
+    const root = renderSwitchOn(dom, false);
+    const info = dom.window.document.querySelector("button[aria-label='About Collapse columns']");
     expect(info?.getAttribute("type")).toBe("button");
     expect(info?.getAttribute("title")).toBeNull();
-    expect(block.querySelector("[title]")).toBeNull();
-    expect(tip?.getAttribute("role")).toBe("tooltip");
+    expect(dom.window.document.querySelector("[title]")).toBeNull();
+    expect(dom.window.document.querySelector("[role='tooltip']")).toBeNull();
+    if (!(info instanceof dom.window.HTMLButtonElement)) throw new Error("missing collapse columns info button");
+
+    await act(async () => {
+      info.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect(dom.window.document.querySelector("[role='tooltip']")?.textContent).toBe(TIP);
+    await act(async () => {
+      info.dispatchEvent(new dom.window.MouseEvent("mouseout", { bubbles: true }));
+    });
+    expect(dom.window.document.querySelector("[role='tooltip']")).toBeNull();
+
+    await act(async () => {
+      info.focus();
+    });
+    const tip = dom.window.document.querySelector("[role='tooltip']");
     expect(tip?.textContent).toBe(TIP);
-    expect(classTokens(tip)).toEqual(
-      expect.arrayContaining(["opacity-0", "group-hover/info:opacity-100", "group-focus-within/info:opacity-100"]),
-    );
+    expect(info.getAttribute("aria-describedby")).toBe(tip?.id);
+    expect(dom.window.document.activeElement).toBe(info);
+
+    await act(async () => {
+      info.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(dom.window.document.querySelector("[role='tooltip']")).toBeNull();
+    expect(dom.window.document.activeElement).toBe(info);
+
+    await act(async () => {
+      root.unmount();
+    });
+    vi.unstubAllGlobals();
   });
 
   it("flips the switch and keeps the new choice after a remount", async () => {

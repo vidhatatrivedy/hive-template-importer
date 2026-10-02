@@ -10,6 +10,8 @@ const review: ImportReview = {
   suggestedName: "Radon",
   counts: { rowsRead: 10, blankRows: 0, sections: 2, items: 3, comments: 10 },
   issueCounts: { warning: 0, notice: 2 },
+  warnings: { lines: [], more: 0 },
+  notices: { lines: ["Duplicate comment ×2"], more: 0 },
   previousImport: null,
 };
 

@@ -13,7 +13,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
   - a saved/unsaved indicator
   - the Trust Report and Versions toggles
 - **Columns**, left to right: Sections │ Items │ Comments │ Comment detail. Comments are grouped Informational / Limitations / Deficiencies, each group with its own "+ New". This follows Spectora's columns rather than Hive's tree ([`product-models.md`](../research/product-models.md)).
-- **Collapsing:** opt-in, off by default. The sidebar settings block has a "Collapse columns" switch, with an ⓘ whose tooltip reads "Picking a Section or Item collapses its column." The choice is kept per browser. With the switch off, nothing collapses: Sections, Items, Comments and Comment detail all stay open, picking or a breadcrumb only selects, and the detail column takes the remaining width. With the switch on:
+- **Collapsing:** opt-in, off by default. The sidebar settings block has a "Collapse columns" switch, with an ⓘ whose shared glass tooltip reads "Picking a Section or Item collapses its column." The choice is kept per browser. With the switch off, nothing collapses: Sections, Items, Comments and Comment detail all stay open, picking or a breadcrumb only selects, and the detail column takes the remaining width. With the switch on:
   - Columns to the left of the one you're working in collapse into thin vertical strips.
   - Each strip shows the current selection as vertical text pinned to the top, with a light vertical label at the bottom ("Sections" / "Items").
   - Clicking a strip or a breadcrumb segment expands that column again.
@@ -51,6 +51,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
   - limit: grey
   - info: outline
 - **Import issue severity** is also shown by weight, not colour: `warning` is emphasised and `notice` is muted.
+- **Tooltips** are one shared glass component: 12px monochrome text, hairline border and soft shadow, in light and dark. A tooltip opens on hover and on keyboard focus of its trigger, closes on mouse-out, blur or Esc, stays inside the viewport and does not take focus. The Import review's warning and notice counts use it, as does the Collapse columns ⓘ.
 
 ## Left to implementation
 

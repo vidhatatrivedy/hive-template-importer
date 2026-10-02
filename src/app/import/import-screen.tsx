@@ -6,9 +6,11 @@ import { importErrorMessage } from "@/core/import/import-errors";
 import { commitImport, previewImport } from "@/app/import/actions";
 import { importFlow, initialImportFlow, type ImportFlow, type ImportFlowEvent } from "@/app/import/import-flow";
 import type { ImportReview } from "@/app/import/import-review";
+import { reviewTooltipText, type ReviewTooltip } from "@/app/import/review-tooltip";
 import { templateHref } from "@/app/template-view";
 import { buttonClass, glassClass, labelClass, primaryButtonClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
+import { Tooltip } from "@/app/ui/tooltip";
 
 /** The upload, Import review and rejection screens: one page, one state machine, no URL per step. */
 export function ImportScreen() {
@@ -134,7 +136,7 @@ function Review({
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const { counts, issueCounts } = review;
+  const { counts } = review;
   return (
     <form className="flex flex-col gap-3" onSubmit={onSubmit}>
       <p className="truncate text-neutral-500">{review.filename}</p>
@@ -154,9 +156,7 @@ function Review({
         {counts.rowsRead} rows read → {counts.sections} Sections · {counts.items} Items · {counts.comments} Comments
         {counts.blankRows > 0 ? ` · ${counts.blankRows} blank rows ignored` : ""}
       </p>
-      <p className="tabular-nums">
-        {plural(issueCounts.warning, "warning")} · {plural(issueCounts.notice, "notice")}
-      </p>
+      <ImportIssueCounts review={review} />
       {review.previousImport ? (
         <p>
           {"You imported this file as '"}
@@ -180,6 +180,38 @@ function Review({
         </button>
       </div>
     </form>
+  );
+}
+
+export function ImportIssueCounts({ review }: { review: Pick<ImportReview, "issueCounts" | "warnings" | "notices"> }) {
+  return (
+    <p className="tabular-nums">
+      <IssueCount id="import-warnings" count={review.issueCounts.warning} noun="warning" tip={review.warnings} />
+      {" · "}
+      <IssueCount id="import-notices" count={review.issueCounts.notice} noun="notice" tip={review.notices} />
+    </p>
+  );
+}
+
+function IssueCount({ id, count, noun, tip }: { id: string; count: number; noun: string; tip: ReviewTooltip }) {
+  const text = plural(count, noun);
+  if (count === 0) return text;
+  const lines = reviewTooltipText(tip);
+  return (
+    <Tooltip
+      id={id}
+      content={
+        <span className="flex flex-col">
+          {lines.map((line, index) => (
+            <span key={index}>{line}</span>
+          ))}
+        </span>
+      }
+    >
+      <button type="button" className="underline decoration-dotted underline-offset-2">
+        {text}
+      </button>
+    </Tooltip>
   );
 }
 
