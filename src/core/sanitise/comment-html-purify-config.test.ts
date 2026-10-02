@@ -75,7 +75,14 @@ describe("comment HTML render config", () => {
       expect(body.querySelector("a")?.getAttribute("rel")).toBe("noopener noreferrer");
       expect(body.querySelector("img")?.getAttribute("loading")).toBe("lazy");
       const frame = body.querySelector("iframe");
-      expect(frame?.getAttribute("sandbox")).toBe("");
+      // YouTube's player is JavaScript: an empty sandbox shows "An error occurred" instead of the video.
+      // Scripts and same-origin apply to youtube.com's own origin, never ours; forms and top navigation stay blocked.
+      expect(frame?.getAttribute("sandbox")?.split(" ").sort()).toEqual([
+        "allow-popups",
+        "allow-presentation",
+        "allow-same-origin",
+        "allow-scripts",
+      ]);
       expect(frame?.getAttribute("loading")).toBe("lazy");
       expect(purify.removed).toEqual([]);
     } finally {

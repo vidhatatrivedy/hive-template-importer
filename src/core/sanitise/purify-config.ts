@@ -11,7 +11,9 @@ const DOCUMENT_WRAPPER_TAGS = ["body"];
 const DISPLAY_ATTRIBUTES: Record<string, Record<string, string>> = {
   a: { rel: "noopener noreferrer" },
   img: { loading: "lazy" },
-  iframe: { sandbox: "", loading: "lazy" },
+  // Only YouTube embeds survive the sanitiser. Their player needs scripts and its own origin to play;
+  // a cross-origin frame's scripts never reach this page. Forms and top navigation stay blocked.
+  iframe: { sandbox: "allow-scripts allow-same-origin allow-presentation allow-popups", loading: "lazy" },
 };
 
 function allowedAttributes(): string[] {
