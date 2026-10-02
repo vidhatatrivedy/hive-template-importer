@@ -13,6 +13,7 @@ The files are Office Open XML workbooks (`.xlsx` zip containers) even though Spe
 | `Ben Gromicko's Template for Home Inspections-2026-09-30.xls` | Spectora Template Center | 1248 | 17 | 133 | Stress test: inline images, YouTube iframes, `h3`, lists, duplicate comments, default photos |
 | `Radon Inspection-2026-09-30.xls` | Spectora Template Center, hand-edited | 10 | 2 | 3 | Built with 4 sections in Spectora; two empty sections (`devone`, `devtwo`) are **absent from the export** |
 | `InterNACHI Residential -2026-09-30 (plain text).xls` | InterNACHI Residential via **Export Plain Text** (not HTML Text) | 392 | 13 | 69 | **Must be rejected.** Same 42 columns and rows as the HTML export, but tags stripped (link URLs lost) and entities decoded. Tests plain-text detection |
+| `InterNACHI Residential -2026-09-30 (excel).xls` | The HTML export re-saved in Excel, so strings are shared-string cells | 392 | 13 | 69 | **Not in the repo yet.** A human adds it. The test that it parses to the same draft as the HTML export stays skipped until then |
 
 ## Known quirks (verified by profiling)
 

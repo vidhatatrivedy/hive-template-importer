@@ -64,7 +64,7 @@ Everything else imports, with row-level or file-level **Import issues**.
 
 ## Import issues and the Trust Report ([taxonomy][t11])
 
-- Every **Import issue** has a severity (`warning` or `notice`) and a class (Changed, **Unsupported**, **Missing from export** or Check). The 29 kinds and their severities are in the [catalogue][t11]: #11's 28 plus `unsafe-style-removed` (a warning, one per removed `url(`, `expression(` or `@import` style value), added by the [slice 2 spec][s2].
+- Every **Import issue** has a severity (`warning` or `notice`) and a class (Changed, **Unsupported**, **Missing from export** or Check). There are 30 kinds: #11's 28, plus `unsafe-style-removed` (a warning, one per removed `url(`, `expression(` or `@import` style value) and `attribute-removed` (a warning, one per attribute that isn't allowlisted and isn't an Editor leftover, such as `onerror` or `id`). Neither is folded into the quiet Editor leftovers notice. Severities live in the [catalogue][t11], as refined by the [slice 2 spec][s2].
 - The **Import Trust Report** belongs to an Import run and covers Version 1. From top to bottom it shows:
   1. **Summary**: file, date, short SHA-256, rows read → blank rows → Comments stored, counts, issue counts, values decoded, and the verdict ("392 / 392 rows verified").
   2. **Reconciliation by Section**, expandable to Items, with split runs marked.
