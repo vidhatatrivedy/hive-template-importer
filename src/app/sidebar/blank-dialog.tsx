@@ -101,17 +101,18 @@ export function BlankDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const result = await createBlank(plan.name);
-      endBlank();
-      setError(result.error);
-      submitting.current = false;
-      setPending(false);
+      finishBlank(result.error);
     } catch (caught) {
       if (isNextRedirect(caught)) return;
-      endBlank();
-      setError({ kind: "blank-failed" });
-      submitting.current = false;
-      setPending(false);
+      finishBlank({ kind: "blank-failed" });
     }
+  }
+
+  function finishBlank(next: LifecycleError<"blank">) {
+    endBlank();
+    setError(next);
+    submitting.current = false;
+    setPending(false);
   }
 
   if (hiddenForDiscard) return null;
