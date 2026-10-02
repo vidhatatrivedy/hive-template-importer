@@ -67,6 +67,8 @@ export interface Db {
   ): Promise<Result<SaveVersionResult>>;
   restoreVersion(versionId: string, baseNumber: number): Promise<Result<RestoreVersionResult>>;
   listTemplates(): Promise<TemplateSummary[]>;
+  /** Deletes every row. Seed is the only caller. */
+  wipeAll(): Promise<void>;
   getTemplate(templateId: string): Promise<TemplateDetail | null>;
   getVersionTree(versionId: string): Promise<EditableTree | null>;
   getImportEvidence(importRunId: string): Promise<ImportEvidence | null>;
@@ -85,6 +87,7 @@ export function createDb(env: { url: string; serviceRoleKey: string }): Db {
     saveVersion: (templateId, baseNumber, tree) => saveVersion(client, templateId, baseNumber, tree),
     restoreVersion: (versionId, baseNumber) => restoreVersion(client, versionId, baseNumber),
     listTemplates: () => listTemplates(client),
+    wipeAll: () => wipeAll(client),
     getTemplate: (templateId) =>
       readOne(client, "get_template", { template_id: templateId }, templateDetailSchema),
     getVersionTree: (versionId) =>
@@ -119,6 +122,10 @@ async function renameTemplate(
 async function listTemplates(client: SupabaseClient): Promise<TemplateSummary[]> {
   const data = await call(client, "list_templates", {});
   return templateSummaryListSchema.parse(data);
+}
+
+async function wipeAll(client: SupabaseClient): Promise<void> {
+  await call(client, "wipe_all", {});
 }
 
 async function importTemplate(client: SupabaseClient, draft: ImportDraft, name: string) {

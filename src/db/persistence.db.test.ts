@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,6 +103,47 @@ describe("persistence tracer", () => {
     }
   });
 
+  it("leaves no Templates after wipeAll", async () => {
+    const imported = await db.importTemplate(draft, draft.suggestedName);
+    const blank = await db.createBlankTemplate("Blank to wipe");
+    const duplicated = await db.duplicateTemplate(imported.templateId);
+    expect(duplicated.ok).toBe(true);
+    if (!duplicated.ok) return;
+    const saved = await db.saveVersion(imported.templateId, 1, { sections: [] });
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    const restored = await db.restoreVersion(imported.versionId, saved.value.number);
+    expect(restored.ok).toBe(true);
+
+    await db.wipeAll();
+
+    expect(await db.listTemplates()).toEqual([]);
+    expect(await db.getTemplate(imported.templateId)).toBeNull();
+    expect(await db.getTemplate(blank.templateId)).toBeNull();
+    expect(await db.getTemplate(duplicated.value.templateId)).toBeNull();
+    expect(await db.getVersionTree(imported.versionId)).toBeNull();
+    expect(await db.getImportEvidence(imported.importRunId)).toBeNull();
+  });
+
+  it("stops Seed before wiping when the typed host is not the database host", async () => {
+    const url = process.env.SUPABASE_URL;
+    if (!url) throw new Error("SUPABASE_URL must be set");
+    const host = new URL(url).host;
+    const blank = await db.createBlankTemplate("Kept when Seed is refused");
+    try {
+      const result = spawnSync("npx", ["tsx", "scripts/seed.ts"], {
+        input: "not-the-host\n",
+        encoding: "utf8",
+        env: process.env,
+      });
+      expect(result.stdout).toContain(host);
+      expect(result.status).not.toBe(0);
+      expect((await db.listTemplates()).some((template) => template.id === blank.templateId)).toBe(true);
+    } finally {
+      await db.deleteTemplate(blank.templateId);
+    }
+  });
+
   it("returns null for an unknown Template, Version and Import run", async () => {
     expect(await db.getTemplate(UNKNOWN_ID)).toBeNull();
     expect(await db.getVersionTree(UNKNOWN_ID)).toBeNull();
@@ -147,6 +189,7 @@ describe("persistence tracer", () => {
       { fn: "list_templates", args: {} },
       { fn: "create_blank_template", args: { name: "Anon" } },
       { fn: "rename_template", args: { template_id: UNKNOWN_ID, name: "Anon" } },
+      { fn: "wipe_all", args: {} },
     ];
     for (const call of calls) {
       const { data, error } = await anon.rpc(call.fn, call.args);

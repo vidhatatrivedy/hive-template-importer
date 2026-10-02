@@ -14,6 +14,7 @@
     "db:push": "supabase --yes db push --db-url \"$SUPABASE_DB_URL\" --skip-vault",
     "db:reset": "supabase --yes db reset --db-url \"$SUPABASE_DB_URL\" --no-seed",
     "test:db": "tsx scripts/test-db.ts",
+    "seed": "tsx scripts/seed.ts",
     "sandcastle": "tsx .sandcastle/main.mts"
   },
   "dependencies": {
