@@ -46,3 +46,6 @@ next-env.d.ts
 
 # agent worktrees (checked-out branches, not content)
 /.claude/worktrees/
+
+# checklist and demo workbooks from `npm run samples`
+/samples

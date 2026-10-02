@@ -15,6 +15,7 @@
     "db:reset": "supabase --yes db reset --db-url \"$SUPABASE_DB_URL\" --no-seed",
     "test:db": "tsx scripts/test-db.ts",
     "seed": "tsx scripts/seed.ts",
+    "samples": "tsx scripts/samples.ts",
     "sandcastle": "tsx .sandcastle/main.mts"
   },
   "dependencies": {
