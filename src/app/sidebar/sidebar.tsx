@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
+import { BlankDialog } from "@/app/sidebar/blank-dialog";
 import { parseOpenTemplate, sidebarLine, type ActionTarget } from "@/app/sidebar/sidebar-view";
 import { TemplateActions } from "@/app/sidebar/template-actions";
 import { templateHref } from "@/app/template-view";
@@ -20,6 +21,7 @@ export type SidebarList =
  */
 export function Sidebar({ list }: { list: SidebarList }) {
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [blankOpen, setBlankOpen] = useState(false);
   const widthClass = actionsOpen ? "w-60" : "w-11 focus-within:w-60 hover:w-60";
   const listClass = actionsOpen ? "opacity-100" : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100";
   return (
@@ -35,11 +37,17 @@ export function Sidebar({ list }: { list: SidebarList }) {
         <div className="flex items-center">
           <Glyph>+</Glyph>
           <span className={`${labelClass} mr-2`}>New</span>
-          <GuardedLink href="/import" className={buttonClass}>
-            Import…
-          </GuardedLink>
+          <span className="flex gap-1">
+            <GuardedLink href="/import" className={buttonClass}>
+              Import…
+            </GuardedLink>
+            <button type="button" className={buttonClass} onClick={() => setBlankOpen(true)}>
+              Blank
+            </button>
+          </span>
         </div>
       </div>
+      {blankOpen ? <BlankDialog onClose={() => setBlankOpen(false)} /> : null}
       <div
         className={`w-60 min-h-0 flex-1 overflow-y-auto px-1.5 pb-3 transition-opacity ${listClass}`}
       >

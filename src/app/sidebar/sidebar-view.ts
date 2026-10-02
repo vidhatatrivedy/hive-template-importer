@@ -31,6 +31,19 @@ export type Prompt =
   | { kind: "delete"; name: string; versions: number; losesEdits: boolean; leaves: boolean };
 
 /**
+ * What New ▸ Blank does with the name in the field.
+ * Trim matches Save: `String#trim`, which also strips U+00A0. Duplicate names are allowed.
+ */
+export type BlankPlan = { kind: "blank" } | { kind: "create"; name: string };
+
+/** A blank trimmed name stays disabled. Anything else is stored trimmed. */
+export function blankPlan(entered: string): BlankPlan {
+  const name = entered.trim();
+  if (name === "") return { kind: "blank" };
+  return { kind: "create", name };
+}
+
+/**
  * What Rename does with the name in the field.
  * Trim matches Save: `String#trim`, which also strips U+00A0.
  */

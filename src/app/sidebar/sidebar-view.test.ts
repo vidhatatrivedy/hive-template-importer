@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blankPlan,
   duplicateConfirm,
   lifecyclePrompt,
   parseOpenTemplate,
@@ -105,6 +106,20 @@ describe("parseOpenTemplate", () => {
 
   it("decodes the id the way templateHref encodes it", () => {
     expect(parseOpenTemplate("/t/a%20b")).toEqual({ templateId: "a b", viewingVersion: null });
+  });
+});
+
+describe("blankPlan", () => {
+  it("refuses a blank name, including spaces and a non-breaking space", () => {
+    expect(blankPlan("")).toEqual({ kind: "blank" });
+    expect(blankPlan("   ")).toEqual({ kind: "blank" });
+    expect(blankPlan("\u00a0")).toEqual({ kind: "blank" });
+    expect(blankPlan(" \u00a0 ")).toEqual({ kind: "blank" });
+  });
+
+  it("creates a Template from the trimmed name", () => {
+    expect(blankPlan("  Kitchen  ")).toEqual({ kind: "create", name: "Kitchen" });
+    expect(blankPlan("\u00a0Kitchen fan\u00a0")).toEqual({ kind: "create", name: "Kitchen fan" });
   });
 });
 

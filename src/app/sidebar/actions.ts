@@ -3,8 +3,33 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { blankPlan } from "@/app/sidebar/sidebar-view";
 import { templateHref } from "@/app/template-view";
 import { getDb } from "@/db/server";
+
+const blankInput = z.object({
+  name: z.string(),
+});
+
+type BlankResult = { ok: false; error: { kind: "name-blank" } };
+
+/**
+ * Creates an empty Template and opens it. Arguments are untrusted.
+ * Trim matches Save (`String#trim`, U+00A0 included). A blank name is `name-blank`.
+ * Success redirects to the editor with no panes. `redirect` throws, so it stays outside `try`.
+ * A thrown action is `blank-failed` on the client.
+ */
+export async function createBlank(name: string): Promise<BlankResult> {
+  const parsed = blankInput.safeParse({ name });
+  if (!parsed.success) throw new Error("Blank received arguments it cannot store");
+
+  const plan = blankPlan(parsed.data.name);
+  if (plan.kind === "blank") return { ok: false, error: { kind: "name-blank" } };
+
+  const created = await getDb().createBlankTemplate(plan.name);
+  revalidatePath("/", "layout");
+  redirect(templateHref(created.templateId, { panes: new Set(), row: null }));
+}
 
 const renameInput = z.object({
   templateId: z.string(),
