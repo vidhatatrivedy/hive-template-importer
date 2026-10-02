@@ -2,7 +2,7 @@ import type { TemplateDetail } from "@/db/schemas";
 import { templateHref, withVersionsPane, type TemplateView } from "@/app/template-view";
 import { versionLabel } from "@/app/version-label";
 import { GuardedLink } from "@/app/unsaved-guard";
-import { glassSheetClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
+import { closeButtonClass, glassSheetClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
 
 /** "13 Sections · 69 Items · 392 Comments", the header and each Version row. */
@@ -39,7 +39,7 @@ export function VersionsSheet({
         <GuardedLink
           href={closeHref}
           aria-label="Close Versions"
-          className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+          className={closeButtonClass}
         >
           ×
         </GuardedLink>

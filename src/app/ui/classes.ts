@@ -13,6 +13,10 @@ export const labelClass = "text-[10px] uppercase tracking-[0.08em] text-neutral-
 export const buttonClass =
   "inline-flex h-6 items-center rounded-md border border-black/[0.08] px-2.5 text-[11px] hover:bg-black/[0.04] dark:border-white/[0.1] dark:hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-40";
 
+/** The × that closes a sheet. Bordered so it reads as a control, not a glyph. */
+export const closeButtonClass =
+  "flex size-7 items-center justify-center rounded-md border border-black/[0.1] text-[18px] leading-none text-neutral-700 hover:bg-black/[0.05] dark:border-white/[0.14] dark:text-neutral-200 dark:hover:bg-white/[0.08]";
+
 export const primaryButtonClass =
   "inline-flex h-6 items-center rounded-md bg-neutral-900 px-2.5 text-[11px] text-white dark:bg-white dark:text-neutral-900 disabled:pointer-events-none disabled:opacity-40";
 

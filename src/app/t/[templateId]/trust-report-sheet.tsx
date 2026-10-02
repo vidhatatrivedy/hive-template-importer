@@ -16,7 +16,7 @@ import { reportLabels, type CopiedFrom, type ReportLabels } from "@/app/report-b
 import { sourceRowView } from "@/app/source-row-view";
 import { trustSummaryView } from "@/app/trust-summary";
 import { GuardedLink } from "@/app/unsaved-guard";
-import { glassSheetClass, labelClass, severityClass } from "@/app/ui/classes";
+import { closeButtonClass, glassSheetClass, labelClass, severityClass } from "@/app/ui/classes";
 import { FormattedDate } from "@/app/ui/formatted-date";
 import { ImportIssues } from "./import-issues";
 import type { LoadedTrustReport } from "./load-trust-report";
@@ -219,7 +219,7 @@ function CloseTrustReport({ href }: { href: string }) {
     <GuardedLink
       href={href}
       aria-label="Close the Trust Report"
-      className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+      className={closeButtonClass}
     >
       ×
     </GuardedLink>
@@ -233,12 +233,17 @@ function Reconciliation({ sections }: { sections: ReconciliationSectionView[] })
       {sections.map((section, index) => (
         <details
           key={`${section.row.name}-${index}`}
-          className="border-b border-black/[0.05] py-1 last:border-b-0 dark:border-white/[0.06]"
+          className="group border-b border-black/[0.05] py-1 last:border-b-0 dark:border-white/[0.06]"
         >
-          <summary className="cursor-pointer">
-            <ReconciliationRow row={section.row} />
+          <summary className="flex cursor-pointer list-none items-start gap-1.5 [&::-webkit-details-marker]:hidden">
+            <span aria-hidden="true" className="flex h-[1lh] w-3 shrink-0 items-center justify-center">
+              <span className="text-[8px] leading-none text-neutral-500 transition-transform group-open:rotate-90">▶</span>
+            </span>
+            <span className="min-w-0 flex-1">
+              <ReconciliationRow row={section.row} />
+            </span>
           </summary>
-          <div className="mt-1 flex flex-col pl-3">
+          <div className="mt-1 flex flex-col pl-[18px]">
             {section.items.map((item, itemIndex) => (
               <div key={`${item.name}-${itemIndex}`} className="py-1">
                 <ReconciliationRow row={item} />
