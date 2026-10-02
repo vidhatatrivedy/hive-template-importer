@@ -846,8 +846,9 @@ function CommentText({
 
   return (
     <div className="border-t border-black/[0.05] pt-3 dark:border-white/[0.06]">
-      {readOnly ? null : (
-        <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex min-h-6 items-center justify-between">
+        <span className={labelClass}>Text</span>
+        {readOnly ? null : (
           <button
             type="button"
             className={buttonClass}
@@ -856,10 +857,12 @@ function CommentText({
           >
             {showSource ? "Done" : "Edit"}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {preview ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+          <span className={labelClass}>{plain ? "Source" : "HTML source"}</span>
+          <span className={labelClass}>Preview</span>
           <textarea
             ref={sourceRef}
             aria-label={plain ? "Comment text" : "HTML source"}
@@ -883,6 +886,8 @@ function CommentText({
             ) : null}
           </div>
         </div>
+      ) : comment.textHtml.trim() === "" ? (
+        <p className="text-neutral-400">No text</p>
       ) : (
         <CommentHtml html={comment.textHtml} sourceRow={comment.sourceRow} />
       )}
