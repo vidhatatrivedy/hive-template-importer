@@ -15,7 +15,15 @@ import {
 import { createDb, type Db } from "@/db";
 import { getDb } from "@/db/server";
 
-const FIXTURE = "InterNACHI Residential -2026-09-30.xls";
+const HTML_FIXTURES = [
+  "InterNACHI Residential -2026-09-30.xls",
+  "Residential Template-2026-09-30.xls",
+  "InterNACHI Commercial Template-2026-09-30.xls",
+  "Room-by-Room Residential Template-2026-09-30.xls",
+  "Ben Gromicko's Template for Home Inspections-2026-09-30.xls",
+  "Radon Inspection-2026-09-30.xls",
+] as const;
+const FIXTURE = HTML_FIXTURES[0];
 const OTHER_FIXTURE = "Radon Inspection-2026-09-30.xls";
 const FIXTURE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../fixtures/spectora");
 const UNKNOWN_ID = "00000000-0000-4000-8000-000000000001";
@@ -65,6 +73,28 @@ describe("persistence tracer", () => {
       expect(result.verified).toBe(result.total);
 
       const exported = toExportRows(tree, evidence);
+      expect(exported.map((row) => row.sourceRow)).toEqual(evidence.sourceRows.map((row) => row.rowNumber));
+    } finally {
+      await db.deleteTemplate(imported.templateId);
+    }
+  });
+
+  it.each(HTML_FIXTURES)("stores %s in one import with nothing unexplained", async (file) => {
+    const fixture = await loadDraft(file);
+    const imported = await db.importTemplate(fixture, fixture.suggestedName);
+    try {
+      const evidence = await db.getImportEvidence(imported.importRunId);
+      const tree = await db.getVersionTree(imported.versionId);
+      if (!evidence || !tree) throw new Error("Import read returned null");
+      expect(evidence).toEqual({ run: fixture.run, sourceRows: fixture.sourceRows, issues: fixture.issues });
+      expect(withoutIds(tree)).toEqual(withoutIds(fixture.tree));
+
+      const result = reconcile(evidence, tree);
+      expect(result.unexplained).toBe(0);
+      expect(result.verified).toBe(result.total);
+
+      const exported = toExportRows(tree, evidence);
+      expect(exported).toHaveLength(evidence.sourceRows.length);
       expect(exported.map((row) => row.sourceRow)).toEqual(evidence.sourceRows.map((row) => row.rowNumber));
     } finally {
       await db.deleteTemplate(imported.templateId);
