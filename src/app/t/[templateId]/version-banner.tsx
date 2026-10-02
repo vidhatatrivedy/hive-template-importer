@@ -99,7 +99,7 @@ export function VersionBanner({
 
 type RestoreAttempt = { redirected: true } | { redirected: false; error: RestoreError };
 
-/** Reload or Import, for the two refusals that name a next step. Other failures stay on the banner text. */
+/** Reload, or go back to Templates, for the two refusals that name a next step. Other failures stay on the banner text. */
 function restoreRecovery(error: RestoreError | null, refresh: () => void): ReactNode {
   switch (error?.kind) {
     case "stale-base":
