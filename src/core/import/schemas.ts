@@ -6,15 +6,24 @@ const nonBlankName = z.string().refine((name) => name.trim() !== "", { message: 
 
 const categorySchema = z.union([z.literal(-1), z.literal(0), z.literal(1), z.null()]);
 
+/** Comment types a stored Comment may have. Compared with `comments_comment_type_check`. */
+export const commentTypes = ["info", "limit", "defect"] as const;
+
+/** Answer types a stored Comment may have. Compared with `comments_answer_type_check`. */
+export const answerTypes = ["boolean", "checkbox", "number", "range", "text", "date"] as const;
+
+/** Which option list a `comment_options` row belongs to. Compared with `comment_options_list_check`. */
+export const optionLists = ["choice", "unit"] as const;
+
 export const commentSchema = z.object({
   id: z.string().optional(),
   sourceRow: z.number().int().positive().nullable(),
   name: nonBlankName,
   textHtml: z.string(),
-  commentType: z.enum(["info", "limit", "defect"]),
+  commentType: z.enum(commentTypes),
   category: categorySchema,
   recommendation: z.string().nullable(),
-  answerType: z.enum(["boolean", "checkbox", "number", "range", "text", "date"]),
+  answerType: z.enum(answerTypes),
   defaultBoolean: z.boolean().nullable(),
   defaultText: z.string().nullable(),
   choiceOptions: z.array(z.string()),

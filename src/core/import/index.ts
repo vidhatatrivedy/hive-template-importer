@@ -25,13 +25,16 @@ export type {
   TrustReportSummary,
 } from "./trust-report";
 export {
+  answerTypes,
   commentSchema,
+  commentTypes,
   countEditableTree,
   editableTreeSchema,
   importDraftSchema,
   importEvidenceSchema,
   importIssueSchema,
   itemSchema,
+  optionLists,
   sectionSchema,
 } from "./schemas";
 export type { Comment, EditableTree, ImportDraft, ImportEvidence, ImportIssue, Item, Section } from "./schemas";
