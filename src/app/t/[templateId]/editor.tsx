@@ -151,7 +151,7 @@ export function Editor({
   const canSave = canSaveState(state);
   const canDiscard = dirty && !savingOrAwaiting;
   const editable = canChangeStructure(state);
-  const collapse = useSyncExternalStore(
+  const collapseColumnsOn = useSyncExternalStore(
     subscribeToCollapseColumns,
     readCollapseColumnsCookie,
     () => collapseColumns,
@@ -350,7 +350,7 @@ export function Editor({
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <EditorColumn
           title="Sections"
-          collapsed={columnCollapsed(collapse, "sections", state.focus)}
+          collapsed={columnCollapsed(collapseColumnsOn, "sections", state.focus)}
           stripText={section?.name ?? ""}
           onFocus={() => focusColumn("sections")}
           actions={
@@ -401,7 +401,7 @@ export function Editor({
         </EditorColumn>
         <EditorColumn
           title="Items"
-          collapsed={columnCollapsed(collapse, "items", state.focus)}
+          collapsed={columnCollapsed(collapseColumnsOn, "items", state.focus)}
           stripText={item?.name ?? ""}
           onFocus={() => focusColumn("items")}
           actions={
@@ -456,7 +456,7 @@ export function Editor({
         </EditorColumn>
         <EditorColumn
           title="Comments"
-          collapsed={columnCollapsed(collapse, "comments", state.focus)}
+          collapsed={columnCollapsed(collapseColumnsOn, "comments", state.focus)}
           stripText={comment?.name ?? ""}
           onFocus={() => focusColumn("comments")}
           actions={

@@ -1,15 +1,20 @@
 /** Whether columns collapse, kept in a cookie so the server can paint the layout before the page is shown. */
 
+import { z } from "zod";
 import type { Column } from "@/app/editor/editor-state";
+
+const collapseColumnsSchema = z.enum(["on", "off"]);
 
 export const COLLAPSE_COLUMNS_COOKIE = "collapse-columns";
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
-const listeners = new Set<() => void>();
+const collapseListeners = new Set<() => void>();
 
 /** Off when the cookie is missing or anything other than `on`. */
 export function parseCollapseColumns(value: string | null | undefined): boolean {
-  return value === "on";
+  const parsed = collapseColumnsSchema.safeParse(value);
+  if (!parsed.success) return false;
+  return parsed.data === "on";
 }
 
 /** A year, every path, so a reload and any route see the same choice. */
@@ -29,16 +34,16 @@ export function readCollapseColumnsCookie(): boolean {
 
 /** Notifies after `applyCollapseColumns`, so a remounted switch can read the cookie just written. */
 export function subscribeToCollapseColumns(listener: () => void): () => void {
-  listeners.add(listener);
+  collapseListeners.add(listener);
   return () => {
-    listeners.delete(listener);
+    collapseListeners.delete(listener);
   };
 }
 
 /** Stores the choice immediately. Does not navigate, reload, or touch editor state. */
 export function applyCollapseColumns(enabled: boolean): void {
   document.cookie = collapseColumnsCookie(enabled);
-  for (const listener of listeners) listener();
+  for (const listener of collapseListeners) listener();
 }
 
 const COLUMN_ORDER: Record<Column, number> = { sections: 0, items: 1, comments: 2 };
