@@ -2,22 +2,23 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getDb } from "@/db/server";
 import { Sidebar, type SidebarList } from "@/app/sidebar/sidebar";
+import type { ThemeChoice } from "@/app/theme";
 
 /**
  * The Template list beside every page. Loaded per request, never at build time, and a failed
  * load stays inside the sidebar: the root layout's errors don't reach `error.tsx`.
  */
-export function TemplateSidebar() {
+export function TemplateSidebar({ theme }: { theme: ThemeChoice }) {
   return (
-    <Suspense fallback={<Sidebar list={{ state: "loading" }} />}>
-      <LoadedSidebar />
+    <Suspense fallback={<Sidebar list={{ state: "loading" }} theme={theme} />}>
+      <LoadedSidebar theme={theme} />
     </Suspense>
   );
 }
 
-async function LoadedSidebar() {
+async function LoadedSidebar({ theme }: { theme: ThemeChoice }) {
   await connection();
-  return <Sidebar list={await loadList()} />;
+  return <Sidebar list={await loadList()} theme={theme} />;
 }
 
 async function loadList(): Promise<SidebarList> {

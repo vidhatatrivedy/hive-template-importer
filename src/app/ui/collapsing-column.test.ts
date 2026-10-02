@@ -9,6 +9,7 @@ import { ColumnStrip } from "@/app/ui/column-strip";
 
 function renderColumn(collapsed: boolean) {
   const html = renderToStaticMarkup(
+    // eslint-disable-next-line react/no-children-prop -- CollapsingColumn requires children on its props
     createElement(CollapsingColumn, {
       collapsed,
       strip: createElement(ColumnStrip, { title: "Sections", stripText: "Roof", onFocus: () => {} }),

@@ -5,6 +5,8 @@ import { useState, useSyncExternalStore } from "react";
 import { BlankDialog } from "@/app/sidebar/blank-dialog";
 import { parseOpenTemplate, sidebarLine, type ActionTarget } from "@/app/sidebar/sidebar-view";
 import { TemplateActions } from "@/app/sidebar/template-actions";
+import { ThemeSwitch } from "@/app/sidebar/theme-switch";
+import type { ThemeChoice } from "@/app/theme";
 import { templateHref } from "@/app/template-view";
 import { GuardedLink } from "@/app/unsaved-guard";
 import { buttonClass, glassClass, labelClass, rowActiveClass, rowIdleClass } from "@/app/ui/classes";
@@ -19,7 +21,7 @@ export type SidebarList =
  * A 44px glass strip that widens to 240px on hover or keyboard focus. It overlays the page
  * instead of widening the row, so the editor's columns never reflow.
  */
-export function Sidebar({ list }: { list: SidebarList }) {
+export function Sidebar({ list, theme }: { list: SidebarList; theme: ThemeChoice }) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [blankOpen, setBlankOpen] = useState(false);
   const widthClass = actionsOpen ? "w-60" : "w-11 focus-within:w-60 hover:w-60";
@@ -53,6 +55,7 @@ export function Sidebar({ list }: { list: SidebarList }) {
       >
         <SidebarContent list={list} onActionsOpenChange={setActionsOpen} />
       </div>
+      <ThemeSwitch theme={theme} revealed={actionsOpen} />
     </aside>
   );
 }

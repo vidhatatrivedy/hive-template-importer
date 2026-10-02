@@ -6,7 +6,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
 
 ## Layout: variant B, "Collapsing columns"
 
-- **Template sidebar:** a slim glass icon strip on every page that expands on hover or keyboard focus to show **New ▸ Import / Blank** at the top and the Template list below. It overlays the page when expanded, so the editor's columns never reflow. Each row has a "⋯" menu (Rename, Duplicate, Delete); the header has the same menu beside the Template name. [slice 6 spec][s6]
+- **Template sidebar:** a slim glass icon strip on every page that expands on hover or keyboard focus to show **New ▸ Import / Blank** at the top and the Template list below. It overlays the page when expanded, so the editor's columns never reflow. Each row has a "⋯" menu (Rename, Duplicate, Delete); the header has the same menu beside the Template name. A settings block is pinned to the bottom and shows only while the sidebar is expanded. [slice 6 spec][s6]
 - **Editor window:** a single frosted-glass window. Its header is a breadcrumb (Template / Section / Item / Comment) plus:
   - Save
   - Discard, shown only when there are unsaved changes
@@ -36,7 +36,7 @@ Companion specs: [functional](functional.md) (what each pane does) and [technica
 
 ## Visual language
 
-- **Colour:** monochrome neutrals with no accent colour. Light and dark themes follow the system setting. This supersedes "dark mode cut" in [Screens][t5].
+- **Colour:** monochrome neutrals with no accent colour. The theme defaults to System, following the system setting, and can be forced to Light or Dark from the sidebar. This supersedes "dark mode cut" in [Screens][t5].
 - **Type:**
   - 12px base text.
   - 10px uppercase, tracked labels.
