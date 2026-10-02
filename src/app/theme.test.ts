@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyTheme, parseTheme, themeAttribute, themeCookie } from "@/app/theme";
+import { applyTheme, parseTheme, readThemeCookie, subscribeToTheme, themeAttribute, themeCookie } from "@/app/theme";
 
 describe("parseTheme", () => {
   it("defaults to System when the cookie is missing or invalid", () => {
@@ -58,6 +58,20 @@ describe("applyTheme", () => {
     applyTheme("system");
     expect(dom.window.document.documentElement.hasAttribute("data-theme")).toBe(false);
     expect(dom.window.document.cookie).toContain("theme=system");
+  });
+
+  it("lets a later read see the choice just applied", () => {
+    installDocument();
+    const seen: string[] = [];
+    const unsubscribe = subscribeToTheme(() => {
+      seen.push(readThemeCookie());
+    });
+    applyTheme("dark");
+    applyTheme("system");
+    unsubscribe();
+    applyTheme("light");
+    expect(seen).toEqual(["dark", "system"]);
+    expect(readThemeCookie()).toBe("light");
   });
 });
 

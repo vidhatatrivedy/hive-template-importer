@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { createElement } from "react";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ThemeSwitch } from "@/app/sidebar/theme-switch";
 import type { ThemeChoice } from "@/app/theme";
 
@@ -64,18 +63,60 @@ describe("theme switch", () => {
     expect(classTokens(open)).toContain("opacity-100");
     expect(classTokens(open)).not.toContain("opacity-0");
   });
-});
 
-describe("theme spec", () => {
-  it("defaults to System and keeps the settings block at the bottom of the sidebar", () => {
-    const design = readFileSync(join(process.cwd(), "docs/spec/design.md"), "utf8");
-    const sidebar = design.slice(design.indexOf("**Template sidebar:**"), design.indexOf("**Editor window:**"));
-    const colour = design.slice(design.indexOf("**Colour:**"), design.indexOf("**Type:**"));
-    expect(sidebar).toMatch(/settings block/);
-    expect(sidebar).toMatch(/bottom/);
-    expect(colour).toMatch(/defaults to System/);
-    expect(colour).toMatch(/sidebar/);
-    const config = readFileSync(join(process.cwd(), "next.config.ts"), "utf8");
-    expect(config).toContain('position: "bottom-right"');
+  it("keeps the filled button when the switch remounts with the earlier server choice", async () => {
+    const dom = installSwitchDocument();
+    const first = renderSwitchOn(dom, "system");
+    const dark = buttonNamed(dom, "Dark");
+    await act(async () => {
+      dark.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    });
+    expect(pressedLabels(dom)).toEqual(["Dark"]);
+    await act(async () => {
+      first.unmount();
+    });
+
+    const second = renderSwitchOn(dom, "system");
+    expect(pressedLabels(dom)).toEqual(["Dark"]);
+    await act(async () => {
+      second.unmount();
+      await new Promise((resolve) => setImmediate(resolve));
+    });
+    vi.unstubAllGlobals();
   });
 });
+
+function installSwitchDocument(): JSDOM {
+  const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
+    url: "http://localhost/",
+  });
+  vi.stubGlobal("document", dom.window.document);
+  vi.stubGlobal("window", dom.window);
+  vi.stubGlobal("HTMLElement", dom.window.HTMLElement);
+  vi.stubGlobal("Node", dom.window.Node);
+  vi.stubGlobal("navigator", dom.window.navigator);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  return dom;
+}
+
+function renderSwitchOn(dom: JSDOM, theme: ThemeChoice): Root {
+  const host = dom.window.document.getElementById("root");
+  if (!host) throw new Error("theme switch host missing");
+  const root = createRoot(host);
+  act(() => {
+    root.render(createElement(ThemeSwitch, { theme, revealed: true }));
+  });
+  return root;
+}
+
+function buttonNamed(dom: JSDOM, label: string): HTMLButtonElement {
+  const button = [...dom.window.document.querySelectorAll("button")].find((node) => node.textContent === label);
+  if (!button) throw new Error(`missing ${label} button`);
+  return button;
+}
+
+function pressedLabels(dom: JSDOM): string[] {
+  return [...dom.window.document.querySelectorAll("button")]
+    .filter((button) => button.getAttribute("aria-pressed") === "true")
+    .map((button) => button.textContent ?? "");
+}

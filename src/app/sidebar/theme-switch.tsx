@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { applyTheme, type ThemeChoice } from "@/app/theme";
+import { useSyncExternalStore } from "react";
+import { applyTheme, readThemeCookie, subscribeToTheme, type ThemeChoice } from "@/app/theme";
 import { labelClass } from "@/app/ui/classes";
 
 const CHOICES: { value: ThemeChoice; label: string }[] = [
@@ -10,18 +10,23 @@ const CHOICES: { value: ThemeChoice; label: string }[] = [
   { value: "system", label: "System" },
 ];
 
-const outlineClass =
-  "inline-flex h-6 items-center rounded-full border border-black/[0.08] px-2.5 text-[11px] dark:border-white/[0.1]";
+const pillClass = "inline-flex h-6 items-center rounded-full px-2.5 text-[11px]";
 
-const filledClass =
-  "inline-flex h-6 items-center rounded-full bg-neutral-900 px-2.5 text-[11px] text-white dark:bg-white dark:text-neutral-900";
+const outlineClass = `${pillClass} border border-black/[0.08] dark:border-white/[0.1]`;
 
-/** Light / Dark / System, pinned to the bottom of the expanded sidebar. */
+const filledClass = `${pillClass} bg-neutral-900 text-white dark:bg-white dark:text-neutral-900`;
+
+const hiddenUntilExpanded =
+  "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100";
+
+/**
+ * Light / Dark / System, pinned to the bottom of the expanded sidebar.
+ * The server prop paints the first response. After that the cookie wins, including when the
+ * Template list resolving remounts this switch before the next request.
+ */
 export function ThemeSwitch({ theme, revealed }: { theme: ThemeChoice; revealed: boolean }) {
-  const [choice, setChoice] = useState(theme);
-  const reveal = revealed
-    ? "opacity-100"
-    : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100";
+  const choice = useSyncExternalStore(subscribeToTheme, readThemeCookie, () => theme);
+  const reveal = revealed ? "opacity-100" : hiddenUntilExpanded;
   return (
     <div className={`flex w-60 shrink-0 flex-col gap-1.5 px-3 pb-3 transition-opacity ${reveal}`}>
       <span className={labelClass}>Theme</span>
@@ -34,10 +39,7 @@ export function ThemeSwitch({ theme, revealed }: { theme: ThemeChoice; revealed:
               type="button"
               aria-pressed={selected}
               className={selected ? filledClass : outlineClass}
-              onClick={() => {
-                setChoice(option.value);
-                applyTheme(option.value);
-              }}
+              onClick={() => applyTheme(option.value)}
             >
               {option.label}
             </button>
