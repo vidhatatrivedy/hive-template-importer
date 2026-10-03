@@ -60,9 +60,9 @@ All resolved by the wayfinder map; the answers are consolidated in [`docs/spec/`
 
 ## To do outside the code
 
-- [ ] Supabase dev project: fill `.env.local` (template `.env.example`), and the Supabase block of `.sandcastle/.env`.
-- [ ] Vercel project linked to the repo.
-- [ ] `.sandcastle/.env` (Claude token, Cursor key, GitHub token), then update Docker Desktop (installed version is 20.10 from 2022), start it, and run `npx sandcastle docker build-image`.
+- [x] Supabase dev project: fill `.env.local` (template `.env.example`), and the Supabase block of `.sandcastle/.env`.
+- [x] Vercel project linked to the repo.
+- [x] `.sandcastle/.env` (Claude token, Cursor key, GitHub token), then update Docker Desktop (installed version is 20.10 from 2022), start it, and run `npx sandcastle docker build-image`.
 - [x] Verify the Cursor model id: Cursor takes `grok-4.7-high`, not `grok-4.7[effort=high]` (checked in the sandbox, 2026-10-01).
 - [ ] Hive: open "We'll Buy Your Home Back" in `</>` code view to confirm whether the iframes are stored-but-hidden or dropped.
 - [ ] Hive: import, reload without saving, and check it persisted (the "unsaved changes" banner question).
@@ -71,8 +71,8 @@ All resolved by the wayfinder map; the answers are consolidated in [`docs/spec/`
 
 ## Deliverables checklist (from `docs/brief.md`)
 
-- [ ] Repo with meaningful history, fixtures, README (setup, DB init, env vars)
-- [ ] NOTES.md (cuts, supported input and limitations, how it was checked, time spent, credits)
-- [ ] Live URL seeded with InterNACHI Residential
-- [ ] 8-10 min video
-- [ ] Reply to Apoorv with repo, URL, video link
+- [x] Repo with meaningful history, fixtures, README (setup, DB init, env vars)
+- [x] NOTES.md (cuts, supported input and limitations, how it was checked, time spent, credits)
+- [x] Live URL seeded with InterNACHI Residential
+- [x] Video (about 20 min, over the 8–10 min target; chaptered): https://youtu.be/4y-cgCD8qrc
+- [x] Reply to Apoorv with repo, URL, video link
